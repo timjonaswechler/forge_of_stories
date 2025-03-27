@@ -4,14 +4,17 @@ use std::collections::HashMap;
 
 use crate::components::attributes::{MentalAttributes, PhysicalAttributes, SocialAttributes};
 use crate::components::genetics::{
-    Allele, ChromosomePair, GeneExpression, Genotype, Parent, Phenotype, SpeciesIdentity,
-    VisualTraits,
+    Allele, Ancestry, BodyComponent, BodyStructure, ChromosomePair, ChromosomeType, Fertility,
+    GeneExpression, Genotype, Parent, Personality, Phenotype, SpeciesIdentity, VisualTraits,
 };
 use crate::resources::skin_color_palette::SkinColorPalette;
 
 // System zur Berechnung des Phänotyps aus dem Genotyp
 pub fn genotype_to_phenotype_system(mut query: Query<(&Genotype, &mut Phenotype)>) {
     for (genotype, mut phenotype) in query.iter_mut() {
+        // Leere die Phänotyp-Gruppen
+        phenotype.attribute_groups.clear();
+
         for (gene_id, chromosome_pair) in genotype.chromosome_pairs.iter() {
             // Bestimme den phänotypischen Wert basierend auf den Expressionen
             let value = match (
@@ -38,7 +41,15 @@ pub fn genotype_to_phenotype_system(mut query: Query<(&Genotype, &mut Phenotype)
                 }
             };
 
+            // Speichere den Wert im allgemeinen Phänotyp
             phenotype.attributes.insert(gene_id.clone(), value);
+
+            // Speichere den Wert auch in der entsprechenden Chromosomen-Gruppe
+            phenotype
+                .attribute_groups
+                .entry(chromosome_pair.chromosome_type)
+                .or_insert_with(HashMap::new)
+                .insert(gene_id.clone(), value);
         }
     }
 }
@@ -46,185 +57,238 @@ pub fn genotype_to_phenotype_system(mut query: Query<(&Genotype, &mut Phenotype)
 // System zur Anwendung des Phänotyps auf die physischen Attribute
 pub fn apply_physical_attributes_system(mut query: Query<(&Phenotype, &mut PhysicalAttributes)>) {
     for (phenotype, mut physical_attrs) in query.iter_mut() {
-        // Beispiel für die Anwendung genetischer Werte auf Attribute
-        if let Some(strength_value) = phenotype.attributes.get("gene_strength") {
-            physical_attrs.strength.base_value = strength_value * 100.0;
-            physical_attrs.strength.current_value = physical_attrs.strength.base_value;
-        }
+        // Holen der Attributwerte aus der Attribut-Chromosomen-Gruppe
+        if let Some(attribute_values) = phenotype.attribute_groups.get(&ChromosomeType::Attributes)
+        {
+            // Beispiel für die Anwendung genetischer Werte auf Attribute
+            if let Some(strength_value) = attribute_values.get("gene_strength") {
+                physical_attrs.strength.base_value = strength_value * 100.0;
+                physical_attrs.strength.current_value = physical_attrs.strength.base_value;
+            }
 
-        if let Some(agility_value) = phenotype.attributes.get("gene_agility") {
-            physical_attrs.agility.base_value = agility_value * 100.0;
-            physical_attrs.agility.current_value = physical_attrs.agility.base_value;
-        }
+            if let Some(agility_value) = attribute_values.get("gene_agility") {
+                physical_attrs.agility.base_value = agility_value * 100.0;
+                physical_attrs.agility.current_value = physical_attrs.agility.base_value;
+            }
 
-        // Weitere Attribute ähnlich umsetzen...
+            if let Some(toughness_value) = attribute_values.get("gene_toughness") {
+                physical_attrs.toughness.base_value = toughness_value * 100.0;
+                physical_attrs.toughness.current_value = physical_attrs.toughness.base_value;
+            }
+
+            if let Some(endurance_value) = attribute_values.get("gene_endurance") {
+                physical_attrs.endurance.base_value = endurance_value * 100.0;
+                physical_attrs.endurance.current_value = physical_attrs.endurance.base_value;
+            }
+
+            if let Some(recuperation_value) = attribute_values.get("gene_recuperation") {
+                physical_attrs.recuperation.base_value = recuperation_value * 100.0;
+                physical_attrs.recuperation.current_value = physical_attrs.recuperation.base_value;
+            }
+
+            if let Some(disease_resistance_value) = attribute_values.get("gene_disease_resistance")
+            {
+                physical_attrs.disease_resistance.base_value = disease_resistance_value * 100.0;
+                physical_attrs.disease_resistance.current_value =
+                    physical_attrs.disease_resistance.base_value;
+            }
+        }
     }
 }
 
 // System zur Anwendung des Phänotyps auf die mentalen Attribute
 pub fn apply_mental_attributes_system(mut query: Query<(&Phenotype, &mut MentalAttributes)>) {
     for (phenotype, mut mental_attrs) in query.iter_mut() {
-        // Beispiel für die Anwendung genetischer Werte auf Attribute
-        if let Some(focus_value) = phenotype.attributes.get("gene_focus") {
-            mental_attrs.focus.base_value = focus_value * 100.0;
-            mental_attrs.focus.current_value = mental_attrs.focus.base_value;
-        }
+        // Holen der Attributwerte aus der Attribut-Chromosomen-Gruppe
+        if let Some(attribute_values) = phenotype.attribute_groups.get(&ChromosomeType::Attributes)
+        {
+            // Beispiel für die Anwendung genetischer Werte auf Attribute
+            if let Some(focus_value) = attribute_values.get("gene_focus") {
+                mental_attrs.focus.base_value = focus_value * 100.0;
+                mental_attrs.focus.current_value = mental_attrs.focus.base_value;
+            }
 
-        if let Some(creativity_value) = phenotype.attributes.get("gene_creativity") {
-            mental_attrs.creativity.base_value = creativity_value * 100.0;
-            mental_attrs.creativity.current_value = mental_attrs.creativity.base_value;
-        }
+            if let Some(creativity_value) = attribute_values.get("gene_creativity") {
+                mental_attrs.creativity.base_value = creativity_value * 100.0;
+                mental_attrs.creativity.current_value = mental_attrs.creativity.base_value;
+            }
 
-        // Weitere Attribute ähnlich umsetzen...
+            if let Some(willpower_value) = attribute_values.get("gene_willpower") {
+                mental_attrs.willpower.base_value = willpower_value * 100.0;
+                mental_attrs.willpower.current_value = mental_attrs.willpower.base_value;
+            }
+
+            if let Some(analytical_ability_value) = attribute_values.get("gene_analytical_ability")
+            {
+                mental_attrs.analytical_ability.base_value = analytical_ability_value * 100.0;
+                mental_attrs.analytical_ability.current_value =
+                    mental_attrs.analytical_ability.base_value;
+            }
+
+            if let Some(intuition_value) = attribute_values.get("gene_intuition") {
+                mental_attrs.intuition.base_value = intuition_value * 100.0;
+                mental_attrs.intuition.current_value = mental_attrs.intuition.base_value;
+            }
+
+            if let Some(memory_value) = attribute_values.get("gene_memory") {
+                mental_attrs.memory.base_value = memory_value * 100.0;
+                mental_attrs.memory.current_value = mental_attrs.memory.base_value;
+            }
+        }
     }
 }
 
 // System zur Anwendung des Phänotyps auf die sozialen Attribute
 pub fn apply_social_attributes_system(mut query: Query<(&Phenotype, &mut SocialAttributes)>) {
     for (phenotype, mut social_attrs) in query.iter_mut() {
-        // Beispiel für die Anwendung genetischer Werte auf Attribute
-        if let Some(empathy_value) = phenotype.attributes.get("gene_empathy") {
-            social_attrs.empathy.base_value = empathy_value * 100.0;
-            social_attrs.empathy.current_value = social_attrs.empathy.base_value;
-        }
+        // Holen der Attributwerte aus der Attribut-Chromosomen-Gruppe
+        if let Some(attribute_values) = phenotype.attribute_groups.get(&ChromosomeType::Attributes)
+        {
+            // Beispiel für die Anwendung genetischer Werte auf Attribute
+            if let Some(empathy_value) = attribute_values.get("gene_empathy") {
+                social_attrs.empathy.base_value = empathy_value * 100.0;
+                social_attrs.empathy.current_value = social_attrs.empathy.base_value;
+            }
 
-        if let Some(leadership_value) = phenotype.attributes.get("gene_leadership") {
-            social_attrs.leadership.base_value = leadership_value * 100.0;
-            social_attrs.leadership.current_value = social_attrs.leadership.base_value;
-        }
+            if let Some(leadership_value) = attribute_values.get("gene_leadership") {
+                social_attrs.leadership.base_value = leadership_value * 100.0;
+                social_attrs.leadership.current_value = social_attrs.leadership.base_value;
+            }
 
-        // Weitere Attribute ähnlich umsetzen...
+            if let Some(social_awareness_value) = attribute_values.get("gene_social_awareness") {
+                social_attrs.social_awareness.base_value = social_awareness_value * 100.0;
+                social_attrs.social_awareness.current_value =
+                    social_attrs.social_awareness.base_value;
+            }
+
+            if let Some(linguistic_ability_value) = attribute_values.get("gene_linguistic_ability")
+            {
+                social_attrs.linguistic_ability.base_value = linguistic_ability_value * 100.0;
+                social_attrs.linguistic_ability.current_value =
+                    social_attrs.linguistic_ability.base_value;
+            }
+
+            if let Some(negotiation_value) = attribute_values.get("gene_negotiation") {
+                social_attrs.negotiation.base_value = negotiation_value * 100.0;
+                social_attrs.negotiation.current_value = social_attrs.negotiation.base_value;
+            }
+        }
+    }
+}
+
+// System zur Anwendung des Phänotyps auf die Persönlichkeitsmerkmale
+pub fn apply_personality_system(mut query: Query<(&Phenotype, &mut Personality)>) {
+    for (phenotype, mut personality) in query.iter_mut() {
+        // Holen der Persönlichkeitswerte aus der Persönlichkeits-Chromosomen-Gruppe
+        if let Some(personality_values) =
+            phenotype.attribute_groups.get(&ChromosomeType::Personality)
+        {
+            for (trait_id, value) in personality_values.iter() {
+                // Strip off the "gene_" prefix for cleaner trait names
+                let trait_name = trait_id.strip_prefix("gene_").unwrap_or(trait_id);
+                personality.traits.insert(trait_name.to_string(), *value);
+            }
+        }
+    }
+}
+
+// System zur Aktualisierung der Körperstruktur basierend auf Genen
+pub fn update_body_structure_system(mut query: Query<(&Phenotype, &mut BodyStructure)>) {
+    for (phenotype, mut body_structure) in query.iter_mut() {
+        // Holen der Körperstrukturwerte aus der entsprechenden Chromosomen-Gruppe
+        if let Some(body_values) = phenotype
+            .attribute_groups
+            .get(&ChromosomeType::BodyStructure)
+        {
+            // Rekursive Hilfsfunktion zum Aktualisieren von Körperteilen basierend auf Genen
+            fn update_body_part(body_part: &mut BodyComponent, body_values: &HashMap<String, f32>) {
+                // Aktualisiere Eigenschaften für dieses Körperteil
+                let gene_prefix = format!("gene_body_{}_", body_part.id);
+
+                for (gene_id, value) in body_values.iter() {
+                    if gene_id.starts_with(&gene_prefix) {
+                        let property_name = gene_id.strip_prefix(&gene_prefix).unwrap_or(gene_id);
+                        body_part
+                            .properties
+                            .insert(property_name.to_string(), *value);
+                    }
+                }
+
+                // Rekursiv für alle Kinder
+                for child in &mut body_part.children {
+                    update_body_part(child, body_values);
+                }
+            }
+
+            // Starte mit der Wurzelkomponente
+            update_body_part(&mut body_structure.root, body_values);
+        }
     }
 }
 
 // System zur Berechnung visueller Merkmale basierend auf Genen
 pub fn update_visual_traits_system(
-    mut query: Query<(&Phenotype, &mut VisualTraits, &SpeciesIdentity)>,
+    mut query: Query<(&Phenotype, &mut VisualTraits, &SpeciesGenes)>,
     skin_palette: Res<SkinColorPalette>,
 ) {
-    for (phenotype, mut visual_traits, species_identity) in query.iter_mut() {
-        // Bei gemischten Spezies mischen wir die Hautfarben basierend auf Genpool
-        if phenotype.attributes.contains_key("gene_skin_r")
-            && phenotype.attributes.contains_key("gene_skin_g")
-            && phenotype.attributes.contains_key("gene_skin_b")
-        {
+    for (phenotype, mut visual_traits, species_genes) in query.iter_mut() {
+        // Für visuelle Merkmale verwenden wir primär die VisualTraits-Chromosomengruppe
+        let visual_genes = phenotype
+            .attribute_groups
+            .get(&ChromosomeType::VisualTraits);
+
+        // Hautfarbe berechnen
+        if let Some(visual_values) = visual_genes {
             // Wenn wir spezifische Gene für RGB-Komponenten haben, verwenden wir diese
-            visual_traits.skin_color = (
-                *phenotype.attributes.get("gene_skin_r").unwrap(),
-                *phenotype.attributes.get("gene_skin_g").unwrap(),
-                *phenotype.attributes.get("gene_skin_b").unwrap(),
-            );
-        } else {
-            // Andernfalls berechnen wir die Hautfarbe basierend auf den Spezies-Anteilen
-            let mut skin_color = (0.0, 0.0, 0.0);
-            let mut total_weight = 0.0;
+            if visual_values.contains_key("gene_skin_r")
+                && visual_values.contains_key("gene_skin_g")
+                && visual_values.contains_key("gene_skin_b")
+            {
+                visual_traits.skin_color = (
+                    *visual_values.get("gene_skin_r").unwrap(),
+                    *visual_values.get("gene_skin_g").unwrap(),
+                    *visual_values.get("gene_skin_b").unwrap(),
+                );
+            }
+            // Andernfalls prüfen wir auf einen allgemeinen Hautton-Wert
+            else if visual_values.contains_key("gene_skin_tone") {
+                let skin_tone = *visual_values.get("gene_skin_tone").unwrap();
 
-            for (species, percentage) in species_identity.species_percentage.iter() {
-                if let Some(species_colors) = skin_palette.colors.get(species) {
-                    if !species_colors.is_empty() {
-                        // Wähle eine Hautfarbe basierend auf einem genetischen Faktor
-                        // Hier verwenden wir gene_skin_tone, falls vorhanden, oder generieren einen zufälligen Wert
-                        let gene_value = phenotype.attributes.get("gene_skin_tone").unwrap_or(&0.5);
-                        let color_index = ((gene_value * (species_colors.len() as f32 - 1.0))
-                            as usize)
-                            .min(species_colors.len() - 1);
+                // Hautfarbe direkt aus dem Farbpaletten-Wert ableiten
+                // Wir nutzen den ersten gefundenen Speziestyp, falls vorhanden
+                if !species_genes.species.is_empty() {
+                    let primary_species = &species_genes.species[0];
 
-                        let color = species_colors[color_index];
+                    if let Some(species_colors) = skin_palette.colors.get(primary_species) {
+                        if !species_colors.is_empty() {
+                            // Wähle eine Hautfarbe basierend auf dem genetischen Hautton
+                            let color_index = ((skin_tone * (species_colors.len() as f32 - 1.0))
+                                as usize)
+                                .min(species_colors.len() - 1);
 
-                        // Mische proportional zum Spezies-Anteil
-                        skin_color.0 += color.0 * percentage;
-                        skin_color.1 += color.1 * percentage;
-                        skin_color.2 += color.2 * percentage;
-                        total_weight += percentage;
+                            visual_traits.skin_color = species_colors[color_index];
+                        }
                     }
+                } else {
+                    // Fallback: Einfacher Grauwert basierend auf dem Hautton
+                    visual_traits.skin_color = (skin_tone, skin_tone, skin_tone);
                 }
             }
-
-            // Normalisiere die Farbe falls nötig
-            if total_weight > 0.0 {
-                skin_color.0 /= total_weight;
-                skin_color.1 /= total_weight;
-                skin_color.2 /= total_weight;
-            }
-
-            visual_traits.skin_color = skin_color;
+        } else {
+            // Fallback: Verwende Standardwerte oder behalte aktuelle Werte bei
         }
 
-        // Weitere visuelle Merkmale könnten hier ähnlich umgesetzt werden...
+        // Weitere visuelle Merkmale wie Größe und Körperbau aktualisieren
+        if let Some(visual_values) = visual_genes {
+            if let Some(height_value) = visual_values.get("gene_height") {
+                // Skaliere den genetischen Wert auf einen sinnvollen Bereich für die Körpergröße
+                // z.B. zwischen 150cm und 220cm für humanoides Wesen
+                visual_traits.height = 150.0 + (height_value * 70.0);
+            }
+
+            if let Some(build_value) = visual_values.get("gene_build") {
+                visual_traits.build = *build_value;
+            }
+        }
     }
 }
-
-// System zur genetischen Vererbung bei der Fortpflanzung
-pub fn reproduction_system(
-    mut commands: Commands,
-    parent_query: Query<(Entity, &Genotype, &SpeciesIdentity), With<Parent>>,
-) {
-    // Dies ist nur eine Dummy-Implementierung, die noch keine tatsächliche Reproduktion durchführt
-    // In einem realen System würde hier die Logik zur Bestimmung, welche Entitäten sich fortpflanzen, stehen
-
-    let parents: Vec<(Entity, &Genotype, &SpeciesIdentity)> = parent_query.iter().collect();
-
-    // Nur fortfahren, wenn wir mindestens 2 Eltern haben
-    if parents.len() >= 2 {
-        // Beispielsweise nehmen wir die ersten beiden Eltern
-        let (parent1_entity, parent1_genotype, parent1_species) = &parents[0];
-        let (parent2_entity, parent2_genotype, parent2_species) = &parents[1];
-
-        info!(
-            "Potentielle Fortpflanzung zwischen {:?} und {:?}",
-            parent1_entity, parent2_entity
-        );
-        info!("  Erster Elternteil: {}", parent1_species.primary_species);
-        info!("  Zweiter Elternteil: {}", parent2_species.primary_species);
-
-        // Hier würde in einer vollständigen Implementierung die Berechnung des Nachwuchs-Genotyps erfolgen
-        // und ein neues Kind-Entity erstellt werden
-
-        // Kommentieren wir den tatsächlichen Reproduktionscode aus, bis wir ihn implementieren möchten
-        /*
-        // Implementierung würde hier folgen...
-         */
-    } else {
-        info!(
-            "Nicht genügend Elternteile für Reproduktion vorhanden: {}",
-            parents.len()
-        );
-    }
-}
-
-// System zur Berechnung der Fruchtbarkeit basierend auf genetischer Kompatibilität
-//  statt einfache Zahlen könnte man auch ein Werte von wann bis wann gebährfähige  fruchbar sind. Elfen haben z.B. eine sehr lange Jugendphase und einen sehr langen  Zyklus der Periode
-// pub fn calculate_fertility_system(mut query: Query<(&SpeciesIdentity, &mut Fertility)>) {
-//     for (species_identity, mut fertility) in query.iter_mut() {
-//         // Grundsätzliche Fruchtbarkeitsrate basierend auf Spezies
-//         let base_fertility = match species_identity.primary_species.as_str() {
-//             "Mensch" => 0.8,
-//             "Elf" => 0.5, // Elfen haben eine niedrigere Geburtenrate
-//             "Zwerg" => 0.6,
-//             "Ork" => 0.9, // Orks haben eine hohe Geburtenrate
-//             _ => 0.7,
-//         };
-
-//         // Berücksichtige genetische Mischung
-//         let mut mixed_penalty = 0.0;
-
-//         // Je mehr verschiedene Spezies im Genpool, desto größer könnte die Einschränkung sein
-//         let diverse_species_count = species_identity.species_percentage.len();
-
-//         if diverse_species_count > 1 {
-//             mixed_penalty = (diverse_species_count as f32 - 1.0) * 0.05;
-//         }
-
-//         // Endgültige Fruchtbarkeitsrate berechnen
-//         fertility.fertility_rate = (base_fertility - mixed_penalty).max(0.1);
-
-//         // Kompatibilitätsmodifikatoren für andere Spezies
-//         // (vereinfachtes Beispiel)
-//         for (species, percentage) in species_identity.species_percentage.iter() {
-//             fertility.compatibility_modifiers.insert(
-//                 species.clone(),
-//                 1.0 - (1.0 - percentage) * 0.5, // Höhere Kompatibilität mit ähnlichen Spezies
-//             );
-//         }
-//     }
-// }
