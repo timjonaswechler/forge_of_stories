@@ -79,12 +79,9 @@ pub struct BodyStructure {
 // Zusätzliche Gene für spezifische visuelle Merkmale
 #[derive(Component, Debug, Clone)]
 pub struct VisualTraits {
-    pub skin_color: (f32, f32, f32),   // RGB-Werte für die Hautfarbe
-    pub hair_color: (f32, f32, f32),   // RGB-Werte für die Haarfarbe
-    pub eye_color: (f32, f32, f32),    // RGB-Werte für die Augenfarbe
-    pub height: f32,                   // Körpergröße in cm
-    pub build: f32,                    // Körperbau (0.0 = schlank, 1.0 = massiv)
-    pub special_features: Vec<String>, // Besondere Merkmale wie "spitze Ohren", "Hörner", etc.
+    pub skin_color: (f32, f32, f32), // RGB-Werte für die Hautfarbe
+    pub hair_color: (f32, f32, f32), // RGB-Werte für die Haarfarbe
+    pub eye_color: (f32, f32, f32),  // RGB-Werte für die Augenfarbe
 }
 
 // Komponente für Spezieszugehörigkeit (für traditionelle Rassenidentifikation)
@@ -92,13 +89,6 @@ pub struct VisualTraits {
 pub struct SpeciesIdentity {
     pub primary_species: String, // z.B. "Mensch", "Elf", "Zwerg"
     pub species_percentage: HashMap<String, f32>, // Prozentuale Anteile verschiedener Spezies
-}
-
-// Fortpflanzungsfähigkeit
-#[derive(Component, Debug)]
-pub struct Fertility {
-    pub fertility_rate: f32, // 0.0-1.0 für die Wahrscheinlichkeit einer erfolgreichen Fortpflanzung
-    pub compatibility_modifiers: HashMap<String, f32>, // Spezies-ID -> Kompatibilitätsmodifikator
 }
 
 // Komponente, die anzeigt, dass dieses Wesen ein Elternteil ist

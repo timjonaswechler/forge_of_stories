@@ -4,8 +4,8 @@ use std::collections::HashMap;
 
 use crate::components::attributes::{MentalAttributes, PhysicalAttributes, SocialAttributes};
 use crate::components::genetics::{
-    Allele, ChromosomePair, Fertility, GeneExpression, Genotype, Parent, Phenotype,
-    SpeciesIdentity, VisualTraits,
+    Allele, ChromosomePair, GeneExpression, Genotype, Parent, Phenotype, SpeciesIdentity,
+    VisualTraits,
 };
 use crate::resources::skin_color_palette::SkinColorPalette;
 
@@ -150,11 +150,6 @@ pub fn update_visual_traits_system(
             visual_traits.skin_color = skin_color;
         }
 
-        // Größe berechnen (wie vorher)
-        if let Some(height_base) = phenotype.attributes.get("gene_height_base") {
-            visual_traits.height = 150.0 + (height_base * 50.0);
-        }
-
         // Weitere visuelle Merkmale könnten hier ähnlich umgesetzt werden...
     }
 }
@@ -198,37 +193,38 @@ pub fn reproduction_system(
 }
 
 // System zur Berechnung der Fruchtbarkeit basierend auf genetischer Kompatibilität
-pub fn calculate_fertility_system(mut query: Query<(&SpeciesIdentity, &mut Fertility)>) {
-    for (species_identity, mut fertility) in query.iter_mut() {
-        // Grundsätzliche Fruchtbarkeitsrate basierend auf Spezies
-        let base_fertility = match species_identity.primary_species.as_str() {
-            "Mensch" => 0.8,
-            "Elf" => 0.5, // Elfen haben eine niedrigere Geburtenrate
-            "Zwerg" => 0.6,
-            "Ork" => 0.9, // Orks haben eine hohe Geburtenrate
-            _ => 0.7,
-        };
+//  statt einfache Zahlen könnte man auch ein Werte von wann bis wann gebährfähige  fruchbar sind. Elfen haben z.B. eine sehr lange Jugendphase und einen sehr langen  Zyklus der Periode
+// pub fn calculate_fertility_system(mut query: Query<(&SpeciesIdentity, &mut Fertility)>) {
+//     for (species_identity, mut fertility) in query.iter_mut() {
+//         // Grundsätzliche Fruchtbarkeitsrate basierend auf Spezies
+//         let base_fertility = match species_identity.primary_species.as_str() {
+//             "Mensch" => 0.8,
+//             "Elf" => 0.5, // Elfen haben eine niedrigere Geburtenrate
+//             "Zwerg" => 0.6,
+//             "Ork" => 0.9, // Orks haben eine hohe Geburtenrate
+//             _ => 0.7,
+//         };
 
-        // Berücksichtige genetische Mischung
-        let mut mixed_penalty = 0.0;
+//         // Berücksichtige genetische Mischung
+//         let mut mixed_penalty = 0.0;
 
-        // Je mehr verschiedene Spezies im Genpool, desto größer könnte die Einschränkung sein
-        let diverse_species_count = species_identity.species_percentage.len();
+//         // Je mehr verschiedene Spezies im Genpool, desto größer könnte die Einschränkung sein
+//         let diverse_species_count = species_identity.species_percentage.len();
 
-        if diverse_species_count > 1 {
-            mixed_penalty = (diverse_species_count as f32 - 1.0) * 0.05;
-        }
+//         if diverse_species_count > 1 {
+//             mixed_penalty = (diverse_species_count as f32 - 1.0) * 0.05;
+//         }
 
-        // Endgültige Fruchtbarkeitsrate berechnen
-        fertility.fertility_rate = (base_fertility - mixed_penalty).max(0.1);
+//         // Endgültige Fruchtbarkeitsrate berechnen
+//         fertility.fertility_rate = (base_fertility - mixed_penalty).max(0.1);
 
-        // Kompatibilitätsmodifikatoren für andere Spezies
-        // (vereinfachtes Beispiel)
-        for (species, percentage) in species_identity.species_percentage.iter() {
-            fertility.compatibility_modifiers.insert(
-                species.clone(),
-                1.0 - (1.0 - percentage) * 0.5, // Höhere Kompatibilität mit ähnlichen Spezies
-            );
-        }
-    }
-}
+//         // Kompatibilitätsmodifikatoren für andere Spezies
+//         // (vereinfachtes Beispiel)
+//         for (species, percentage) in species_identity.species_percentage.iter() {
+//             fertility.compatibility_modifiers.insert(
+//                 species.clone(),
+//                 1.0 - (1.0 - percentage) * 0.5, // Höhere Kompatibilität mit ähnlichen Spezies
+//             );
+//         }
+//     }
+// }

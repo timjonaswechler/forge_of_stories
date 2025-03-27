@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 bevy = "*"
 rand = "*"
+rand_distr = "*"
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]

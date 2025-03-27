@@ -63,31 +63,31 @@ pub struct PhysicalAttributes {
 impl Default for PhysicalAttributes {
     fn default() -> Self {
         Self {
-            strength: Attribute::new("strength", "Stärke", AttributeCategory::Physical, 50.0),
+            strength: Attribute::new("strength", "Stärke", AttributeCategory::Physical, 25.0),
             agility: Attribute::new(
                 "agility",
                 "Beweglichkeit",
                 AttributeCategory::Physical,
-                50.0,
+                25.0,
             ),
             toughness: Attribute::new(
                 "toughness",
                 "Widerstandsfähigkeit",
                 AttributeCategory::Physical,
-                50.0,
+                25.0,
             ),
-            endurance: Attribute::new("endurance", "Ausdauer", AttributeCategory::Physical, 50.0),
+            endurance: Attribute::new("endurance", "Ausdauer", AttributeCategory::Physical, 25.0),
             recuperation: Attribute::new(
                 "recuperation",
                 "Heilungsfähigkeit",
                 AttributeCategory::Physical,
-                50.0,
+                25.0,
             ),
             disease_resistance: Attribute::new(
                 "disease_resistance",
                 "Krankheitsresistenz",
                 AttributeCategory::Physical,
-                50.0,
+                25.0,
             ),
         }
     }
@@ -113,24 +113,24 @@ impl Default for MentalAttributes {
                 "analytical_ability",
                 "Analytisches Denken",
                 AttributeCategory::Mental,
-                50.0,
+                25.0,
             ),
-            focus: Attribute::new("focus", "Konzentration", AttributeCategory::Mental, 50.0),
-            willpower: Attribute::new("willpower", "Willenskraft", AttributeCategory::Mental, 50.0),
+            focus: Attribute::new("focus", "Konzentration", AttributeCategory::Mental, 25.0),
+            willpower: Attribute::new("willpower", "Willenskraft", AttributeCategory::Mental, 25.0),
             creativity: Attribute::new(
                 "creativity",
                 "Kreativität",
                 AttributeCategory::Mental,
-                50.0,
+                25.0,
             ),
-            intuition: Attribute::new("intuition", "Intuition", AttributeCategory::Mental, 50.0),
-            patience: Attribute::new("patience", "Geduld", AttributeCategory::Mental, 50.0),
-            memory: Attribute::new("memory", "Gedächtnis", AttributeCategory::Mental, 50.0),
+            intuition: Attribute::new("intuition", "Intuition", AttributeCategory::Mental, 25.0),
+            patience: Attribute::new("patience", "Geduld", AttributeCategory::Mental, 25.0),
+            memory: Attribute::new("memory", "Gedächtnis", AttributeCategory::Mental, 25.0),
             spatial_sense: Attribute::new(
                 "spatial_sense",
                 "Raumgefühl",
                 AttributeCategory::Mental,
-                50.0,
+                25.0,
             ),
         }
     }
@@ -149,30 +149,30 @@ pub struct SocialAttributes {
 impl Default for SocialAttributes {
     fn default() -> Self {
         Self {
-            empathy: Attribute::new("empathy", "Empathie", AttributeCategory::Social, 50.0),
+            empathy: Attribute::new("empathy", "Empathie", AttributeCategory::Social, 25.0),
             social_awareness: Attribute::new(
                 "social_awareness",
                 "Soziale Intelligenz",
                 AttributeCategory::Social,
-                50.0,
+                25.0,
             ),
             linguistic_ability: Attribute::new(
                 "linguistic_ability",
                 "Sprachfähigkeit",
                 AttributeCategory::Social,
-                50.0,
+                25.0,
             ),
             leadership: Attribute::new(
                 "leadership",
                 "Führungsqualität",
                 AttributeCategory::Social,
-                50.0,
+                25.0,
             ),
             negotiation: Attribute::new(
                 "negotiation",
                 "Verhandlungsgeschick",
                 AttributeCategory::Social,
-                50.0,
+                25.0,
             ),
         }
     }

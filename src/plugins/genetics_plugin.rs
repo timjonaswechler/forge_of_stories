@@ -17,7 +17,7 @@ impl Plugin for GeneticsPlugin {
                     apply_mental_attributes_system,
                     apply_social_attributes_system,
                     update_visual_traits_system,
-                    calculate_fertility_system,
+                    // calculate_fertility_system,
                     // Neue Attribut-Systeme
                     calculate_effective_attribute_values,
                     update_attribute_rust,
