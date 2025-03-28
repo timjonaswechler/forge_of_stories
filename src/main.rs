@@ -124,6 +124,35 @@ fn create_entity_with_genes(
             ]);
     }
 
+    genotype.add_gene_pair(
+        "gene_strength", // Gen-ID
+        0.5,             // Maternaler Wert (0.0-1.0)
+        0.5,             // Paternaler Wert
+        GeneExpression::Codominant,
+        ChromosomeType::Attributes,
+    );
+
+    // Auch für Beweglichkeit
+    genotype.add_gene_pair(
+        "gene_agility",
+        0.6,
+        0.6,
+        GeneExpression::Codominant,
+        ChromosomeType::Attributes,
+    );
+
+    genotype
+        .chromosome_groups
+        .entry(ChromosomeType::Attributes)
+        .or_insert_with(Vec::new)
+        .push("gene_strength".to_string());
+
+    genotype
+        .chromosome_groups
+        .entry(ChromosomeType::Attributes)
+        .or_insert_with(Vec::new)
+        .push("gene_agility".to_string());
+
     // Erstelle die Entity mit allen notwendigen Komponenten
     commands.spawn((
         genotype,
@@ -169,6 +198,9 @@ fn debug_entities(
     mut state: ResMut<AppState>,
 ) {
     if state.running {
+        // Erster Durchlauf: Markiere als bereit für Debug
+        state.running = false;
+    } else if !state.running {
         info!("=== DETAILLIERTE ENTITY-INFORMATIONEN ===");
 
         for (entity, genotype, phenotype, physical, mental, social, visual, species, personality) in
@@ -176,7 +208,12 @@ fn debug_entities(
         {
             info!("Entity: {:?}", entity);
             info!("----------------------------------------");
-
+            for (chrom_type, attributes) in &phenotype.attribute_groups {
+                info!("  Chromosomentyp: {:?}", chrom_type);
+                for (attr_id, value) in attributes {
+                    info!("    {}: {:.2}", attr_id, value);
+                }
+            }
             // Genotyp-Informationen
             info!("GENOTYP: {} Gene", genotype.gene_pairs.len());
             for (gene_id, gene_pair) in &genotype.gene_pairs {
@@ -191,6 +228,9 @@ fn debug_entities(
 
             // Phänotyp-Informationen
             info!("PHÄNOTYP: {} Attribute", phenotype.attributes.len());
+            for (attr_id, value) in &phenotype.attributes {
+                info!("  {}: {:.2}", attr_id, value);
+            }
 
             // Physische Attribute
             info!("PHYSISCHE ATTRIBUTE:");
@@ -221,6 +261,6 @@ fn debug_entities(
             info!("========================================\n");
         }
 
-        state.running = false;
+        state.running = true;
     }
 }

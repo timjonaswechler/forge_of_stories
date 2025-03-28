@@ -263,7 +263,7 @@ impl GeneLibrary {
     pub fn create_hair_color_genes(&self, species: &str) -> Option<(GenePair, GenePair, GenePair)> {
         let mut rng = rand::thread_rng();
 
-        if let Some(colors) = self.skin_colors.get(species) {
+        if let Some(colors) = self.hair_colors.get(species) {
             if !colors.is_empty() {
                 let index = rng.gen_range(0..colors.len());
                 let color = colors[index];
@@ -321,7 +321,7 @@ impl GeneLibrary {
     pub fn create_eye_color_genes(&self, species: &str) -> Option<(GenePair, GenePair, GenePair)> {
         let mut rng = rand::thread_rng();
 
-        if let Some(colors) = self.skin_colors.get(species) {
+        if let Some(colors) = self.eye_colors.get(species) {
             if !colors.is_empty() {
                 let index = rng.gen_range(0..colors.len());
                 let color = colors[index];
