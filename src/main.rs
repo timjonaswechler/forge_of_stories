@@ -33,7 +33,6 @@ fn main() {
         .insert_resource(AppState { running: true })
         .add_plugins(GeneticsPlugin)
         .add_systems(Startup, setup)
-        .add_plugins(DefaultPlugins)
         // Füge GeneLibrary als Ressource hinzu
         .insert_resource(GeneLibrary::default())
         // Debug-System, das Informationen über die erzeugten Entitäten ausgibt
