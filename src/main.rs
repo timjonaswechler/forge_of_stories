@@ -12,7 +12,8 @@ use components::genetics::{
     SpeciesGenes, VisualTraits,
 };
 use plugins::genetics_plugin::GeneticsPlugin;
-use resources::skin_color_palette::SkinColorPalette;
+
+use resources::gene_library::GeneLibrary;
 
 // Ressource, um das Programm am Laufen zu halten
 #[derive(Resource)]
@@ -30,25 +31,26 @@ fn main() {
             ..default()
         }))
         .insert_resource(AppState { running: true })
-        .insert_resource(SkinColorPalette::default())
         .add_plugins(GeneticsPlugin)
         .add_systems(Startup, setup)
+        .add_plugins(DefaultPlugins)
+        // Füge GeneLibrary als Ressource hinzu
+        .insert_resource(GeneLibrary::default())
         // Debug-System, das Informationen über die erzeugten Entitäten ausgibt
         .add_systems(Update, debug_entities)
         .run();
 }
 
-fn setup(mut commands: Commands) {
+fn setup(mut commands: Commands, gene_library: Res<GeneLibrary>) {
     // Kamera
     commands.spawn(Camera2d);
 
     info!("Erstelle Testcharaktere...");
 
-    // Ein menschlicher Charakter
-    create_human_entity(&mut commands);
-
-    // Ein elfischer Charakter
-    create_elf_entity(&mut commands);
+    // Erstelle verschiedene Charaktere
+    create_entity_with_genes(&mut commands, &gene_library, "Mensch");
+    create_entity_with_genes(&mut commands, &gene_library, "Elf");
+    create_entity_with_genes(&mut commands, &gene_library, "Ork");
 
     info!("Setup abgeschlossen!");
 }
@@ -86,172 +88,77 @@ fn debug_entities(
     }
 }
 
-fn create_human_entity(commands: &mut Commands) {
-    // Erstelle einen Genotyp für einen Menschen
-    let mut human_genotype = Genotype::new();
-    let normal_distribution = Normal::new(0.250, 0.035).unwrap();
+// In einem passenden System (z.B. in src/systems/creation.rs)
+fn create_entity_with_genes(
+    commands: &mut Commands,
+    gene_library: &Res<GeneLibrary>,
+    species: &str,
+) {
+    // Erstelle einen neuen Genotyp
+    let mut genotype = Genotype::new();
 
-    // Füge einige Gene hinzu (vereinfachtes Beispiel)
-    add_gene(
-        &mut human_genotype,
-        "gene_strength",
-        normal_distribution.sample(&mut rand::thread_rng()) as f32,
-        normal_distribution.sample(&mut rand::thread_rng()) as f32,
-        GeneExpression::Dominant,
-        ChromosomeType::Attributes,
-    );
-    add_gene(
-        &mut human_genotype,
-        "gene_agility",
-        normal_distribution.sample(&mut rand::thread_rng()) as f32,
-        normal_distribution.sample(&mut rand::thread_rng()) as f32,
-        GeneExpression::Codominant,
-        ChromosomeType::Attributes,
-    );
-    add_gene(
-        &mut human_genotype,
-        "gene_focus",
-        normal_distribution.sample(&mut rand::thread_rng()) as f32,
-        normal_distribution.sample(&mut rand::thread_rng()) as f32,
-        GeneExpression::Codominant,
-        ChromosomeType::Attributes,
-    );
-    add_gene(
-        &mut human_genotype,
-        "gene_skin_tone",
-        normal_distribution.sample(&mut rand::thread_rng()) as f32,
-        normal_distribution.sample(&mut rand::thread_rng()) as f32,
-        GeneExpression::Codominant,
-        ChromosomeType::VisualTraits,
-    );
-    add_gene(
-        &mut human_genotype,
-        "gene_height",
-        normal_distribution.sample(&mut rand::thread_rng()) as f32,
-        normal_distribution.sample(&mut rand::thread_rng()) as f32,
-        GeneExpression::Codominant,
-        ChromosomeType::BodyStructure,
-    );
+    // Füge Hautfarben-Gene hinzu (jetzt RGB Komponenten)
+    if let Some((gene_r, gene_g, gene_b)) = gene_library.create_skin_color_genes(species) {
+        genotype
+            .gene_pairs
+            .insert("gene_skin_r".to_string(), gene_r);
+        genotype
+            .gene_pairs
+            .insert("gene_skin_g".to_string(), gene_g);
+        genotype
+            .gene_pairs
+            .insert("gene_skin_b".to_string(), gene_b);
 
-    // Spezies-Gene
-    add_gene(
-        &mut human_genotype,
-        "gene_species_Mensch",
-        1.0,
-        1.0,
-        GeneExpression::Dominant,
-        ChromosomeType::Specialized,
-    );
+        // Füge die Gene auch zu den entsprechenden Chromosomengruppen hinzu
+        genotype
+            .chromosome_groups
+            .entry(ChromosomeType::VisualTraits)
+            .or_insert_with(Vec::new)
+            .append(&mut vec![
+                "gene_skin_r".to_string(),
+                "gene_skin_g".to_string(),
+                "gene_skin_b".to_string(),
+            ]);
+    }
 
-    // Erstelle die Entity
-    let mut species_genes = SpeciesGenes::new();
-    species_genes.species.push("Mensch".to_string());
+    // Füge Haarfarben-Gene hinzu (wenn du diese Methode in der GeneLibrary implementierst)
+    // if let Some((hair_r, hair_g, hair_b)) = gene_library.create_hair_color_genes(species) {
+    //     genotype.gene_pairs.insert("gene_hair_r".to_string(), hair_r);
+    //     genotype.gene_pairs.insert("gene_hair_g".to_string(), hair_g);
+    //     genotype.gene_pairs.insert("gene_hair_b".to_string(), hair_b);
+    //
+    //     // Chromosomengruppen aktualisieren
+    //     // ...
+    // }
 
+    // Füge Augenfarben-Gene hinzu
+    // ...
+
+    // Erstelle die Entity mit allen notwendigen Komponenten
     commands.spawn((
-        human_genotype,
+        genotype,
         Phenotype::new(),
         PhysicalAttributes::default(),
         MentalAttributes::default(),
         SocialAttributes::default(),
         VisualTraits {
-            skin_color: SkinColorPalette::default().colors.get("Mensch").unwrap()[rand::random::<
-                usize,
-            >()
-                % SkinColorPalette::default()
-                    .colors
-                    .get("Mensch")
-                    .unwrap()
-                    .len()],
-            hair_color: (0.3, 0.2, 0.1),
-            eye_color: (0.3, 0.5, 0.7),
+            skin_color: (0.8, 0.65, 0.55), // Default, wird später durch Systeme angepasst
+            hair_color: (0.3, 0.2, 0.1),   // Default
+            eye_color: (0.3, 0.5, 0.7),    // Default
         },
-        species_genes,
+        SpeciesGenes {
+            species: vec![species.to_string()],
+        },
         BodyStructure::humanoid(),
         Personality::default_traits(),
         Parent { children: vec![] },
-    ));
-}
-
-fn create_elf_entity(commands: &mut Commands) {
-    // Erstelle einen Genotyp für einen Elfen
-    let mut elf_genotype = Genotype::new();
-    let normal_distribution = Normal::new(0.250, 0.035).unwrap();
-
-    // Füge einige Gene hinzu (vereinfachtes Beispiel)
-    add_gene(
-        &mut elf_genotype,
-        "gene_strength",
-        normal_distribution.sample(&mut rand::thread_rng()) as f32,
-        normal_distribution.sample(&mut rand::thread_rng()) as f32,
-        GeneExpression::Recessive,
-        ChromosomeType::Attributes,
-    );
-    add_gene(
-        &mut elf_genotype,
-        "gene_agility",
-        normal_distribution.sample(&mut rand::thread_rng()) as f32,
-        normal_distribution.sample(&mut rand::thread_rng()) as f32,
-        GeneExpression::Dominant,
-        ChromosomeType::Attributes,
-    );
-    add_gene(
-        &mut elf_genotype,
-        "gene_focus",
-        normal_distribution.sample(&mut rand::thread_rng()) as f32,
-        normal_distribution.sample(&mut rand::thread_rng()) as f32,
-        GeneExpression::Dominant,
-        ChromosomeType::Attributes,
-    );
-    add_gene(
-        &mut elf_genotype,
-        "gene_skin_tone",
-        normal_distribution.sample(&mut rand::thread_rng()) as f32,
-        normal_distribution.sample(&mut rand::thread_rng()) as f32,
-        GeneExpression::Dominant,
-        ChromosomeType::VisualTraits,
-    );
-    add_gene(
-        &mut elf_genotype,
-        "gene_height",
-        normal_distribution.sample(&mut rand::thread_rng()) as f32,
-        normal_distribution.sample(&mut rand::thread_rng()) as f32,
-        GeneExpression::Dominant,
-        ChromosomeType::BodyStructure,
-    );
-
-    // Spezies-Gene
-    add_gene(
-        &mut elf_genotype,
-        "gene_species_Elf",
-        1.0,
-        1.0,
-        GeneExpression::Dominant,
-        ChromosomeType::Specialized,
-    );
-
-    // Erstelle die Entity
-    let mut species_genes = SpeciesGenes::new();
-    species_genes.species.push("Elf".to_string());
-
-    commands.spawn((
-        elf_genotype,
-        Phenotype::new(),
-        PhysicalAttributes::default(),
-        MentalAttributes::default(),
-        SocialAttributes::default(),
-        VisualTraits {
-            // random skin color from SkinColorPalette
-            skin_color: SkinColorPalette::default().colors.get("Elf").unwrap()[rand::random::<
-                usize,
-            >()
-                % SkinColorPalette::default().colors.get("Elf").unwrap().len()],
-            hair_color: (0.9, 0.9, 0.7),
-            eye_color: (0.2, 0.7, 0.5),
-        },
-        species_genes,
-        BodyStructure::humanoid(),
-        Personality::default_traits(),
-        Parent { children: vec![] },
+        //TODO: implementieren eines Fertility-Systems
+        // Fertility {
+        //     fertility_rate: 0.5,
+        //     reproduction_cooldown: None,
+        //     compatibility_modifiers: HashMap::new(),
+        //     maturity: true,
+        // },
     ));
 }
 

@@ -8,7 +8,8 @@ use crate::components::genetics::{
     Ancestry, BodyComponent, BodyStructure, ChromosomeType, Fertility, GeneExpression, Genotype,
     Parent, Personality, Phenotype, SpeciesGenes, VisualTraits,
 };
-use crate::resources::skin_color_palette::SkinColorPalette;
+
+use crate::resources::gene_library::GeneLibrary;
 
 // Fortpflanzungssystem zur Kombination genetischer Information zweier Elternteile
 pub fn reproduction_system(
@@ -445,9 +446,10 @@ pub fn update_body_structure_system(mut query: Query<(&Phenotype, &mut BodyStruc
 }
 
 // System zur Berechnung visueller Merkmale basierend auf Genen
+// System zur Berechnung visueller Merkmale basierend auf Genen
 pub fn update_visual_traits_system(
     mut query: Query<(&Phenotype, &mut VisualTraits, &SpeciesGenes)>,
-    skin_palette: Res<SkinColorPalette>,
+    gene_library: Res<GeneLibrary>,
 ) {
     for (phenotype, mut visual_traits, species_genes) in query.iter_mut() {
         // Für visuelle Merkmale verwenden wir primär die VisualTraits-Chromosomengruppe
@@ -472,12 +474,12 @@ pub fn update_visual_traits_system(
             else if visual_values.contains_key("gene_skin_tone") {
                 let skin_tone = *visual_values.get("gene_skin_tone").unwrap();
 
-                // Hautfarbe direkt aus dem Farbpaletten-Wert ableiten
+                // Hautfarbe direkt aus dem GeneLibrary-Wert ableiten
                 // Wir nutzen den ersten gefundenen Speziestyp, falls vorhanden
                 if !species_genes.species.is_empty() {
                     let primary_species = &species_genes.species[0];
 
-                    if let Some(species_colors) = skin_palette.colors.get(primary_species) {
+                    if let Some(species_colors) = gene_library.skin_colors.get(primary_species) {
                         if !species_colors.is_empty() {
                             // Wähle eine Hautfarbe basierend auf dem genetischen Hautton
                             let color_index = ((skin_tone * (species_colors.len() as f32 - 1.0))
@@ -496,7 +498,40 @@ pub fn update_visual_traits_system(
             // Fallback: Verwende Standardwerte oder behalte aktuelle Werte bei
         }
 
-        // Weitere visuelle Merkmale wie Größe und Körperbau aktualisieren
-        // if let Some(visual_values) = visual_genes {}
+        // Haare und Augen aktualisieren, wenn wir entsprechende Gene haben
+        if let Some(visual_values) = visual_genes {
+            // Haarfarbe
+            if visual_values.contains_key("gene_hair_r")
+                && visual_values.contains_key("gene_hair_g")
+                && visual_values.contains_key("gene_hair_b")
+            {
+                visual_traits.hair_color = (
+                    *visual_values.get("gene_hair_r").unwrap(),
+                    *visual_values.get("gene_hair_g").unwrap(),
+                    *visual_values.get("gene_hair_b").unwrap(),
+                );
+            }
+            // Haarfarbe aus einem Index
+            else if visual_values.contains_key("gene_hair_tone") {
+                let hair_tone = *visual_values.get("gene_hair_tone").unwrap();
+
+                if !species_genes.species.is_empty() {
+                    let primary_species = &species_genes.species[0];
+
+                    if let Some(hair_colors) = gene_library.hair_colors.get(primary_species) {
+                        if !hair_colors.is_empty() {
+                            let color_index = ((hair_tone * (hair_colors.len() as f32 - 1.0))
+                                as usize)
+                                .min(hair_colors.len() - 1);
+
+                            visual_traits.hair_color = hair_colors[color_index];
+                        }
+                    }
+                }
+            }
+
+            // Augenfarbe - ähnliche Logik wie bei Haarfarbe
+            // ...
+        }
     }
 }

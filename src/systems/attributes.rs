@@ -187,29 +187,32 @@ pub fn apply_body_structure_system(mut query: Query<(&Phenotype, &mut BodyStruct
 }
 
 // System zur Berechnung visueller Merkmale basierend auf Genen
-pub fn apply_visual_traits_system(
-    mut query: Query<(&Phenotype, &mut crate::components::genetics::VisualTraits)>,
-) {
-    for (phenotype, mut visual_traits) in query.iter_mut() {
-        // Für visuelle Merkmale verwenden wir primär die VisualTraits-Chromosomengruppe
-        if let Some(visual_values) = phenotype
-            .attribute_groups
-            .get(&ChromosomeType::VisualTraits)
-        {
-            // Wenn wir spezifische Gene für RGB-Komponenten haben, verwenden wir diese
-            if visual_values.contains_key("gene_skin_r")
-                && visual_values.contains_key("gene_skin_g")
-                && visual_values.contains_key("gene_skin_b")
-            {
-                visual_traits.skin_color = (
-                    *visual_values.get("gene_skin_r").unwrap(),
-                    *visual_values.get("gene_skin_g").unwrap(),
-                    *visual_values.get("gene_skin_b").unwrap(),
-                );
-            }
-        }
-    }
-}
+// pub fn apply_visual_traits_system(
+//     mut query: Query<(
+//         &Phenotype,
+//         &mut crate::components::genetics::AppearanceComponent,
+//     )>,
+// ) {
+//     for (phenotype, mut visual_traits) in query.iter_mut() {
+//         // Für visuelle Merkmale verwenden wir primär die VisualTraits-Chromosomengruppe
+//         if let Some(visual_values) = phenotype
+//             .attribute_groups
+//             .get(&ChromosomeType::VisualTraits)
+//         {
+//             // Wenn wir spezifische Gene für RGB-Komponenten haben, verwenden wir diese
+//             if visual_values.contains_key("gene_skin_r")
+//                 && visual_values.contains_key("gene_skin_g")
+//                 && visual_values.contains_key("gene_skin_b")
+//             {
+//                 visual_traits.skin_color = (
+//                     *visual_values.get("gene_skin_r").unwrap(),
+//                     *visual_values.get("gene_skin_g").unwrap(),
+//                     *visual_values.get("gene_skin_b").unwrap(),
+//                 );
+//             }
+//         }
+//     }
+// }
 
 // System zur Aktualisierung der physischen Attribut-Sammlung
 //TODO: Implementierung fehlt

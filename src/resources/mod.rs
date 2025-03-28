@@ -1,2 +1,2 @@
 // src/resources/mod.rs:
-pub mod skin_color_palette;
+pub mod gene_library;

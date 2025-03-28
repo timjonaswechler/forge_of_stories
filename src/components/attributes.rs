@@ -12,6 +12,7 @@ pub enum AttributeCategory {
 
 // Attribut-Komponente
 #[derive(Component, Debug, Clone)]
+#[allow(dead_code)]
 pub struct Attribute {
     pub id: String,
     pub name: String,

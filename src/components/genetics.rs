@@ -21,17 +21,22 @@ pub enum ChromosomeType {
     Specialized,   // Spezielle Fähigkeiten/Merkmale
 }
 
-// Einzelnes Gen
+// Gene: Blaupause für ein Gen in der Gendatenbank/dem Genpool der Welt
+// Definiert die Eigenschaften und möglichen Werte, die ein Gen haben kann
 #[derive(Component, Debug, Clone)]
 pub struct Gene {
-    pub id: String,
-    pub name: String,
-    pub expression: GeneExpression,
-    pub value: f32,                      // 0.0-1.0 für die Stärke der Ausprägung
-    pub chromosome_type: ChromosomeType, // Zugehöriger Chromosomen-Typ
+    pub id: String,                                // Eindeutiger Identifikator
+    pub name: String,                              // Lesbarer Name (z.B. "Augenfarbe")
+    pub description: String,                       // Kurze Beschreibung des Gens
+    pub possible_expressions: Vec<GeneExpression>, // Mögliche Expressionen
+    pub default_value: f32,                        // Standard/Ausgangswert
+    pub value_range: (f32, f32),                   // Min/Max-Wertebereich
+    pub mutation_rate: f32,                        // Wahrscheinlichkeit von Mutationen
+    pub chromosome_type: ChromosomeType,           // Zuordnung zu einem Chromosomentyp
 }
 
-// Genvariante (eine konkrete Ausprägung eines Gens)
+// GeneVariant: Eine spezifische Ausprägung (Allel) eines Gens in einem Individuum
+// Jedes Individuum hat zwei GeneVariants für jedes Gen (von Mutter und Vater)
 #[derive(Debug, Clone)]
 pub struct GeneVariant {
     pub gene_id: String,
@@ -39,7 +44,8 @@ pub struct GeneVariant {
     pub expression: GeneExpression,
 }
 
-// Genpaar (für diploide Organismen)
+// GenePair: Ein Paar von Genvarianten, das ein komplettes Gen in einem diploiden Organismus darstellt
+// Beinhaltet sowohl das mütterliche als auch das väterliche Allel
 #[derive(Debug, Clone)]
 pub struct GenePair {
     pub maternal: GeneVariant,           // Von der Mutter
@@ -277,12 +283,12 @@ impl BodyStructure {
 }
 
 // Zusätzliche Gene für spezifische visuelle Merkmale
-#[derive(Component, Debug, Clone)]
-pub struct VisualTraits {
-    pub skin_color: (f32, f32, f32), // RGB-Werte für die Hautfarbe
-    pub hair_color: (f32, f32, f32), // RGB-Werte für die Haarfarbe
-    pub eye_color: (f32, f32, f32),  // RGB-Werte für die Augenfarbe
-}
+// #[derive(Component, Debug, Clone)]
+// pub struct VisualTraits {
+//     pub skin_color: (f32, f32, f32), // RGB-Werte für die Hautfarbe
+//     pub hair_color: (f32, f32, f32), // RGB-Werte für die Haarfarbe
+//     pub eye_color: (f32, f32, f32),  // RGB-Werte für die Augenfarbe
+// }
 
 // Persönlichkeitsmerkmale
 #[derive(Component, Debug, Clone)]
@@ -337,6 +343,13 @@ impl SpeciesGenes {
 #[derive(Component, Debug)]
 pub struct Parent {
     pub children: Vec<Entity>,
+}
+
+#[derive(Component, Debug, Clone)]
+pub struct VisualTraits {
+    pub skin_color: (f32, f32, f32),
+    pub hair_color: (f32, f32, f32),
+    pub eye_color: (f32, f32, f32),
 }
 
 // Komponente, die auf die Eltern verweist
