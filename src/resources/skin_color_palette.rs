@@ -1,7 +1,8 @@
+// src/resources/skin_color_palette.rs:
 use bevy::prelude::*;
 use std::collections::HashMap;
 
-#[derive(Resource, Debug, Clone)]
+#[derive(Resource)]
 pub struct SkinColorPalette {
     pub colors: HashMap<String, Vec<(f32, f32, f32)>>,
 }

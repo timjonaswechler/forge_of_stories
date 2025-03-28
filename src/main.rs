@@ -154,11 +154,16 @@ fn create_human_entity(commands: &mut Commands) {
         MentalAttributes::default(),
         SocialAttributes::default(),
         VisualTraits {
-            skin_color: (0.8, 0.65, 0.55),
+            skin_color: SkinColorPalette::default().colors.get("Mensch").unwrap()[rand::random::<
+                usize,
+            >()
+                % SkinColorPalette::default()
+                    .colors
+                    .get("Mensch")
+                    .unwrap()
+                    .len()],
             hair_color: (0.3, 0.2, 0.1),
             eye_color: (0.3, 0.5, 0.7),
-            height: 180.0,
-            build: 0.5,
         },
         species_genes,
         BodyStructure::humanoid(),
@@ -235,11 +240,13 @@ fn create_elf_entity(commands: &mut Commands) {
         MentalAttributes::default(),
         SocialAttributes::default(),
         VisualTraits {
-            skin_color: (0.9, 0.8, 0.75),
+            // random skin color from SkinColorPalette
+            skin_color: SkinColorPalette::default().colors.get("Elf").unwrap()[rand::random::<
+                usize,
+            >()
+                % SkinColorPalette::default().colors.get("Elf").unwrap().len()],
             hair_color: (0.9, 0.9, 0.7),
             eye_color: (0.2, 0.7, 0.5),
-            height: 190.0,
-            build: 0.3,
         },
         species_genes,
         BodyStructure::humanoid(),

@@ -1,3 +1,4 @@
+// src/components/attributes.rs
 use bevy::prelude::*;
 use std::time::Duration;
 
@@ -40,12 +41,13 @@ impl Attribute {
 }
 
 // Attribut-Modifikator
-#[derive(Component, Debug, Clone)]
-pub struct AttributeModifier {
-    pub attribute_id: String,
-    pub modifier: f32,                 // Absoluter Wert z.B. +10
-    pub modifier_percent: Option<f32>, // Prozentualer Wert z.B. +15%
-}
+// TODO: Prüfen ob notwenidg
+// #[derive(Component, Debug, Clone)]
+// pub struct AttributeModifier {
+//     pub attribute_id: String,
+//     pub modifier: f32,                 // Absoluter Wert z.B. +10
+//     pub modifier_percent: Option<f32>, // Prozentualer Wert z.B. +15%
+//     pub duration: Option<Duration>,    // Dauer des Modifikators}
 
 // Komponenten für die verschiedenen Attributgruppen
 

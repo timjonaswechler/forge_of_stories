@@ -1,3 +1,4 @@
+// src/systems/genetics.rs
 use bevy::prelude::*;
 use rand::Rng;
 use std::collections::{HashMap, HashSet};
@@ -185,8 +186,6 @@ fn create_child(
                 skin_color: (0.8, 0.65, 0.55), // Default, wird später durch Systeme angepasst
                 hair_color: (0.3, 0.2, 0.1),   // Default
                 eye_color: (0.3, 0.5, 0.7),    // Default
-                height: 50.0,                  // Wir starten mit einem kleinen Wert (Wachstum)
-                build: 0.5,                    // Default
             },
             child_species,
             BodyStructure::humanoid(),
@@ -394,6 +393,8 @@ pub fn apply_social_attributes_system(mut query: Query<(&Phenotype, &mut SocialA
 }
 
 // System zur Anwendung des Phänotyps auf die Persönlichkeitsmerkmale
+// TODO: Implementiere fehlt noch
+#[allow(dead_code)]
 pub fn apply_personality_system(mut query: Query<(&Phenotype, &mut Personality)>) {
     for (phenotype, mut personality) in query.iter_mut() {
         // Holen der Persönlichkeitswerte aus der Persönlichkeits-Chromosomen-Gruppe
@@ -496,16 +497,6 @@ pub fn update_visual_traits_system(
         }
 
         // Weitere visuelle Merkmale wie Größe und Körperbau aktualisieren
-        if let Some(visual_values) = visual_genes {
-            if let Some(height_value) = visual_values.get("gene_height") {
-                // Skaliere den genetischen Wert auf einen sinnvollen Bereich für die Körpergröße
-                // z.B. zwischen 150cm und 220cm für humanoides Wesen
-                visual_traits.height = 150.0 + (height_value * 70.0);
-            }
-
-            if let Some(build_value) = visual_values.get("gene_build") {
-                visual_traits.build = *build_value;
-            }
-        }
+        // if let Some(visual_values) = visual_genes {}
     }
 }

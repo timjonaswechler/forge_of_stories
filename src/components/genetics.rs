@@ -1,3 +1,5 @@
+// src/components/genetics.rs
+
 use bevy::prelude::*;
 use std::collections::HashMap;
 
@@ -280,8 +282,6 @@ pub struct VisualTraits {
     pub skin_color: (f32, f32, f32), // RGB-Werte für die Hautfarbe
     pub hair_color: (f32, f32, f32), // RGB-Werte für die Haarfarbe
     pub eye_color: (f32, f32, f32),  // RGB-Werte für die Augenfarbe
-    pub height: f32,                 // Körpergröße in cm
-    pub build: f32,                  // Körperbau (0.0 schlank - 1.0 kräftig)
 }
 
 // Persönlichkeitsmerkmale
