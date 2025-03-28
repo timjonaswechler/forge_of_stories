@@ -1,5 +1,4 @@
-use crate::components::genetics::{Genotype, Phenotype, SpeciesGenes};
-use crate::resources::skin_color_palette::SkinColorPalette;
+use crate::components::genetics::{Genotype, SpeciesGenes};
 use bevy::prelude::*;
 
 // System zur Aktualisierung der Speziesliste basierend auf den Genen

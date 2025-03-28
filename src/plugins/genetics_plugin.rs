@@ -29,7 +29,6 @@ impl Plugin for GeneticsPlugin {
                     update_body_structure_system,
                     // Spezies-System
                     update_species_system,
-                    // Fortpflanzungssystem
                     reproduction_system,
                 ),
             );

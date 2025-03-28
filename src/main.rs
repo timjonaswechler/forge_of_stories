@@ -8,8 +8,8 @@ mod systems;
 
 use components::attributes::{MentalAttributes, PhysicalAttributes, SocialAttributes};
 use components::genetics::{
-    BodyStructure, ChromosomeType, GeneExpression, GenePair, GeneVariant, Genotype, Parent,
-    Personality, Phenotype, SpeciesGenes, VisualTraits,
+    BodyStructure, ChromosomeType, GeneExpression, Genotype, Parent, Personality, Phenotype,
+    SpeciesGenes, VisualTraits,
 };
 use plugins::genetics_plugin::GeneticsPlugin;
 use resources::skin_color_palette::SkinColorPalette;
@@ -40,7 +40,7 @@ fn main() {
 
 fn setup(mut commands: Commands) {
     // Kamera
-    commands.spawn(Camera2dBundle::default());
+    commands.spawn(Camera2d);
 
     info!("Erstelle Testcharaktere...");
 
@@ -56,8 +56,8 @@ fn setup(mut commands: Commands) {
 // Debug-System, um die genetischen Informationen anzuzeigen
 fn debug_entities(
     genotypes: Query<(Entity, &Genotype, &Phenotype, &VisualTraits, &SpeciesGenes)>,
-    time: Res<Time>,
-    mut state: ResMut<AppState>,
+    _time: Res<Time>,
+    state: ResMut<AppState>,
 ) {
     // Ausgabe nur einmal zu Beginn
     if state.running {
