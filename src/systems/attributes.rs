@@ -1,12 +1,12 @@
 // src/systems/attributes.rs
 use bevy::prelude::*;
-use std::collections::HashMap; // Wird für die Implementierung benötigt
+use std::collections::HashMap;
 
 use crate::components::attributes::{
     Attribute, MentalAttributes, PhysicalAttributes, SocialAttributes,
 };
 use crate::components::genetics::{
-    BodyComponent, BodyStructure, ChromosomeType, Personality, Phenotype,
+    BodyComponent, BodyStructure, ChromosomeType, Personality, Phenotype, PhenotypeGene,
 };
 
 // Generischer Trait für Attributgruppen
@@ -102,10 +102,10 @@ pub fn apply_attributes<T: AttributeGroup + Component>(
 ) {
     for (phenotype, mut attribute_group) in query.iter_mut() {
         // Attributwerte aus der Attribut-Chromosomen-Gruppe holen
-        if let Some(attribute_values) = phenotype.expressed_traits.get(&ChromosomeType::Attributes)
+        if let Some(attribute_values) = phenotype.attribute_groups.get(&ChromosomeType::Attributes)
         {
             // Für jedes Attribut im Phänotyp prüfen, ob es angewendet werden soll
-            for (gene_id, value) in attribute_values.iter() {
+            for (gene_id, phenotype_gene) in attribute_values.iter() {
                 // Nur Gene mit dem richtigen Präfix verwenden
                 if gene_id.starts_with(attribute_prefix) {
                     // Attribute-Namen vom Präfix trennen, z.B. "gene_strength" -> "strength"
@@ -113,7 +113,7 @@ pub fn apply_attributes<T: AttributeGroup + Component>(
 
                     // Attribute aktualisieren, falls es existiert
                     if let Some(attribute) = attribute_group.get_attribute_mut(attribute_name) {
-                        attribute.base_value = value * 100.0;
+                        attribute.base_value = phenotype_gene.value * 100.0;
                         attribute.current_value = attribute.base_value;
                     }
                 }
@@ -141,12 +141,14 @@ pub fn apply_personality_system(mut query: Query<(&Phenotype, &mut Personality)>
     for (phenotype, mut personality) in query.iter_mut() {
         // Holen der Persönlichkeitswerte aus der Persönlichkeits-Chromosomen-Gruppe
         if let Some(personality_values) =
-            phenotype.expressed_traits.get(&ChromosomeType::Personality)
+            phenotype.attribute_groups.get(&ChromosomeType::Personality)
         {
-            for (trait_id, value) in personality_values.iter() {
+            for (trait_id, phenotype_gene) in personality_values.iter() {
                 // Strip off the "gene_" prefix for cleaner trait names
                 let trait_name = trait_id.strip_prefix("gene_").unwrap_or(trait_id);
-                personality.traits.insert(trait_name.to_string(), *value);
+                personality
+                    .traits
+                    .insert(trait_name.to_string(), phenotype_gene.value);
             }
         }
     }
@@ -157,20 +159,23 @@ pub fn apply_body_structure_system(mut query: Query<(&Phenotype, &mut BodyStruct
     for (phenotype, mut body_structure) in query.iter_mut() {
         // Holen der Körperstrukturwerte aus der entsprechenden Chromosomen-Gruppe
         if let Some(body_values) = phenotype
-            .expressed_traits
+            .attribute_groups
             .get(&ChromosomeType::BodyStructure)
         {
             // Rekursive Hilfsfunktion zum Aktualisieren von Körperteilen basierend auf Genen
-            fn update_body_part(body_part: &mut BodyComponent, body_values: &HashMap<String, f32>) {
+            fn update_body_part(
+                body_part: &mut BodyComponent,
+                body_values: &HashMap<String, PhenotypeGene>,
+            ) {
                 // Aktualisiere Eigenschaften für dieses Körperteil
                 let gene_prefix = format!("gene_body_{}_", body_part.id);
 
-                for (gene_id, value) in body_values.iter() {
+                for (gene_id, phenotype_gene) in body_values.iter() {
                     if gene_id.starts_with(&gene_prefix) {
                         let property_name = gene_id.strip_prefix(&gene_prefix).unwrap_or(gene_id);
                         body_part
                             .properties
-                            .insert(property_name.to_string(), *value);
+                            .insert(property_name.to_string(), phenotype_gene.value);
                     }
                 }
 
@@ -193,7 +198,7 @@ pub fn apply_visual_traits_system(
     for (phenotype, mut visual_traits) in query.iter_mut() {
         // Für visuelle Merkmale verwenden wir primär die VisualTraits-Chromosomengruppe
         if let Some(visual_values) = phenotype
-            .expressed_traits
+            .attribute_groups
             .get(&ChromosomeType::VisualTraits)
         {
             // Wenn wir spezifische Gene für RGB-Komponenten haben, verwenden wir diese
@@ -202,9 +207,9 @@ pub fn apply_visual_traits_system(
                 && visual_values.contains_key("gene_skin_b")
             {
                 visual_traits.skin_color = (
-                    *visual_values.get("gene_skin_r").unwrap(),
-                    *visual_values.get("gene_skin_g").unwrap(),
-                    *visual_values.get("gene_skin_b").unwrap(),
+                    visual_values.get("gene_skin_r").unwrap().value,
+                    visual_values.get("gene_skin_g").unwrap().value,
+                    visual_values.get("gene_skin_b").unwrap().value,
                 );
             }
 
@@ -214,9 +219,9 @@ pub fn apply_visual_traits_system(
                 && visual_values.contains_key("gene_hair_b")
             {
                 visual_traits.hair_color = (
-                    *visual_values.get("gene_hair_r").unwrap(),
-                    *visual_values.get("gene_hair_g").unwrap(),
-                    *visual_values.get("gene_hair_b").unwrap(),
+                    visual_values.get("gene_hair_r").unwrap().value,
+                    visual_values.get("gene_hair_g").unwrap().value,
+                    visual_values.get("gene_hair_b").unwrap().value,
                 );
             }
 
@@ -225,9 +230,9 @@ pub fn apply_visual_traits_system(
                 && visual_values.contains_key("gene_eye_b")
             {
                 visual_traits.eye_color = (
-                    *visual_values.get("gene_eye_r").unwrap(),
-                    *visual_values.get("gene_eye_g").unwrap(),
-                    *visual_values.get("gene_eye_b").unwrap(),
+                    visual_values.get("gene_eye_r").unwrap().value,
+                    visual_values.get("gene_eye_g").unwrap().value,
+                    visual_values.get("gene_eye_b").unwrap().value,
                 );
             }
         }

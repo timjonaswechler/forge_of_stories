@@ -101,16 +101,29 @@ impl Genotype {
     }
 }
 
+// PhenotypeGene: Speichert den Wert und die Expression eines Gens im Phänotyp
+#[derive(Debug, Clone)]
+pub struct PhenotypeGene {
+    pub value: f32,
+    pub expression: GeneExpression,
+}
+impl PhenotypeGene {
+    pub fn new(value: f32, expression: GeneExpression) -> Self {
+        Self { value, expression }
+    }
+}
 // Phänotyp (die sichtbaren/wirksamen Eigenschaften)
 #[derive(Component, Debug, Clone)]
 pub struct Phenotype {
-    pub expressed_traits: HashMap<ChromosomeType, HashMap<String, f32>>,
+    pub attributes: HashMap<String, PhenotypeGene>, // Gen-ID -> Phänotyp-Gen
+    pub attribute_groups: HashMap<ChromosomeType, HashMap<String, PhenotypeGene>>, // Gruppierung nach Chromosomen-Typ
 }
 
 impl Phenotype {
     pub fn new() -> Self {
         Self {
-            expressed_traits: HashMap::new(),
+            attributes: HashMap::new(),
+            attribute_groups: HashMap::new(),
         }
     }
 }

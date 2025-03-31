@@ -117,30 +117,76 @@ fn debug_entities(
             info!("Entity: {:?}", entity);
             info!("----------------------------------------");
 
-            // Genotyp ausgeben
+            // Genotyp-Informationen
             info!("GENOTYP: {} Gene", genotype.gene_pairs.len());
             for (gene_id, gene_pair) in &genotype.gene_pairs {
                 info!(
-                    "  Gen '{}': Maternal: {:.2}, Paternal: {:.2}, Expression: {:?}",
+                    "  Gen '{}':\n    Maternal: \n        value: {:.2}, \n        Expression: {:?}, \n    Paternal: \n        value: {:.2}, \n        Expression: {:?}",
                     gene_id,
                     gene_pair.maternal.value,
+                    gene_pair.maternal.expression,
                     gene_pair.paternal.value,
-                    gene_pair.maternal.expression
+                    gene_pair.paternal.expression
                 );
             }
 
-            // Phänotyp ausgeben
+            // Phänotyp-Informationen
             info!("PHÄNOTYP:");
-            for (chromosome_type, traits) in &phenotype.expressed_traits {
-                info!("  Chromosomentyp: {:?}", chromosome_type);
-                for (gene_id, value) in traits {
-                    info!("    {}: {:.2}", gene_id, value);
+            for (chrom_type, attributes) in &phenotype.attribute_groups {
+                info!("  Chromosomentyp: {:?}", chrom_type);
+                for (attr_id, phenotype_gene) in attributes {
+                    info!(
+                        "    {}: \n        value: {:.2},\n        Expression: {:?}",
+                        attr_id, phenotype_gene.value, phenotype_gene.expression
+                    );
                 }
             }
 
-            // Rest der Ausgabe...
-            // ...
+            // Physische Attribute
+            info!("PHYSISCHE ATTRIBUTE:");
+            info!("  Stärke: {:.1}", physical.strength.current_value);
+            info!("  Beweglichkeit: {:.1}", physical.agility.current_value);
+            info!(
+                "  Widerstandsfähigkeit: {:.1}",
+                physical.toughness.current_value
+            );
+            info!("  Ausdauer: {:.1}", physical.endurance.current_value);
+            info!(
+                "  Heilungsfähigkeit: {:.1}",
+                physical.recuperation.current_value
+            );
+            info!(
+                "  Krankheitsresistenz: {:.1}",
+                physical.disease_resistance.current_value
+            );
+
+            // Visualtraits
+            info!("VISUELLE MERKMALE:");
+            info!(
+                "  Hautfarbe: RGB({:.3}, {:.3}, {:.3})",
+                visual.skin_color.0, visual.skin_color.1, visual.skin_color.2
+            );
+            info!(
+                "  Haarfarbe: RGB({:.3}, {:.3}, {:.3})",
+                visual.hair_color.0, visual.hair_color.1, visual.hair_color.2
+            );
+            info!(
+                "  Augenfarbe: RGB({:.3}, {:.3}, {:.3})",
+                visual.eye_color.0, visual.eye_color.1, visual.eye_color.2
+            );
+
+            // Spezies
+            info!("SPEZIES: {:?}", species.species);
+
+            // Persönlichkeit
+            info!("PERSÖNLICHKEIT:");
+            for (trait_name, trait_value) in &personality.traits {
+                info!("  {}: {:.2}", trait_name, trait_value);
+            }
+
+            info!("========================================\n");
         }
+
         state.running = true;
     }
 }
