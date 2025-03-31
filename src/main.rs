@@ -1,17 +1,17 @@
+// src/main.rs mit EntityBuilder-Integration
 use bevy::prelude::*;
 
+mod builders;
 mod components;
 mod plugins;
 mod resources;
-mod systems;
+mod systems; // Neues Modul für den EntityBuilder
 
+use builders::entity_builder::EntityBuilder;
+use builders::genetics_helper::GeneticsHelper;
 use components::attributes::{MentalAttributes, PhysicalAttributes, SocialAttributes};
-use components::genetics::{
-    BodyStructure, ChromosomeType, GeneExpression, GenePair, Genotype, Parent, Personality,
-    Phenotype, SpeciesGenes, VisualTraits,
-};
+use components::genetics::{BodyStructure, Phenotype, SpeciesGenes, VisualTraits};
 use plugins::genetics_plugin::GeneticsPlugin;
-
 use resources::gene_library::GeneLibrary;
 
 // Ressource, um das Programm am Laufen zu halten
@@ -45,64 +45,47 @@ fn setup(mut commands: Commands, gene_library: Res<GeneLibrary>) {
 
     info!("Erstelle Testcharaktere...");
 
-    // Erstelle verschiedene Charaktere
-    create_initial_entity(&mut commands, &gene_library, "Mensch");
-    create_initial_entity(&mut commands, &gene_library, "Elf");
-    create_initial_entity(&mut commands, &gene_library, "Ork");
+    // Erstelle verschiedene Charaktere mit dem EntityBuilder
+    create_entity_with_builder(&mut commands, &gene_library, "Mensch", true);
+    create_entity_with_builder(&mut commands, &gene_library, "Elf", true);
+    create_entity_with_builder(&mut commands, &gene_library, "Ork", true);
 
     info!("Setup abgeschlossen!");
 }
 
-fn create_initial_entity(commands: &mut Commands, gene_library: &Res<GeneLibrary>, species: &str) {
-    let mut genotype = Genotype::new();
+// Funktion zum Erstellen einer Entität mit dem EntityBuilder
+fn create_entity_with_builder(
+    commands: &mut Commands,
+    gene_library: &Res<GeneLibrary>,
+    species: &str,
+    randomize: bool,
+) -> Entity {
+    // Erstelle einen vollständigen Genotyp mit dem GeneticsHelper
+    let genotype = GeneticsHelper::create_complete_genotype(gene_library, species, randomize);
 
-    // Visuelle Gene (Haut, Haare, Augen) aus der GeneLibrary hinzufügen
-    add_visual_genes(&mut genotype, gene_library, species);
-
-    // Attribute-Gene mit zufälligen Werten für "fiktive Eltern" hinzufügen
-    add_attribute_genes(&mut genotype);
-
-    // Körperstruktur-Gene hinzufügen
-    add_body_structure_genes(&mut genotype);
-
-    // Persönlichkeits-Gene hinzufügen
-    add_personality_genes(&mut genotype);
-
-    // Die Entität mit allen Komponenten spawnen
-    commands.spawn((
+    // Verwende den EntityBuilder, um die Entität zu erstellen
+    EntityBuilder::create_entity_from_genotype(
+        commands,
         genotype,
-        Phenotype::new(), // Leerer Phänotyp, wird vom System gefüllt
-        PhysicalAttributes::default(),
-        MentalAttributes::default(),
-        SocialAttributes::default(),
-        VisualTraits {
-            skin_color: (0.8, 0.65, 0.55), // Standardwerte, werden vom System überschrieben
-            hair_color: (0.3, 0.2, 0.1),
-            eye_color: (0.3, 0.5, 0.7),
-        },
-        SpeciesGenes {
-            species: vec![species.to_string()],
-        },
-        BodyStructure::humanoid(),
-        Personality::default_traits(),
-        Parent { children: vec![] },
-    ));
+        vec![species.to_string()],
+        gene_library,
+    )
 }
 
 // Debug-System, das Informationen über die erzeugten Entitäten ausgibt
 fn debug_entities(
     query: Query<(
         Entity,
-        &Genotype,
+        &components::genetics::Genotype,
         &Phenotype,
         &PhysicalAttributes,
         &MentalAttributes,
         &SocialAttributes,
         &VisualTraits,
         &SpeciesGenes,
-        &Personality,
+        &components::genetics::Personality,
     )>,
-    _time: Res<Time>,
+    time: Res<Time>,
     mut state: ResMut<AppState>,
 ) {
     if state.running {
@@ -134,10 +117,12 @@ fn debug_entities(
             info!("PHÄNOTYP:");
             for (chrom_type, attributes) in &phenotype.attribute_groups {
                 info!("  Chromosomentyp: {:?}", chrom_type);
-                for (attr_id, phenotype_gene) in attributes {
+                for (attr_id, gene_value) in attributes {
                     info!(
-                        "    {}: \n        value: {:.2},\n        Expression: {:?}",
-                        attr_id, phenotype_gene.value, phenotype_gene.expression
+                        "    {}: {:.2} (Expression: {:?})",
+                        attr_id,
+                        gene_value.value(),
+                        gene_value.expression()
                     );
                 }
             }
@@ -189,284 +174,4 @@ fn debug_entities(
 
         state.running = true;
     }
-}
-
-// In main.rs hinzufügen
-fn add_visual_genes(genotype: &mut Genotype, gene_library: &Res<GeneLibrary>, species: &str) {
-    // Hautfarben-Gene
-    if let Some((gene_r, gene_g, gene_b)) = gene_library.create_skin_color_genes(species) {
-        genotype
-            .gene_pairs
-            .insert("gene_skin_r".to_string(), gene_r);
-        genotype
-            .gene_pairs
-            .insert("gene_skin_g".to_string(), gene_g);
-        genotype
-            .gene_pairs
-            .insert("gene_skin_b".to_string(), gene_b);
-
-        genotype
-            .chromosome_groups
-            .entry(ChromosomeType::VisualTraits)
-            .or_insert_with(Vec::new)
-            .append(&mut vec![
-                "gene_skin_r".to_string(),
-                "gene_skin_g".to_string(),
-                "gene_skin_b".to_string(),
-            ]);
-    }
-
-    // Haarfarben-Gene
-    if let Some((gene_r, gene_g, gene_b)) = gene_library.create_hair_color_genes(species) {
-        genotype
-            .gene_pairs
-            .insert("gene_hair_r".to_string(), gene_r);
-        genotype
-            .gene_pairs
-            .insert("gene_hair_g".to_string(), gene_g);
-        genotype
-            .gene_pairs
-            .insert("gene_hair_b".to_string(), gene_b);
-
-        genotype
-            .chromosome_groups
-            .entry(ChromosomeType::VisualTraits)
-            .or_insert_with(Vec::new)
-            .append(&mut vec![
-                "gene_hair_r".to_string(),
-                "gene_hair_g".to_string(),
-                "gene_hair_b".to_string(),
-            ]);
-    }
-
-    // Augenfarben-Gene
-    if let Some((gene_r, gene_g, gene_b)) = gene_library.create_eye_color_genes(species) {
-        genotype.gene_pairs.insert("gene_eye_r".to_string(), gene_r);
-        genotype.gene_pairs.insert("gene_eye_g".to_string(), gene_g);
-        genotype.gene_pairs.insert("gene_eye_b".to_string(), gene_b);
-
-        genotype
-            .chromosome_groups
-            .entry(ChromosomeType::VisualTraits)
-            .or_insert_with(Vec::new)
-            .append(&mut vec![
-                "gene_eye_r".to_string(),
-                "gene_eye_g".to_string(),
-                "gene_eye_b".to_string(),
-            ]);
-    }
-}
-
-fn add_attribute_genes(genotype: &mut Genotype) {
-    // Physische Attribute
-    genotype.add_gene_pair(
-        "gene_strength",
-        0.5,
-        0.5,
-        GeneExpression::Codominant,
-        ChromosomeType::Attributes,
-    );
-    genotype.add_gene_pair(
-        "gene_agility",
-        0.6,
-        0.6,
-        GeneExpression::Codominant,
-        ChromosomeType::Attributes,
-    );
-    genotype.add_gene_pair(
-        "gene_toughness",
-        0.5,
-        0.5,
-        GeneExpression::Codominant,
-        ChromosomeType::Attributes,
-    );
-    genotype.add_gene_pair(
-        "gene_endurance",
-        0.5,
-        0.5,
-        GeneExpression::Codominant,
-        ChromosomeType::Attributes,
-    );
-    genotype.add_gene_pair(
-        "gene_recuperation",
-        0.5,
-        0.5,
-        GeneExpression::Codominant,
-        ChromosomeType::Attributes,
-    );
-    genotype.add_gene_pair(
-        "gene_disease_resistance",
-        0.5,
-        0.5,
-        GeneExpression::Codominant,
-        ChromosomeType::Attributes,
-    );
-
-    // Mentale Attribute
-    genotype.add_gene_pair(
-        "gene_focus",
-        0.5,
-        0.5,
-        GeneExpression::Codominant,
-        ChromosomeType::Attributes,
-    );
-    genotype.add_gene_pair(
-        "gene_creativity",
-        0.5,
-        0.5,
-        GeneExpression::Codominant,
-        ChromosomeType::Attributes,
-    );
-    genotype.add_gene_pair(
-        "gene_willpower",
-        0.5,
-        0.5,
-        GeneExpression::Codominant,
-        ChromosomeType::Attributes,
-    );
-    genotype.add_gene_pair(
-        "gene_analytical_ability",
-        0.5,
-        0.5,
-        GeneExpression::Codominant,
-        ChromosomeType::Attributes,
-    );
-    genotype.add_gene_pair(
-        "gene_intuition",
-        0.5,
-        0.5,
-        GeneExpression::Codominant,
-        ChromosomeType::Attributes,
-    );
-    genotype.add_gene_pair(
-        "gene_memory",
-        0.5,
-        0.5,
-        GeneExpression::Codominant,
-        ChromosomeType::Attributes,
-    );
-
-    // Soziale Attribute
-    genotype.add_gene_pair(
-        "gene_empathy",
-        0.5,
-        0.5,
-        GeneExpression::Codominant,
-        ChromosomeType::Attributes,
-    );
-    genotype.add_gene_pair(
-        "gene_leadership",
-        0.5,
-        0.5,
-        GeneExpression::Codominant,
-        ChromosomeType::Attributes,
-    );
-    genotype.add_gene_pair(
-        "gene_social_awareness",
-        0.5,
-        0.5,
-        GeneExpression::Codominant,
-        ChromosomeType::Attributes,
-    );
-    genotype.add_gene_pair(
-        "gene_linguistic_ability",
-        0.5,
-        0.5,
-        GeneExpression::Codominant,
-        ChromosomeType::Attributes,
-    );
-    genotype.add_gene_pair(
-        "gene_negotiation",
-        0.5,
-        0.5,
-        GeneExpression::Codominant,
-        ChromosomeType::Attributes,
-    );
-}
-
-fn add_body_structure_genes(genotype: &mut Genotype) {
-    // Grundlegende Körperstruktur-Gene
-    genotype.add_gene_pair(
-        "gene_body_pelvis_size",
-        0.5,
-        0.5,
-        GeneExpression::Codominant,
-        ChromosomeType::BodyStructure,
-    );
-    genotype.add_gene_pair(
-        "gene_body_neck_length",
-        0.5,
-        0.5,
-        GeneExpression::Codominant,
-        ChromosomeType::BodyStructure,
-    );
-    genotype.add_gene_pair(
-        "gene_body_head_size",
-        0.5,
-        0.5,
-        GeneExpression::Codominant,
-        ChromosomeType::BodyStructure,
-    );
-}
-
-fn add_personality_genes(genotype: &mut Genotype) {
-    // Grundlegende Persönlichkeits-Gene (Big Five)
-    genotype.add_gene_pair(
-        "gene_openness",
-        0.5,
-        0.5,
-        GeneExpression::Codominant,
-        ChromosomeType::Personality,
-    );
-    genotype.add_gene_pair(
-        "gene_conscientiousness",
-        0.5,
-        0.5,
-        GeneExpression::Codominant,
-        ChromosomeType::Personality,
-    );
-    genotype.add_gene_pair(
-        "gene_extraversion",
-        0.5,
-        0.5,
-        GeneExpression::Codominant,
-        ChromosomeType::Personality,
-    );
-    genotype.add_gene_pair(
-        "gene_agreeableness",
-        0.5,
-        0.5,
-        GeneExpression::Codominant,
-        ChromosomeType::Personality,
-    );
-    genotype.add_gene_pair(
-        "gene_neuroticism",
-        0.5,
-        0.5,
-        GeneExpression::Codominant,
-        ChromosomeType::Personality,
-    );
-
-    // Fantasy-spezifische Traits
-    genotype.add_gene_pair(
-        "gene_courage",
-        0.5,
-        0.5,
-        GeneExpression::Codominant,
-        ChromosomeType::Personality,
-    );
-    genotype.add_gene_pair(
-        "gene_honor",
-        0.5,
-        0.5,
-        GeneExpression::Codominant,
-        ChromosomeType::Personality,
-    );
-    genotype.add_gene_pair(
-        "gene_curiosity",
-        0.5,
-        0.5,
-        GeneExpression::Codominant,
-        ChromosomeType::Personality,
-    );
 }

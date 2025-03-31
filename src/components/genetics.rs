@@ -1,5 +1,6 @@
 // src/components/genetics.rs
 
+use crate::components::phenotype_gene::PhenotypeGene;
 use bevy::prelude::*;
 use std::collections::HashMap;
 
@@ -101,17 +102,6 @@ impl Genotype {
     }
 }
 
-// PhenotypeGene: Speichert den Wert und die Expression eines Gens im Phänotyp
-#[derive(Debug, Clone)]
-pub struct PhenotypeGene {
-    pub value: f32,
-    pub expression: GeneExpression,
-}
-impl PhenotypeGene {
-    pub fn new(value: f32, expression: GeneExpression) -> Self {
-        Self { value, expression }
-    }
-}
 // Phänotyp (die sichtbaren/wirksamen Eigenschaften)
 #[derive(Component, Debug, Clone)]
 pub struct Phenotype {

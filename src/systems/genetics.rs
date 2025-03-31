@@ -6,8 +6,9 @@ use std::collections::{HashMap, HashSet};
 use crate::components::attributes::{MentalAttributes, PhysicalAttributes, SocialAttributes};
 use crate::components::genetics::{
     Ancestry, BodyComponent, BodyStructure, ChromosomeType, Fertility, GeneExpression, Genotype,
-    Parent, Personality, Phenotype, PhenotypeGene, SpeciesGenes, VisualTraits,
+    Parent, Personality, Phenotype, SpeciesGenes, VisualTraits,
 };
+use crate::components::phenotype_gene::PhenotypeGene;
 
 use crate::resources::gene_library::GeneLibrary;
 
