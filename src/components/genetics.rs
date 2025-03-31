@@ -104,15 +104,13 @@ impl Genotype {
 // Phänotyp (die sichtbaren/wirksamen Eigenschaften)
 #[derive(Component, Debug, Clone)]
 pub struct Phenotype {
-    pub attributes: HashMap<String, f32>, // Gen-ID -> Phänotyp-Wert
-    pub attribute_groups: HashMap<ChromosomeType, HashMap<String, f32>>, // Gruppierung nach Chromosomen-Typ
+    pub expressed_traits: HashMap<ChromosomeType, HashMap<String, f32>>,
 }
 
 impl Phenotype {
     pub fn new() -> Self {
         Self {
-            attributes: HashMap::new(),
-            attribute_groups: HashMap::new(),
+            expressed_traits: HashMap::new(),
         }
     }
 }

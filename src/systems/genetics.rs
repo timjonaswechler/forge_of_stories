@@ -233,11 +233,12 @@ fn apply_mutations(genotype: &mut Genotype) {
         }
     }
 }
+
 // System zur Berechnung des Phänotyps aus dem Genotyp
 pub fn genotype_to_phenotype_system(mut query: Query<(&Genotype, &mut Phenotype)>) {
     for (genotype, mut phenotype) in query.iter_mut() {
-        // Leere die Phänotyp-Gruppen
-        phenotype.attribute_groups.clear();
+        // Leere den Phänotyp für die Neuberechnung
+        phenotype.expressed_traits.clear();
 
         for (gene_id, gene_pair) in genotype.gene_pairs.iter() {
             // Bestimme den phänotypischen Wert basierend auf den Expressionen
@@ -258,12 +259,9 @@ pub fn genotype_to_phenotype_system(mut query: Query<(&Genotype, &mut Phenotype)
                 }
             };
 
-            // Speichere den Wert im allgemeinen Phänotyp
-            phenotype.attributes.insert(gene_id.clone(), value);
-
-            // Speichere den Wert auch in der entsprechenden Chromosomen-Gruppe
+            // Speichern des Werts im Phänotyp
             phenotype
-                .attribute_groups
+                .expressed_traits
                 .entry(gene_pair.chromosome_type)
                 .or_insert_with(HashMap::new)
                 .insert(gene_id.clone(), value);
@@ -274,8 +272,8 @@ pub fn genotype_to_phenotype_system(mut query: Query<(&Genotype, &mut Phenotype)
 // System zur Anwendung des Phänotyps auf die physischen Attribute
 pub fn apply_physical_attributes_system(mut query: Query<(&Phenotype, &mut PhysicalAttributes)>) {
     for (phenotype, mut physical_attrs) in query.iter_mut() {
-        // Holen der Attributwerte aus der Attribut-Chromosomen-Gruppe
-        if let Some(attribute_values) = phenotype.attribute_groups.get(&ChromosomeType::Attributes)
+        // Holen der Attributwerte aus dem Phänotyp
+        if let Some(attribute_values) = phenotype.expressed_traits.get(&ChromosomeType::Attributes)
         {
             // Beispiel für die Anwendung genetischer Werte auf Attribute
             if let Some(strength_value) = attribute_values.get("gene_strength") {
@@ -317,7 +315,7 @@ pub fn apply_physical_attributes_system(mut query: Query<(&Phenotype, &mut Physi
 pub fn apply_mental_attributes_system(mut query: Query<(&Phenotype, &mut MentalAttributes)>) {
     for (phenotype, mut mental_attrs) in query.iter_mut() {
         // Holen der Attributwerte aus der Attribut-Chromosomen-Gruppe
-        if let Some(attribute_values) = phenotype.attribute_groups.get(&ChromosomeType::Attributes)
+        if let Some(attribute_values) = phenotype.expressed_traits.get(&ChromosomeType::Attributes)
         {
             // Beispiel für die Anwendung genetischer Werte auf Attribute
             if let Some(focus_value) = attribute_values.get("gene_focus") {
@@ -359,7 +357,7 @@ pub fn apply_mental_attributes_system(mut query: Query<(&Phenotype, &mut MentalA
 pub fn apply_social_attributes_system(mut query: Query<(&Phenotype, &mut SocialAttributes)>) {
     for (phenotype, mut social_attrs) in query.iter_mut() {
         // Holen der Attributwerte aus der Attribut-Chromosomen-Gruppe
-        if let Some(attribute_values) = phenotype.attribute_groups.get(&ChromosomeType::Attributes)
+        if let Some(attribute_values) = phenotype.expressed_traits.get(&ChromosomeType::Attributes)
         {
             // Beispiel für die Anwendung genetischer Werte auf Attribute
             if let Some(empathy_value) = attribute_values.get("gene_empathy") {
@@ -400,7 +398,7 @@ pub fn apply_personality_system(mut query: Query<(&Phenotype, &mut Personality)>
     for (phenotype, mut personality) in query.iter_mut() {
         // Holen der Persönlichkeitswerte aus der Persönlichkeits-Chromosomen-Gruppe
         if let Some(personality_values) =
-            phenotype.attribute_groups.get(&ChromosomeType::Personality)
+            phenotype.expressed_traits.get(&ChromosomeType::Personality)
         {
             for (trait_id, value) in personality_values.iter() {
                 // Strip off the "gene_" prefix for cleaner trait names
@@ -416,7 +414,7 @@ pub fn update_body_structure_system(mut query: Query<(&Phenotype, &mut BodyStruc
     for (phenotype, mut body_structure) in query.iter_mut() {
         // Holen der Körperstrukturwerte aus der entsprechenden Chromosomen-Gruppe
         if let Some(body_values) = phenotype
-            .attribute_groups
+            .expressed_traits
             .get(&ChromosomeType::BodyStructure)
         {
             // Rekursive Hilfsfunktion zum Aktualisieren von Körperteilen basierend auf Genen
@@ -446,7 +444,6 @@ pub fn update_body_structure_system(mut query: Query<(&Phenotype, &mut BodyStruc
 }
 
 // System zur Berechnung visueller Merkmale basierend auf Genen
-// System zur Berechnung visueller Merkmale basierend auf Genen
 pub fn update_visual_traits_system(
     mut query: Query<(&Phenotype, &mut VisualTraits, &SpeciesGenes)>,
     gene_library: Res<GeneLibrary>,
@@ -454,7 +451,7 @@ pub fn update_visual_traits_system(
     for (phenotype, mut visual_traits, species_genes) in query.iter_mut() {
         // Für visuelle Merkmale verwenden wir primär die VisualTraits-Chromosomengruppe
         let visual_genes = phenotype
-            .attribute_groups
+            .expressed_traits
             .get(&ChromosomeType::VisualTraits);
 
         // Hautfarbe berechnen
@@ -534,4 +531,16 @@ pub fn update_visual_traits_system(
             // ...
         }
     }
+}
+
+pub fn get_trait_value(
+    phenotype: &Phenotype,
+    chromosome_type: &ChromosomeType,
+    gene_id: &str,
+) -> Option<f32> {
+    phenotype
+        .expressed_traits
+        .get(chromosome_type)
+        .and_then(|genes| genes.get(gene_id))
+        .copied()
 }

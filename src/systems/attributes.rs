@@ -102,7 +102,7 @@ pub fn apply_attributes<T: AttributeGroup + Component>(
 ) {
     for (phenotype, mut attribute_group) in query.iter_mut() {
         // Attributwerte aus der Attribut-Chromosomen-Gruppe holen
-        if let Some(attribute_values) = phenotype.attribute_groups.get(&ChromosomeType::Attributes)
+        if let Some(attribute_values) = phenotype.expressed_traits.get(&ChromosomeType::Attributes)
         {
             // Für jedes Attribut im Phänotyp prüfen, ob es angewendet werden soll
             for (gene_id, value) in attribute_values.iter() {
@@ -141,7 +141,7 @@ pub fn apply_personality_system(mut query: Query<(&Phenotype, &mut Personality)>
     for (phenotype, mut personality) in query.iter_mut() {
         // Holen der Persönlichkeitswerte aus der Persönlichkeits-Chromosomen-Gruppe
         if let Some(personality_values) =
-            phenotype.attribute_groups.get(&ChromosomeType::Personality)
+            phenotype.expressed_traits.get(&ChromosomeType::Personality)
         {
             for (trait_id, value) in personality_values.iter() {
                 // Strip off the "gene_" prefix for cleaner trait names
@@ -157,7 +157,7 @@ pub fn apply_body_structure_system(mut query: Query<(&Phenotype, &mut BodyStruct
     for (phenotype, mut body_structure) in query.iter_mut() {
         // Holen der Körperstrukturwerte aus der entsprechenden Chromosomen-Gruppe
         if let Some(body_values) = phenotype
-            .attribute_groups
+            .expressed_traits
             .get(&ChromosomeType::BodyStructure)
         {
             // Rekursive Hilfsfunktion zum Aktualisieren von Körperteilen basierend auf Genen
@@ -193,7 +193,7 @@ pub fn apply_visual_traits_system(
     for (phenotype, mut visual_traits) in query.iter_mut() {
         // Für visuelle Merkmale verwenden wir primär die VisualTraits-Chromosomengruppe
         if let Some(visual_values) = phenotype
-            .attribute_groups
+            .expressed_traits
             .get(&ChromosomeType::VisualTraits)
         {
             // Wenn wir spezifische Gene für RGB-Komponenten haben, verwenden wir diese
