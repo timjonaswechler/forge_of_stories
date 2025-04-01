@@ -10,7 +10,7 @@ mod systems; // Neues Modul für den EntityBuilder
 use builders::entity_builder::EntityBuilder;
 use builders::genetics_helper::GeneticsHelper;
 use components::attributes::{MentalAttributes, PhysicalAttributes, SocialAttributes};
-use components::genetics::{BodyStructure, Phenotype, SpeciesGenes, VisualTraits};
+use components::genetics::{/* BodyStructure, */ Phenotype, SpeciesGenes, VisualTraits};
 use plugins::genetics_plugin::GeneticsPlugin;
 use resources::gene_library::GeneLibrary;
 
@@ -46,22 +46,21 @@ fn setup(mut commands: Commands, gene_library: Res<GeneLibrary>) {
     info!("Erstelle Testcharaktere...");
 
     // Erstelle verschiedene Charaktere mit dem EntityBuilder
-    create_entity_with_builder(&mut commands, &gene_library, "Mensch", true);
-    create_entity_with_builder(&mut commands, &gene_library, "Elf", true);
-    create_entity_with_builder(&mut commands, &gene_library, "Ork", true);
+    create_initial_entity(&mut commands, &gene_library, "Mensch");
+    create_initial_entity(&mut commands, &gene_library, "Elf");
+    create_initial_entity(&mut commands, &gene_library, "Ork");
 
     info!("Setup abgeschlossen!");
 }
 
 // Funktion zum Erstellen einer Entität mit dem EntityBuilder
-fn create_entity_with_builder(
+fn create_initial_entity(
     commands: &mut Commands,
     gene_library: &Res<GeneLibrary>,
     species: &str,
-    randomize: bool,
 ) -> Entity {
     // Erstelle einen vollständigen Genotyp mit dem GeneticsHelper
-    let genotype = GeneticsHelper::create_complete_genotype(gene_library, species, randomize);
+    let genotype = GeneticsHelper::create_initial_genotype(gene_library, species);
 
     // Verwende den EntityBuilder, um die Entität zu erstellen
     EntityBuilder::create_entity_from_genotype(
@@ -83,7 +82,7 @@ fn debug_entities(
         &SocialAttributes,
         &VisualTraits,
         &SpeciesGenes,
-        &components::genetics::Personality,
+        // &components::genetics::Personality,
     )>,
     time: Res<Time>,
     mut state: ResMut<AppState>,
@@ -94,8 +93,16 @@ fn debug_entities(
     } else if !state.running {
         info!("=== DETAILLIERTE ENTITY-INFORMATIONEN ===");
 
-        for (entity, genotype, phenotype, physical, mental, social, visual, species, personality) in
-            query.iter()
+        for (
+            entity,
+            genotype,
+            phenotype,
+            physical,
+            mental,
+            social,
+            visual,
+            species, /* personality */
+        ) in query.iter()
         {
             info!("Entity: {:?}", entity);
             info!("----------------------------------------");
@@ -162,12 +169,6 @@ fn debug_entities(
 
             // Spezies
             info!("SPEZIES: {:?}", species.species);
-
-            // Persönlichkeit
-            info!("PERSÖNLICHKEIT:");
-            for (trait_name, trait_value) in &personality.traits {
-                info!("  {}: {:.2}", trait_name, trait_value);
-            }
 
             info!("========================================\n");
         }

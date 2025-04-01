@@ -4,10 +4,9 @@ use std::collections::HashMap;
 
 use crate::components::attributes::{MentalAttributes, PhysicalAttributes, SocialAttributes};
 use crate::components::genetics::{
-    BodyStructure, ChromosomeType, Fertility, GeneExpression, Genotype, Parent, Personality,
-    Phenotype, SpeciesGenes, VisualTraits,
+    ChromosomeType, Fertility, GeneExpression, Genotype, Parent, Phenotype, PhenotypeGene,
+    SpeciesGenes, VisualTraits,
 };
-use crate::components::phenotype_gene::PhenotypeGene;
 use crate::resources::gene_library::GeneLibrary;
 
 /// Builder für genetisch definierte Entitäten
@@ -41,8 +40,6 @@ impl EntityBuilder {
                 SpeciesGenes {
                     species: species_names,
                 },
-                Self::calculate_body_structure(&phenotype),
-                Self::calculate_personality(&phenotype),
                 Parent { children: vec![] },
                 Fertility {
                     fertility_rate: 0.5,
@@ -109,7 +106,7 @@ impl EntityBuilder {
 
     /// Berechnet die physischen Attribute aus dem Phänotyp
     fn calculate_physical_attributes(phenotype: &Phenotype) -> PhysicalAttributes {
-        let mut physical_attrs = PhysicalAttributes::default();
+        let mut physical_attrs = PhysicalAttributes::new();
 
         // Holen der Attributwerte aus der Attribut-Chromosomen-Gruppe
         if let Some(attribute_values) = phenotype.attribute_groups.get(&ChromosomeType::Attributes)
@@ -154,7 +151,7 @@ impl EntityBuilder {
 
     /// Berechnet die mentalen Attribute aus dem Phänotyp
     fn calculate_mental_attributes(phenotype: &Phenotype) -> MentalAttributes {
-        let mut mental_attrs = MentalAttributes::default();
+        let mut mental_attrs = MentalAttributes::new();
 
         // Holen der Attributwerte aus der Attribut-Chromosomen-Gruppe
         if let Some(attribute_values) = phenotype.attribute_groups.get(&ChromosomeType::Attributes)
@@ -199,7 +196,7 @@ impl EntityBuilder {
 
     /// Berechnet die sozialen Attribute aus dem Phänotyp
     fn calculate_social_attributes(phenotype: &Phenotype) -> SocialAttributes {
-        let mut social_attrs = SocialAttributes::default();
+        let mut social_attrs = SocialAttributes::new();
 
         // Holen der Attributwerte aus der Attribut-Chromosomen-Gruppe
         if let Some(attribute_values) = phenotype.attribute_groups.get(&ChromosomeType::Attributes)
@@ -305,73 +302,5 @@ impl EntityBuilder {
         }
 
         visual_traits
-    }
-
-    /// Berechnet die Persönlichkeit aus dem Phänotyp
-    fn calculate_personality(phenotype: &Phenotype) -> Personality {
-        let mut personality = Personality::new();
-
-        // Holen der Persönlichkeitswerte aus der Persönlichkeits-Chromosomen-Gruppe
-        if let Some(personality_values) =
-            phenotype.attribute_groups.get(&ChromosomeType::Personality)
-        {
-            for (trait_id, gene_value) in personality_values.iter() {
-                // Strip off the "gene_" prefix for cleaner trait names
-                let trait_name = trait_id.strip_prefix("gene_").unwrap_or(trait_id);
-                personality
-                    .traits
-                    .insert(trait_name.to_string(), gene_value.value());
-            }
-        } else {
-            // Fallback auf Standardpersönlichkeit
-            personality = Personality::default_traits();
-        }
-
-        personality
-    }
-
-    /// Berechnet die Körperstruktur aus dem Phänotyp
-    fn calculate_body_structure(phenotype: &Phenotype) -> BodyStructure {
-        let mut body_structure = BodyStructure::humanoid();
-
-        // Wenn wir Body-Struktur-Gene haben, wenden wir sie an
-        if let Some(body_values) = phenotype
-            .attribute_groups
-            .get(&ChromosomeType::BodyStructure)
-        {
-            // Rekursive Hilfsfunktion zum Aktualisieren von Körperteilen basierend auf Genen
-            fn update_body_part(
-                body_part: &mut crate::components::genetics::BodyComponent,
-                body_values: &HashMap<String, f32>,
-            ) {
-                // Aktualisiere Eigenschaften für dieses Körperteil
-                let gene_prefix = format!("gene_body_{}_", body_part.id);
-
-                for (gene_id, value) in body_values.iter() {
-                    if gene_id.starts_with(&gene_prefix) {
-                        let property_name = gene_id.strip_prefix(&gene_prefix).unwrap_or(gene_id);
-                        body_part
-                            .properties
-                            .insert(property_name.to_string(), *value);
-                    }
-                }
-
-                // Rekursiv für alle Kinder
-                for child in &mut body_part.children {
-                    update_body_part(child, body_values);
-                }
-            }
-
-            // Konvertiere body_values zu HashMap<String, f32>
-            let body_values_f32: HashMap<String, f32> = body_values
-                .iter()
-                .map(|(k, v)| (k.clone(), v.value()))
-                .collect();
-
-            // Starte mit der Wurzelkomponente
-            update_body_part(&mut body_structure.root, &body_values_f32);
-        }
-
-        body_structure
     }
 }

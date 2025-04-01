@@ -1,13 +1,10 @@
 // src/systems/attributes.rs
-use bevy::prelude::*;
-use std::collections::HashMap;
-
 use crate::components::attributes::{
     Attribute, MentalAttributes, PhysicalAttributes, SocialAttributes,
 };
-use crate::components::genetics::{
-    BodyComponent, BodyStructure, ChromosomeType, Personality, Phenotype, PhenotypeGene,
-};
+use crate::components::genetics::{ChromosomeType, Phenotype};
+use bevy::prelude::*;
+use bevy::time::Time;
 
 // Generischer Trait für Attributgruppen
 pub trait AttributeGroup {
@@ -134,61 +131,6 @@ pub fn apply_mental_attributes_system(query: Query<(&Phenotype, &mut MentalAttri
 
 pub fn apply_social_attributes_system(query: Query<(&Phenotype, &mut SocialAttributes)>) {
     apply_attributes::<SocialAttributes>(query, "gene_");
-}
-
-// System zur Anwendung des Phänotyps auf die Persönlichkeitsmerkmale
-pub fn apply_personality_system(mut query: Query<(&Phenotype, &mut Personality)>) {
-    for (phenotype, mut personality) in query.iter_mut() {
-        // Holen der Persönlichkeitswerte aus der Persönlichkeits-Chromosomen-Gruppe
-        if let Some(personality_values) =
-            phenotype.attribute_groups.get(&ChromosomeType::Personality)
-        {
-            for (trait_id, phenotype_gene) in personality_values.iter() {
-                // Strip off the "gene_" prefix for cleaner trait names
-                let trait_name = trait_id.strip_prefix("gene_").unwrap_or(trait_id);
-                personality
-                    .traits
-                    .insert(trait_name.to_string(), phenotype_gene.value);
-            }
-        }
-    }
-}
-
-// System zur Aktualisierung der Körperstruktur basierend auf Genen
-pub fn apply_body_structure_system(mut query: Query<(&Phenotype, &mut BodyStructure)>) {
-    for (phenotype, mut body_structure) in query.iter_mut() {
-        // Holen der Körperstrukturwerte aus der entsprechenden Chromosomen-Gruppe
-        if let Some(body_values) = phenotype
-            .attribute_groups
-            .get(&ChromosomeType::BodyStructure)
-        {
-            // Rekursive Hilfsfunktion zum Aktualisieren von Körperteilen basierend auf Genen
-            fn update_body_part(
-                body_part: &mut BodyComponent,
-                body_values: &HashMap<String, PhenotypeGene>,
-            ) {
-                // Aktualisiere Eigenschaften für dieses Körperteil
-                let gene_prefix = format!("gene_body_{}_", body_part.id);
-
-                for (gene_id, phenotype_gene) in body_values.iter() {
-                    if gene_id.starts_with(&gene_prefix) {
-                        let property_name = gene_id.strip_prefix(&gene_prefix).unwrap_or(gene_id);
-                        body_part
-                            .properties
-                            .insert(property_name.to_string(), phenotype_gene.value);
-                    }
-                }
-
-                // Rekursiv für alle Kinder
-                for child in &mut body_part.children {
-                    update_body_part(child, body_values);
-                }
-            }
-
-            // Starte mit der Wurzelkomponente
-            update_body_part(&mut body_structure.root, body_values);
-        }
-    }
 }
 
 // System zur Berechnung visueller Merkmale basierend auf Genen

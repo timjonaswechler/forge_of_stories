@@ -1,7 +1,6 @@
 // src/plugins/genetics_plugin.rs
 use crate::systems::attributes as attr_systems;
 use crate::systems::genetics::*;
-use crate::systems::species::*;
 use bevy::prelude::*;
 
 #[derive(Default)]
@@ -54,7 +53,6 @@ impl Plugin for GeneticsPlugin {
                     attr_systems::apply_physical_attributes_system,
                     attr_systems::apply_mental_attributes_system,
                     attr_systems::apply_social_attributes_system,
-                    attr_systems::apply_personality_system,
                 )
                     .in_set(GeneticsSystemSet::AttributeApplication),
             )
@@ -75,15 +73,9 @@ impl Plugin for GeneticsPlugin {
                 Update,
                 (
                     attr_systems::apply_visual_traits_system,
-                    attr_systems::apply_body_structure_system,
+                    // attr_systems::apply_body_structure_system,
                 )
                     .in_set(GeneticsSystemSet::PhysicalTraits),
-            )
-            // Spezies und Fortpflanzungssysteme
-            .add_systems(
-                Update,
-                (update_species_system, reproduction_system)
-                    .in_set(GeneticsSystemSet::SpeciesReproduction),
             );
     }
 }

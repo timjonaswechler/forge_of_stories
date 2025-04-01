@@ -5,210 +5,207 @@ use std::collections::{HashMap, HashSet};
 
 use crate::components::attributes::{MentalAttributes, PhysicalAttributes, SocialAttributes};
 use crate::components::genetics::{
-    Ancestry, BodyComponent, BodyStructure, ChromosomeType, Fertility, GeneExpression, Genotype,
-    Parent, Personality, Phenotype, SpeciesGenes, VisualTraits,
+    Ancestry, ChromosomeType, Fertility, GeneExpression, Genotype, Parent, Phenotype,
+    PhenotypeGene, SpeciesGenes, VisualTraits,
 };
-use crate::components::phenotype_gene::PhenotypeGene;
 
 use crate::resources::gene_library::GeneLibrary;
 
-// Fortpflanzungssystem zur Kombination genetischer Information zweier Elternteile
-pub fn reproduction_system(
-    mut commands: Commands,
-    _time: Res<Time>,
-    // Query für fortpflanzungsfähige Entitäten
-    mut query: Query<(Entity, &Genotype, &mut Fertility, &SpeciesGenes)>,
-    mut parent_query: Query<&mut Parent>,
-) {
-    // Sammeln potentieller Elternteile
-    let mut potential_parents = Vec::new();
+// // Fortpflanzungssystem zur Kombination genetischer Information zweier Elternteile
+// pub fn reproduction_system(
+//     mut commands: Commands,
+//     _time: Res<Time>,
+//     // Query für fortpflanzungsfähige Entitäten
+//     mut query: Query<(Entity, &Genotype, &mut Fertility, &SpeciesGenes)>,
+//     mut parent_query: Query<&mut Parent>,
+// ) {
+//     // Sammeln potentieller Elternteile
+//     let mut potential_parents = Vec::new();
 
-    // Sammle fortpflanzungsfähige Entitäten
-    for (entity, genotype, mut fertility, species_genes) in query.iter_mut() {
-        // Überprüfen, ob das Wesen fortpflanzungsfähig ist
-        if fertility.maturity && fertility.reproduction_cooldown.is_none() {
-            potential_parents.push((entity, genotype.clone(), species_genes.clone()));
-            // Setze sofort Abklingzeit
-            fertility.reproduction_cooldown = Some(30.0);
-        }
-    }
+//     // Sammle fortpflanzungsfähige Entitäten
+//     for (entity, genotype, mut fertility, species_genes) in query.iter_mut() {
+//         // Überprüfen, ob das Wesen fortpflanzungsfähig ist
+//         if fertility.maturity && fertility.reproduction_cooldown.is_none() {
+//             potential_parents.push((entity, genotype.clone(), species_genes.clone()));
+//             // Setze sofort Abklingzeit
+//             fertility.reproduction_cooldown = Some(30.0);
+//         }
+//     }
 
-    // Prüfe, ob wir genügend Eltern für Fortpflanzung haben
-    if potential_parents.len() < 2 {
-        return;
-    }
+//     // Prüfe, ob wir genügend Eltern für Fortpflanzung haben
+//     if potential_parents.len() < 2 {
+//         return;
+//     }
 
-    let mut rng = rand::thread_rng();
+//     let mut rng = rand::thread_rng();
 
-    // Wähle Eltern aus
-    let parent1_idx = rng.gen_range(0..potential_parents.len());
-    let (parent1_entity, parent1_genotype, parent1_species) = potential_parents.remove(parent1_idx);
+//     // Wähle Eltern aus
+//     let parent1_idx = rng.gen_range(0..potential_parents.len());
+//     let (parent1_entity, parent1_genotype, parent1_species) = potential_parents.remove(parent1_idx);
 
-    let parent2_idx = rng.gen_range(0..potential_parents.len());
-    let (parent2_entity, parent2_genotype, parent2_species) = &potential_parents[parent2_idx];
+//     let parent2_idx = rng.gen_range(0..potential_parents.len());
+//     let (parent2_entity, parent2_genotype, parent2_species) = &potential_parents[parent2_idx];
 
-    // Erstelle das Kind (neuer Organismus)
-    let child_entity = create_child(
-        &mut commands,
-        parent1_entity,
-        *parent2_entity,
-        &parent1_genotype,
-        parent2_genotype,
-        &parent1_species,
-        parent2_species,
-    );
+//     // Erstelle das Kind (neuer Organismus)
+//     let child_entity = create_child(
+//         &mut commands,
+//         parent1_entity,
+//         *parent2_entity,
+//         &parent1_genotype,
+//         parent2_genotype,
+//         &parent1_species,
+//         parent2_species,
+//     );
 
-    // Aktualisiere die Eltern-Kind-Beziehungen
-    if let Ok(mut parent1) = parent_query.get_mut(parent1_entity) {
-        parent1.children.push(child_entity);
-    }
+//     // Aktualisiere die Eltern-Kind-Beziehungen
+//     if let Ok(mut parent1) = parent_query.get_mut(parent1_entity) {
+//         parent1.children.push(child_entity);
+//     }
 
-    if let Ok(mut parent2) = parent_query.get_mut(*parent2_entity) {
-        parent2.children.push(child_entity);
-    }
-}
+//     if let Ok(mut parent2) = parent_query.get_mut(*parent2_entity) {
+//         parent2.children.push(child_entity);
+//     }
+// }
 
-// Hilfsfunktion zur Erzeugung eines neuen Organismus aus zwei Elternteilen
-fn create_child(
-    commands: &mut Commands,
-    parent1_entity: Entity,
-    parent2_entity: Entity,
-    parent1_genotype: &Genotype,
-    parent2_genotype: &Genotype,
-    parent1_species: &SpeciesGenes,
-    parent2_species: &SpeciesGenes,
-) -> Entity {
-    // Erstelle einen neuen Genotyp durch Kombination der Eltern-Genotypen
-    let mut child_genotype = Genotype::new();
+// // Hilfsfunktion zur Erzeugung eines neuen Organismus aus zwei Elternteilen
+// fn create_child(
+//     commands: &mut Commands,
+//     parent1_entity: Entity,
+//     parent2_entity: Entity,
+//     parent1_genotype: &Genotype,
+//     parent2_genotype: &Genotype,
+//     parent1_species: &SpeciesGenes,
+//     parent2_species: &SpeciesGenes,
+// ) -> Entity {
+//     // Erstelle einen neuen Genotyp durch Kombination der Eltern-Genotypen
+//     let mut child_genotype = Genotype::new();
 
-    // Kombiniere Gene von beiden Eltern
-    // Wir gehen durch alle Gene, die in mindestens einem Elternteil vorhanden sind
-    let all_gene_ids: HashSet<String> = parent1_genotype
-        .gene_pairs
-        .keys()
-        .chain(parent2_genotype.gene_pairs.keys())
-        .cloned()
-        .collect();
+//     // Kombiniere Gene von beiden Eltern
+//     // Wir gehen durch alle Gene, die in mindestens einem Elternteil vorhanden sind
+//     let all_gene_ids: HashSet<String> = parent1_genotype
+//         .gene_pairs
+//         .keys()
+//         .chain(parent2_genotype.gene_pairs.keys())
+//         .cloned()
+//         .collect();
 
-    let mut rng = rand::thread_rng();
+//     let mut rng = rand::thread_rng();
 
-    for gene_id in all_gene_ids {
-        let parent1_gene = parent1_genotype.gene_pairs.get(&gene_id);
-        let parent2_gene = parent2_genotype.gene_pairs.get(&gene_id);
+//     for gene_id in all_gene_ids {
+//         let parent1_gene = parent1_genotype.gene_pairs.get(&gene_id);
+//         let parent2_gene = parent2_genotype.gene_pairs.get(&gene_id);
 
-        match (parent1_gene, parent2_gene) {
-            // Wenn beide Eltern das Gen haben, kombiniere sie
-            (Some(p1_gene), Some(p2_gene)) => {
-                // Wähle zufällig ein Allel von jedem Elternteil
-                let maternal = if rng.gen_bool(0.5) {
-                    &p1_gene.maternal
-                } else {
-                    &p1_gene.paternal
-                };
+//         match (parent1_gene, parent2_gene) {
+//             // Wenn beide Eltern das Gen haben, kombiniere sie
+//             (Some(p1_gene), Some(p2_gene)) => {
+//                 // Wähle zufällig ein Allel von jedem Elternteil
+//                 let maternal = if rng.gen_bool(0.5) {
+//                     &p1_gene.maternal
+//                 } else {
+//                     &p1_gene.paternal
+//                 };
 
-                let paternal = if rng.gen_bool(0.5) {
-                    &p2_gene.maternal
-                } else {
-                    &p2_gene.paternal
-                };
+//                 let paternal = if rng.gen_bool(0.5) {
+//                     &p2_gene.maternal
+//                 } else {
+//                     &p2_gene.paternal
+//                 };
 
-                // Füge das neue Genpaar zum Kind hinzu
-                child_genotype.add_gene_pair(
-                    &gene_id,
-                    maternal.value,
-                    paternal.value,
-                    maternal.expression, // Vereinfachung: Expression des mütterlichen Gens
-                    p1_gene.chromosome_type,
-                );
-            }
-            // Wenn nur ein Elternteil das Gen hat, gib es mit 50% Wahrscheinlichkeit weiter
-            (Some(p1_gene), None) => {
-                if rng.gen_bool(0.5) {
-                    let allele = if rng.gen_bool(0.5) {
-                        &p1_gene.maternal
-                    } else {
-                        &p1_gene.paternal
-                    };
+//                 // Füge das neue Genpaar zum Kind hinzu
+//                 child_genotype.add_gene_pair(
+//                     &gene_id,
+//                     maternal.value,
+//                     paternal.value,
+//                     maternal.expression, // Vereinfachung: Expression des mütterlichen Gens
+//                     p1_gene.chromosome_type,
+//                 );
+//             }
+//             // Wenn nur ein Elternteil das Gen hat, gib es mit 50% Wahrscheinlichkeit weiter
+//             (Some(p1_gene), None) => {
+//                 if rng.gen_bool(0.5) {
+//                     let allele = if rng.gen_bool(0.5) {
+//                         &p1_gene.maternal
+//                     } else {
+//                         &p1_gene.paternal
+//                     };
 
-                    // Für das zweite Allel nehmen wir eine Kopie des ersten (vereinfacht)
-                    child_genotype.add_gene_pair(
-                        &gene_id,
-                        allele.value,
-                        allele.value,
-                        allele.expression,
-                        p1_gene.chromosome_type,
-                    );
-                }
-            }
-            (None, Some(p2_gene)) => {
-                if rng.gen_bool(0.5) {
-                    let allele = if rng.gen_bool(0.5) {
-                        &p2_gene.maternal
-                    } else {
-                        &p2_gene.paternal
-                    };
+//                     // Für das zweite Allel nehmen wir eine Kopie des ersten (vereinfacht)
+//                     child_genotype.add_gene_pair(
+//                         &gene_id,
+//                         allele.value,
+//                         allele.value,
+//                         allele.expression,
+//                         p1_gene.chromosome_type,
+//                     );
+//                 }
+//             }
+//             (None, Some(p2_gene)) => {
+//                 if rng.gen_bool(0.5) {
+//                     let allele = if rng.gen_bool(0.5) {
+//                         &p2_gene.maternal
+//                     } else {
+//                         &p2_gene.paternal
+//                     };
 
-                    child_genotype.add_gene_pair(
-                        &gene_id,
-                        allele.value,
-                        allele.value,
-                        allele.expression,
-                        p2_gene.chromosome_type,
-                    );
-                }
-            }
-            (None, None) => {} // Sollte nicht vorkommen, aber zur Sicherheit
-        }
-    }
+//                     child_genotype.add_gene_pair(
+//                         &gene_id,
+//                         allele.value,
+//                         allele.value,
+//                         allele.expression,
+//                         p2_gene.chromosome_type,
+//                     );
+//                 }
+//             }
+//             (None, None) => {} // Sollte nicht vorkommen, aber zur Sicherheit
+//         }
+//     }
 
-    // Kleine Chance auf Mutation
-    apply_mutations(&mut child_genotype);
+//     // Kleine Chance auf Mutation
+//     apply_mutations(&mut child_genotype);
 
-    // Erstelle Spezies-Liste für das Kind
-    let mut child_species = SpeciesGenes::new();
+//     // Erstelle Spezies-Liste für das Kind
+//     let mut child_species = SpeciesGenes::new();
 
-    // Vereinige die Spezies beider Eltern
-    let mut combined_species = parent1_species.species.clone();
-    for species in &parent2_species.species {
-        if !combined_species.contains(species) {
-            combined_species.push(species.clone());
-        }
-    }
-    child_species.species = combined_species;
+//     // Vereinige die Spezies beider Eltern
+//     let mut combined_species = parent1_species.species.clone();
+//     for species in &parent2_species.species {
+//         if !combined_species.contains(species) {
+//             combined_species.push(species.clone());
+//         }
+//     }
+//     child_species.species = combined_species;
 
-    // Erzeuge die neue Entity mit allen notwendigen Komponenten
-    let child = commands
-        .spawn((
-            child_genotype,
-            Phenotype::new(),
-            PhysicalAttributes::default(),
-            MentalAttributes::default(),
-            SocialAttributes::default(),
-            VisualTraits {
-                skin_color: (0.8, 0.65, 0.55), // Default, wird später durch Systeme angepasst
-                hair_color: (0.3, 0.2, 0.1),   // Default
-                eye_color: (0.3, 0.5, 0.7),    // Default
-            },
-            child_species,
-            BodyStructure::humanoid(),
-            Personality::default_traits(),
-            Parent { children: vec![] },
-            Ancestry {
-                mother: Some(parent1_entity),
-                father: Some(parent2_entity),
-                generation: 1, // Generation könnte später von den Eltern abgeleitet werden
-            },
-            Fertility {
-                fertility_rate: 0.0, // Startet unfruchtbar (muss erst wachsen)
-                reproduction_cooldown: None,
-                compatibility_modifiers: HashMap::new(),
-                maturity: false,
-            },
-        ))
-        .id();
+//     // Erzeuge die neue Entity mit allen notwendigen Komponenten
+//     let child = commands
+//         .spawn((
+//             child_genotype,
+//             Phenotype::new(),
+//             PhysicalAttributes::default(),
+//             MentalAttributes::default(),
+//             SocialAttributes::default(),
+//             VisualTraits {
+//                 skin_color: (0.8, 0.65, 0.55), // Default, wird später durch Systeme angepasst
+//                 hair_color: (0.3, 0.2, 0.1),   // Default
+//                 eye_color: (0.3, 0.5, 0.7),    // Default
+//             },
+//             child_species,
+//             Parent { children: vec![] },
+//             Ancestry {
+//                 mother: Some(parent1_entity),
+//                 father: Some(parent2_entity),
+//                 generation: 1, // Generation könnte später von den Eltern abgeleitet werden
+//             },
+//             Fertility {
+//                 fertility_rate: 0.0, // Startet unfruchtbar (muss erst wachsen)
+//                 reproduction_cooldown: None,
+//                 compatibility_modifiers: HashMap::new(),
+//                 maturity: false,
+//             },
+//         ))
+//         .id();
 
-    return child;
-}
+//     return child;
+// }
 
 // Hilfsfunktion zum Anwenden zufälliger Mutationen
 fn apply_mutations(genotype: &mut Genotype) {
@@ -410,25 +407,6 @@ pub fn apply_social_attributes_system(mut query: Query<(&Phenotype, &mut SocialA
     }
 }
 
-// System zur Anwendung des Phänotyps auf die Persönlichkeitsmerkmale
-pub fn apply_personality_system(mut query: Query<(&Phenotype, &mut Personality)>) {
-    for (phenotype, mut personality) in query.iter_mut() {
-        // Holen der Persönlichkeitswerte aus der Persönlichkeits-Chromosomen-Gruppe
-        if let Some(personality_values) =
-            phenotype.attribute_groups.get(&ChromosomeType::Personality)
-        {
-            for (trait_id, phenotype_gene) in personality_values.iter() {
-                // Strip off the "gene_" prefix for cleaner trait names
-                let trait_name = trait_id.strip_prefix("gene_").unwrap_or(trait_id);
-                personality
-                    .traits
-                    .insert(trait_name.to_string(), phenotype_gene.value);
-                // Hier könnte man auch die Expression speichern, wenn die Personality-Struktur angepasst wird
-            }
-        }
-    }
-}
-
 // System zur Berechnung visueller Merkmale basierend auf Genen
 pub fn update_visual_traits_system(
     mut query: Query<(&Phenotype, &mut VisualTraits, &SpeciesGenes)>,
@@ -542,43 +520,6 @@ pub fn update_visual_traits_system(
                     }
                 }
             }
-        }
-    }
-}
-
-// System zur Aktualisierung der Körperstruktur basierend auf Genen
-pub fn update_body_structure_system(mut query: Query<(&Phenotype, &mut BodyStructure)>) {
-    for (phenotype, mut body_structure) in query.iter_mut() {
-        // Holen der Körperstrukturwerte aus der entsprechenden Chromosomen-Gruppe
-        if let Some(body_values) = phenotype
-            .attribute_groups
-            .get(&ChromosomeType::BodyStructure)
-        {
-            // Rekursive Hilfsfunktion zum Aktualisieren von Körperteilen basierend auf Genen
-            fn update_body_part(
-                body_part: &mut BodyComponent,
-                body_values: &HashMap<String, PhenotypeGene>,
-            ) {
-                // Aktualisiere Eigenschaften für dieses Körperteil
-                let gene_prefix = format!("gene_body_{}_", body_part.id);
-
-                for (gene_id, phenotype_gene) in body_values.iter() {
-                    if gene_id.starts_with(&gene_prefix) {
-                        let property_name = gene_id.strip_prefix(&gene_prefix).unwrap_or(gene_id);
-                        body_part
-                            .properties
-                            .insert(property_name.to_string(), phenotype_gene.value);
-                    }
-                }
-
-                // Rekursiv für alle Kinder
-                for child in &mut body_part.children {
-                    update_body_part(child, body_values);
-                }
-            }
-
-            // Starte mit der Wurzelkomponente
-            update_body_part(&mut body_structure.root, body_values);
         }
     }
 }

@@ -10,24 +10,14 @@ pub struct GeneticsHelper;
 
 impl GeneticsHelper {
     /// Erzeugt einen vollständigen Genotyp für eine neue Entität
-    pub fn create_complete_genotype(
-        gene_library: &Res<GeneLibrary>,
-        species: &str,
-        randomize: bool, // Wenn true, werden zufällige Werte verwendet
-    ) -> Genotype {
+    pub fn create_initial_genotype(gene_library: &Res<GeneLibrary>, species: &str) -> Genotype {
         let mut genotype = Genotype::new();
 
         // Visuelle Gene hinzufügen
         Self::add_visual_genes(&mut genotype, gene_library, species);
 
         // Attribute-Gene hinzufügen
-        Self::add_attribute_genes(&mut genotype, randomize);
-
-        // Körperstruktur-Gene hinzufügen
-        Self::add_body_structure_genes(&mut genotype, randomize);
-
-        // Persönlichkeits-Gene hinzufügen
-        Self::add_personality_genes(&mut genotype, randomize);
+        Self::add_attribute_genes(&mut genotype, gene_library, species);
 
         genotype
     }
@@ -103,7 +93,12 @@ impl GeneticsHelper {
     }
 
     /// Fügt Gene für Attribute hinzu
-    pub fn add_attribute_genes(genotype: &mut Genotype, randomize: bool) {
+    pub fn add_attribute_genes(
+        genotype: &mut Genotype,
+        gene_library: &Res<GeneLibrary>,
+        species: &str,
+    ) {
+        let randomize = true;
         let mut rng = rand::thread_rng();
 
         // Generiert einen zufälligen Wert innerhalb des angegebenen Bereichs
@@ -252,172 +247,6 @@ impl GeneticsHelper {
             generate_random_value(0.5),
             GeneExpression::Codominant,
             ChromosomeType::Attributes,
-        );
-    }
-
-    /// Fügt Gene für Körperstruktur hinzu
-    pub fn add_body_structure_genes(genotype: &mut Genotype, randomize: bool) {
-        let mut rng = rand::thread_rng();
-
-        let mut generate_random_value = |base: f32| -> f32 {
-            if randomize {
-                rng.gen_range(base - 0.2..=base + 0.2).max(0.1).min(0.9)
-            } else {
-                base
-            }
-        };
-
-        // Grundlegende Körperstruktur-Gene
-        genotype.add_gene_pair(
-            "gene_body_pelvis_size",
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::BodyStructure,
-        );
-
-        genotype.add_gene_pair(
-            "gene_body_neck_length",
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::BodyStructure,
-        );
-
-        genotype.add_gene_pair(
-            "gene_body_head_size",
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::BodyStructure,
-        );
-
-        // Zusätzliche Körperstruktur-Gene für Gliedmaßen
-        genotype.add_gene_pair(
-            "gene_body_left_upper_arm_length",
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::BodyStructure,
-        );
-
-        genotype.add_gene_pair(
-            "gene_body_right_upper_arm_length",
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::BodyStructure,
-        );
-
-        genotype.add_gene_pair(
-            "gene_body_left_thigh_length",
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::BodyStructure,
-        );
-
-        genotype.add_gene_pair(
-            "gene_body_right_thigh_length",
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::BodyStructure,
-        );
-    }
-
-    /// Fügt Gene für Persönlichkeit hinzu
-    pub fn add_personality_genes(genotype: &mut Genotype, randomize: bool) {
-        let mut rng = rand::thread_rng();
-
-        let mut generate_random_value = |base: f32| -> f32 {
-            if randomize {
-                rng.gen_range(base - 0.3..=base + 0.3).max(0.1).min(0.9)
-            } else {
-                base
-            }
-        };
-
-        // Grundlegende Persönlichkeits-Gene (Big Five)
-        genotype.add_gene_pair(
-            "gene_openness",
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::Personality,
-        );
-
-        genotype.add_gene_pair(
-            "gene_conscientiousness",
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::Personality,
-        );
-
-        genotype.add_gene_pair(
-            "gene_extraversion",
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::Personality,
-        );
-
-        genotype.add_gene_pair(
-            "gene_agreeableness",
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::Personality,
-        );
-
-        genotype.add_gene_pair(
-            "gene_neuroticism",
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::Personality,
-        );
-
-        // Fantasy-spezifische Traits
-        genotype.add_gene_pair(
-            "gene_courage",
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::Personality,
-        );
-
-        genotype.add_gene_pair(
-            "gene_honor",
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::Personality,
-        );
-
-        genotype.add_gene_pair(
-            "gene_curiosity",
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::Personality,
-        );
-
-        genotype.add_gene_pair(
-            "gene_spirituality",
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::Personality,
-        );
-
-        genotype.add_gene_pair(
-            "gene_greed",
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::Personality,
         );
     }
 }
