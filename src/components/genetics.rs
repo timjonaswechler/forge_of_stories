@@ -7,9 +7,7 @@ use std::collections::HashMap;
 pub enum ChromosomeType {
     BodyStructure, // Körperbau
     Attributes,    // Attributwerte
-    Personality,   // Persönlichkeit
     VisualTraits,  // Aussehen
-    Specialized,   // Spezielle Fähigkeiten/Merkmale
 }
 
 // Gen-Ausprägung (dominant, rezessiv, kodominant)
@@ -18,20 +16,6 @@ pub enum GeneExpression {
     Dominant,
     Recessive,
     Codominant,
-}
-
-// Gene: Blaupause für ein Gen in der Gendatenbank/dem Genpool der Welt
-// Definiert die Eigenschaften und möglichen Werte, die ein Gen haben kann
-#[derive(Component, Debug, Clone)]
-pub struct Gene {
-    pub id: String,                                // Eindeutiger Identifikator
-    pub name: String,                              // Lesbarer Name (z.B. "Augenfarbe")
-    pub description: String,                       // Kurze Beschreibung des Gens
-    pub possible_expressions: Vec<GeneExpression>, // Mögliche Expressionen
-    pub default_value: f32,                        // Standard/Ausgangswert
-    pub value_range: (f32, f32),                   // Min/Max-Wertebereich
-    pub mutation_rate: f32,                        // Wahrscheinlichkeit von Mutationen
-    pub chromosome_type: ChromosomeType,           // Zuordnung zu einem Chromosomentyp
 }
 
 // GeneVariant: Eine spezifische Ausprägung (Allel) eines Gens in einem Individuum
@@ -138,20 +122,6 @@ impl PhenotypeGene {
     /// Gibt die Expressionsart des Gens zurück
     pub fn expression(&self) -> GeneExpression {
         self.expression
-    }
-}
-
-// Komponente für Spezieszugehörigkeit
-#[derive(Component, Debug, Clone)]
-pub struct SpeciesGenes {
-    pub species: Vec<String>, // Liste aller Spezies, die in dem Genpool vorkommen
-}
-
-impl SpeciesGenes {
-    pub fn new() -> Self {
-        Self {
-            species: Vec::new(),
-        }
     }
 }
 

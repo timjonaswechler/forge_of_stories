@@ -51,6 +51,7 @@ pub struct PhysicalAttributes {
     pub recuperation: Attribute,       // Heilungsrate
     pub disease_resistance: Attribute, // Widerstand gegen Krankheiten
 }
+
 impl PhysicalAttributes {
     pub fn new() -> Self {
         Self {
