@@ -111,7 +111,7 @@ fn debug_entities(
             info!("GENOTYP: {} Gene", genotype.gene_pairs.len());
             for (gene_id, gene_pair) in &genotype.gene_pairs {
                 info!(
-                    "  Gen '{}':\n    Maternal: \n        value: {:.2}, \n        Expression: {:?}, \n    Paternal: \n        value: {:.2}, \n        Expression: {:?}",
+                    "  Gen '{}': Maternal: value: {:.2}, Expression: {:?}, Paternal: value: {:.2}, Expression: {:?}",
                     gene_id,
                     gene_pair.maternal.value,
                     gene_pair.maternal.expression,
