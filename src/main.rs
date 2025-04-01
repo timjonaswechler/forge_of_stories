@@ -10,7 +10,7 @@ mod systems; // Neues Modul für den EntityBuilder
 use builders::entity_builder::EntityBuilder;
 use builders::genetics_helper::GeneticsHelper;
 use components::attributes::{MentalAttributes, PhysicalAttributes, SocialAttributes};
-use components::genetics::{/* BodyStructure, */ Phenotype, SpeciesGenes, VisualTraits};
+use components::genetics::{Phenotype, SpeciesGenes, VisualTraits};
 use plugins::genetics_plugin::GeneticsPlugin;
 use resources::gene_library::GeneLibrary;
 
