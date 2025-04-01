@@ -125,43 +125,16 @@ impl PhenotypeGene {
     }
 }
 
-// Komponente, die anzeigt, dass dieses Wesen ein Elternteil ist
-#[derive(Component, Debug)]
-pub struct Parent {
-    pub children: Vec<Entity>,
-}
-
+// Komponente für Spezieszugehörigkeit
 #[derive(Component, Debug, Clone)]
-pub struct VisualTraits {
-    pub skin_color: (f32, f32, f32),
-    pub hair_color: (f32, f32, f32),
-    pub eye_color: (f32, f32, f32),
+pub struct SpeciesGenes {
+    pub species: Vec<String>, // Liste aller Spezies, die in dem Genpool vorkommen
 }
 
-// Komponente, die auf die Eltern verweist
-#[derive(Component, Debug)]
-pub struct Ancestry {
-    pub mother: Option<Entity>,
-    pub father: Option<Entity>,
-    pub generation: u32, // Generationszähler für evolutionäre Analyse
-}
-
-// Komponente für die Fruchtbarkeit und Fortpflanzungsfähigkeit
-#[derive(Component, Debug, Clone)]
-pub struct Fertility {
-    pub fertility_rate: f32, // Grundlegende Fruchtbarkeitsrate (0.0-1.0)
-    pub reproduction_cooldown: Option<f32>, // Abklingzeit nach Fortpflanzung
-    pub compatibility_modifiers: HashMap<String, f32>, // Kompatibilität mit verschiedenen Spezies
-    pub maturity: bool,      // Ist das Wesen fortpflanzungsfähig?
-}
-
-impl Fertility {
-    pub fn new(fertility_rate: f32) -> Self {
+impl SpeciesGenes {
+    pub fn new() -> Self {
         Self {
-            fertility_rate,
-            reproduction_cooldown: None,
-            compatibility_modifiers: HashMap::new(),
-            maturity: false,
+            species: Vec::new(),
         }
     }
 }

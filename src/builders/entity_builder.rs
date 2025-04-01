@@ -4,9 +4,9 @@ use std::collections::HashMap;
 
 use crate::components::attributes::{MentalAttributes, PhysicalAttributes, SocialAttributes};
 use crate::components::genetics::{
-    ChromosomeType, Fertility, GeneExpression, Genotype, Parent, Phenotype, PhenotypeGene,
-    SpeciesGenes, VisualTraits,
+    ChromosomeType, GeneExpression, Genotype, Phenotype, PhenotypeGene, SpeciesGenes,
 };
+use crate::components::visual_traits::VisualTraits;
 use crate::resources::gene_library::GeneLibrary;
 
 /// Builder für genetisch definierte Entitäten
@@ -39,13 +39,6 @@ impl EntityBuilder {
                 visual_traits,
                 SpeciesGenes {
                     species: species_names,
-                },
-                Parent { children: vec![] },
-                Fertility {
-                    fertility_rate: 0.5,
-                    reproduction_cooldown: None,
-                    compatibility_modifiers: HashMap::new(),
-                    maturity: true,
                 },
             ))
             .id()

@@ -135,7 +135,10 @@ pub fn apply_social_attributes_system(query: Query<(&Phenotype, &mut SocialAttri
 
 // System zur Berechnung visueller Merkmale basierend auf Genen
 pub fn apply_visual_traits_system(
-    mut query: Query<(&Phenotype, &mut crate::components::genetics::VisualTraits)>,
+    mut query: Query<(
+        &Phenotype,
+        &mut crate::components::visual_traits::VisualTraits,
+    )>,
 ) {
     for (phenotype, mut visual_traits) in query.iter_mut() {
         // Für visuelle Merkmale verwenden wir primär die VisualTraits-Chromosomengruppe

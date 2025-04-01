@@ -1,5 +1,6 @@
 // src/resources/gen_library.rs
 use crate::components::genetics::{ChromosomeType, GeneExpression, GenePair, GeneVariant};
+use crate::components::visual_traits::EyeColor;
 use bevy::prelude::*;
 use rand::{thread_rng, Rng};
 use std::collections::HashMap;
@@ -9,7 +10,7 @@ pub struct GeneLibrary {
     // Gene für visuelle Merkmale (RGB-Werte)
     pub skin_colors: HashMap<String, Vec<(f32, f32, f32)>>,
     pub hair_colors: HashMap<String, Vec<(f32, f32, f32)>>,
-    pub eye_colors: HashMap<String, Vec<(f32, f32, f32)>>,
+    pub eye_colors: HashMap<String, Vec<EyeColor>>,
 }
 
 impl Default for GeneLibrary {
@@ -17,7 +18,7 @@ impl Default for GeneLibrary {
         // Erstelle eine neue GeneLibrary mit Standardwerten
         let mut skin_colors = HashMap::new();
         let mut hair_colors = HashMap::new();
-        let mut eye_colors = HashMap::new();
+        let mut eye_colors: HashMap<String, Vec<EyeColor>> = HashMap::new();
 
         // Hautfarben direkt aus SkinColorPalette übernommen
         skin_colors.insert(
@@ -162,12 +163,10 @@ impl Default for GeneLibrary {
         eye_colors.insert(
             "Mensch".to_string(),
             vec![
-                (0.3, 0.2, 0.1), // Braun
-                (0.4, 0.3, 0.2), // Hellbraun
-                (0.2, 0.4, 0.6), // Blau
-                (0.3, 0.5, 0.2), // Grün
-                (0.4, 0.4, 0.1), // Haselnuss
-                (0.3, 0.3, 0.3), // Grau
+                EyeColor::Brown,
+                EyeColor::Green,
+                EyeColor::Blue,
+                EyeColor::Gray,
             ],
         );
 
@@ -175,11 +174,10 @@ impl Default for GeneLibrary {
         eye_colors.insert(
             "Elf".to_string(),
             vec![
-                (0.2, 0.6, 0.8), // Hellblau
-                (0.2, 0.7, 0.3), // Smaragdgrün
-                (0.6, 0.4, 0.1), // Bernstein
-                (0.4, 0.2, 0.7), // Violett
-                (0.8, 0.8, 0.2), // Gold
+                EyeColor::Green,
+                EyeColor::Blue,
+                EyeColor::Gray,
+                EyeColor::Brown,
             ],
         );
 
@@ -187,10 +185,12 @@ impl Default for GeneLibrary {
         eye_colors.insert(
             "Ork".to_string(),
             vec![
-                (0.6, 0.2, 0.1), // Rot
-                (0.8, 0.6, 0.0), // Gelb/Amber
-                (0.2, 0.2, 0.2), // Dunkelgrau
-                (0.1, 0.1, 0.1), // Schwarz
+                EyeColor::Brown,
+                EyeColor::Green,
+                EyeColor::Red,
+                EyeColor::Black,
+                EyeColor::Yellow,
+                EyeColor::Gray,
             ],
         );
 
@@ -318,7 +318,7 @@ impl GeneLibrary {
     }
 
     // Erzeugt RGB-Gene für Hautfarbe basierend auf einer Spezies
-    pub fn create_eye_color_genes(&self, species: &str) -> Option<(GenePair, GenePair, GenePair)> {
+    pub fn create_eye_color_genes(&self, species: &str) -> Option<(GenePair)> {
         let mut rng = rand::thread_rng();
 
         if let Some(colors) = self.eye_colors.get(species) {
@@ -326,49 +326,21 @@ impl GeneLibrary {
                 let index = rng.gen_range(0..colors.len());
                 let color = colors[index];
 
-                let gene_r = GenePair {
+
+                let gene_pair = GenePair {
                     maternal: GeneVariant {
-                        gene_id: "gene_eye_r".to_string(),
-                        value: color.0, // R-Wert
+                        gene_id: "gene_eye_color".to_string(),
+                        value: color.to_f32(), // R-Wert
                         expression: GeneExpression::Codominant,
                     },
                     paternal: GeneVariant {
-                        gene_id: "gene_eye_r".to_string(),
-                        value: color.0, // Gleicher R-Wert
+                        gene_id: "gene_eye_color".to_string(),
+                        value: , // Gleicher R-Wert
                         expression: GeneExpression::Codominant,
                     },
                     chromosome_type: ChromosomeType::VisualTraits,
                 };
-
-                let gene_g = GenePair {
-                    maternal: GeneVariant {
-                        gene_id: "gene_eye_g".to_string(),
-                        value: color.1, // G-Wert
-                        expression: GeneExpression::Codominant,
-                    },
-                    paternal: GeneVariant {
-                        gene_id: "gene_eye_g".to_string(),
-                        value: color.1, // Gleicher G-Wert
-                        expression: GeneExpression::Codominant,
-                    },
-                    chromosome_type: ChromosomeType::VisualTraits,
-                };
-
-                let gene_b = GenePair {
-                    maternal: GeneVariant {
-                        gene_id: "gene_eye_b".to_string(),
-                        value: color.2, // B-Wert
-                        expression: GeneExpression::Codominant,
-                    },
-                    paternal: GeneVariant {
-                        gene_id: "gene_eye_b".to_string(),
-                        value: color.2, // Gleicher B-Wert
-                        expression: GeneExpression::Codominant,
-                    },
-                    chromosome_type: ChromosomeType::VisualTraits,
-                };
-
-                return Some((gene_r, gene_g, gene_b));
+                return Some(gene_pair);
             }
         }
 
