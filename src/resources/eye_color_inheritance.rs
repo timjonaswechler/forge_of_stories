@@ -7,22 +7,44 @@ use std::collections::HashMap;
 // Struktur für die Vererbungsmatrix
 #[derive(Resource)]
 pub struct EyeColorInheritance {
-    inheritance_matrix: HashMap<(EyeColor, EyeColor), Vec<(EyeColor, f32)>>,
+    inheritance_matrices: HashMap<String, HashMap<(EyeColor, EyeColor), Vec<(EyeColor, f32)>>>,
+    default_matrix: HashMap<(EyeColor, EyeColor), Vec<(EyeColor, f32)>>,
 }
 
 impl EyeColorInheritance {
     pub fn new() -> Self {
-        let mut inheritance_matrix: HashMap<(EyeColor, EyeColor), Vec<(EyeColor, f32)>> =
-            HashMap::new();
+        let mut inheritance_matrices = HashMap::new();
+
+        // Menschliche Vererbungsmatrix erstellen
+        let human_matrix = Self::create_human_inheritance();
+        inheritance_matrices.insert("Mensch".to_string(), human_matrix);
+
+        // Elfische Vererbungsmatrix erstellen (basierend auf anderen Wahrscheinlichkeiten)
+        let elf_matrix = Self::create_elf_inheritance();
+        inheritance_matrices.insert("Elf".to_string(), elf_matrix);
+
+        // Orkische Vererbungsmatrix erstellen
+        let orc_matrix = Self::create_orc_inheritance();
+        inheritance_matrices.insert("Ork".to_string(), orc_matrix);
+
+        Self {
+            inheritance_matrices,
+            default_matrix: Self::create_human_inheritance(), // Menschen als Standard
+        }
+    }
+
+    // Erstellt die menschliche Vererbungsmatrix (wie im Bild gezeigt)
+    fn create_human_inheritance() -> HashMap<(EyeColor, EyeColor), Vec<(EyeColor, f32)>> {
+        let mut matrix = HashMap::new();
 
         // Beide Eltern haben blaue Augen
-        inheritance_matrix.insert(
+        matrix.insert(
             (EyeColor::Blue, EyeColor::Blue),
             vec![(EyeColor::Blue, 0.99), (EyeColor::Green, 0.01)],
         );
 
         // Beide Eltern haben braune Augen
-        inheritance_matrix.insert(
+        matrix.insert(
             (EyeColor::Brown, EyeColor::Brown),
             vec![
                 (EyeColor::Brown, 0.74),
@@ -32,7 +54,7 @@ impl EyeColorInheritance {
         );
 
         // Beide Eltern haben graue Augen
-        inheritance_matrix.insert(
+        matrix.insert(
             (EyeColor::Gray, EyeColor::Gray),
             vec![
                 (EyeColor::Gray, 0.66),
@@ -42,37 +64,37 @@ impl EyeColorInheritance {
         );
 
         // Beide Eltern haben grüne Augen
-        inheritance_matrix.insert(
+        matrix.insert(
             (EyeColor::Green, EyeColor::Green),
             vec![(EyeColor::Blue, 0.75), (EyeColor::Green, 0.25)],
         );
 
         // Ein Elternteil hat blaue Augen, anderer braune
-        inheritance_matrix.insert(
+        matrix.insert(
             (EyeColor::Blue, EyeColor::Brown),
             vec![(EyeColor::Blue, 0.5), (EyeColor::Brown, 0.5)],
         );
 
         // Ein Elternteil hat blaue Augen, anderer grüne
-        inheritance_matrix.insert(
+        matrix.insert(
             (EyeColor::Blue, EyeColor::Green),
             vec![(EyeColor::Blue, 0.5), (EyeColor::Green, 0.5)],
         );
 
         // Ein Elternteil hat blaue Augen, anderer graue
-        inheritance_matrix.insert(
+        matrix.insert(
             (EyeColor::Blue, EyeColor::Gray),
             vec![(EyeColor::Gray, 0.8), (EyeColor::Blue, 0.2)],
         );
 
         // Ein Elternteil hat grüne Augen, anderer graue
-        inheritance_matrix.insert(
+        matrix.insert(
             (EyeColor::Green, EyeColor::Gray),
             vec![(EyeColor::Gray, 0.75), (EyeColor::Green, 0.25)],
         );
 
         // Ein Elternteil hat grüne Augen, anderer braune
-        inheritance_matrix.insert(
+        matrix.insert(
             (EyeColor::Green, EyeColor::Brown),
             vec![
                 (EyeColor::Brown, 0.5),
@@ -82,34 +104,114 @@ impl EyeColorInheritance {
         );
 
         // Ein Elternteil hat graue Augen, anderer braune
-        inheritance_matrix.insert(
+        matrix.insert(
             (EyeColor::Gray, EyeColor::Brown),
             vec![(EyeColor::Gray, 0.35), (EyeColor::Brown, 0.65)],
         );
 
         // Symmetrie der Matrix sicherstellen (A,B) = (B,A)
-        let keys: Vec<(EyeColor, EyeColor)> = inheritance_matrix.keys().cloned().collect();
+        let keys: Vec<(EyeColor, EyeColor)> = matrix.keys().cloned().collect();
         for key in keys {
-            let value = inheritance_matrix[&key].clone();
+            let value = matrix[&key].clone();
             let reverse_key = (key.1, key.0);
 
-            if !inheritance_matrix.contains_key(&reverse_key) {
-                inheritance_matrix.insert(reverse_key, value);
+            if !matrix.contains_key(&reverse_key) {
+                matrix.insert(reverse_key, value);
             }
         }
 
-        // Für fehlende Kombinationen mit seltenen Augenfarben (gelb, rot, schwarz, weiß)
-        // können wir später Standardregeln hinzufügen
-
-        Self { inheritance_matrix }
+        matrix
     }
 
-    // Bestimmt die Augenfarbe eines Kindes basierend auf den Eltern
-    pub fn inherit_eye_color(&self, parent1: EyeColor, parent2: EyeColor) -> EyeColor {
+    // Erstellt die elfische Vererbungsmatrix (Beispiel - kann angepasst werden)
+    fn create_elf_inheritance() -> HashMap<(EyeColor, EyeColor), Vec<(EyeColor, f32)>> {
+        let mut matrix = HashMap::new();
+
+        // Elfen haben häufiger blaue und grüne Augen
+        matrix.insert(
+            (EyeColor::Blue, EyeColor::Blue),
+            vec![(EyeColor::Blue, 1.0)],
+        );
+
+        matrix.insert(
+            (EyeColor::Green, EyeColor::Green),
+            vec![(EyeColor::Green, 0.9), (EyeColor::Blue, 0.1)],
+        );
+
+        matrix.insert(
+            (EyeColor::Blue, EyeColor::Green),
+            vec![(EyeColor::Blue, 0.6), (EyeColor::Green, 0.4)],
+        );
+
+        // Bei weiteren Farben entsprechend ergänzen...
+
+        // Symmetrie der Matrix sicherstellen (A,B) = (B,A)
+        let keys: Vec<(EyeColor, EyeColor)> = matrix.keys().cloned().collect();
+        for key in keys {
+            let value = matrix[&key].clone();
+            let reverse_key = (key.1, key.0);
+
+            if !matrix.contains_key(&reverse_key) {
+                matrix.insert(reverse_key, value);
+            }
+        }
+
+        matrix
+    }
+
+    // Erstellt die orkische Vererbungsmatrix (Beispiel - kann angepasst werden)
+    fn create_orc_inheritance() -> HashMap<(EyeColor, EyeColor), Vec<(EyeColor, f32)>> {
+        let mut matrix = HashMap::new();
+
+        // Orks haben häufiger gelbe, rote und schwarze Augen
+        matrix.insert(
+            (EyeColor::Red, EyeColor::Red),
+            vec![(EyeColor::Red, 0.8), (EyeColor::Yellow, 0.2)],
+        );
+
+        matrix.insert(
+            (EyeColor::Yellow, EyeColor::Yellow),
+            vec![(EyeColor::Yellow, 0.7), (EyeColor::Red, 0.3)],
+        );
+
+        matrix.insert(
+            (EyeColor::Red, EyeColor::Yellow),
+            vec![(EyeColor::Red, 0.5), (EyeColor::Yellow, 0.5)],
+        );
+
+        // Bei weiteren Farben entsprechend ergänzen...
+
+        // Symmetrie der Matrix sicherstellen (A,B) = (B,A)
+        let keys: Vec<(EyeColor, EyeColor)> = matrix.keys().cloned().collect();
+        for key in keys {
+            let value = matrix[&key].clone();
+            let reverse_key = (key.1, key.0);
+
+            if !matrix.contains_key(&reverse_key) {
+                matrix.insert(reverse_key, value);
+            }
+        }
+
+        matrix
+    }
+
+    // Bestimmt die Augenfarbe eines Kindes basierend auf den Eltern und ihrer Spezies
+    pub fn inherit_eye_color(
+        &self,
+        species: &str,
+        parent1: EyeColor,
+        parent2: EyeColor,
+    ) -> EyeColor {
         let mut rng = rand::thread_rng();
 
+        // Hole die Matrix für die angegebene Spezies oder verwende die Standard-Matrix
+        let matrix = self
+            .inheritance_matrices
+            .get(species)
+            .unwrap_or(&self.default_matrix);
+
         // Versuche, die Kombination in der Matrix zu finden
-        if let Some(probabilities) = self.inheritance_matrix.get(&(parent1, parent2)) {
+        if let Some(probabilities) = matrix.get(&(parent1, parent2)) {
             // Zufallszahl zwischen 0 und 1
             let random_value = rng.gen::<f32>();
             let mut cumulative_prob = 0.0;
@@ -124,7 +226,7 @@ impl EyeColorInheritance {
 
             // Fallback bei Rundungsfehlern
             return probabilities[0].0;
-        } else if let Some(probabilities) = self.inheritance_matrix.get(&(parent2, parent1)) {
+        } else if let Some(probabilities) = matrix.get(&(parent2, parent1)) {
             // Versuche die umgekehrte Reihenfolge
             let random_value = rng.gen::<f32>();
             let mut cumulative_prob = 0.0;

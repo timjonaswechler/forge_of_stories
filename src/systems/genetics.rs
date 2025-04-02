@@ -4,20 +4,27 @@ use std::collections::HashMap;
 
 use crate::components::attributes::{MentalAttributes, PhysicalAttributes, SocialAttributes};
 use crate::components::genetics::{
-    ChromosomeType, GeneExpression, Genotype, Phenotype, PhenotypeGene,
+    ChromosomeType, GeneExpression, Genotype, Phenotype, PhenotypeGene, SpeciesGenes,
 };
 use crate::components::visual_traits::EyeColor;
 use crate::resources::eye_color_inheritance::EyeColorInheritance;
 
 // System zur Berechnung des Phänotyps aus dem Genotyp
 pub fn genotype_to_phenotype_system(
-    mut query: Query<(&Genotype, &mut Phenotype)>,
+    mut query: Query<(&Genotype, &mut Phenotype, &SpeciesGenes)>,
     eye_inheritance: Res<EyeColorInheritance>,
 ) {
-    for (genotype, mut phenotype) in query.iter_mut() {
+    for (genotype, mut phenotype, species_genes) in query.iter_mut() {
         // Leere die Phänotyp-Gruppen
         phenotype.attribute_groups.clear();
         phenotype.attributes.clear();
+
+        // Bestimme die primäre Spezies (verwende die erste, falls vorhanden)
+        let primary_species = species_genes
+            .species
+            .first()
+            .map(|s| s.as_str())
+            .unwrap_or("Mensch"); // Fallback auf Mensch
 
         for (gene_id, gene_pair) in genotype.gene_pairs.iter() {
             // Spezielle Verarbeitung für Augenfarben
@@ -25,11 +32,15 @@ pub fn genotype_to_phenotype_system(
                 let maternal_eye_color = EyeColor::from_f32(gene_pair.maternal.value);
                 let paternal_eye_color = EyeColor::from_f32(gene_pair.paternal.value);
 
-                // Vererbung der Augenfarbe
+                // Verwende die Spezies-spezifische Vererbungslogik
                 let resulting_eye_color = if maternal_eye_color == paternal_eye_color {
                     maternal_eye_color
                 } else {
-                    eye_inheritance.inherit_eye_color(maternal_eye_color, paternal_eye_color)
+                    eye_inheritance.inherit_eye_color(
+                        primary_species,
+                        maternal_eye_color,
+                        paternal_eye_color,
+                    )
                 };
 
                 let phenotype_gene = PhenotypeGene {
@@ -42,7 +53,7 @@ pub fn genotype_to_phenotype_system(
                 phenotype
                     .attribute_groups
                     .entry(gene_pair.chromosome_type)
-                    .or_insert_with(|| HashMap::new()) // Hier war der Fehler - wir brauchen einen Closure
+                    .or_insert_with(|| HashMap::new())
                     .insert(gene_id.clone(), phenotype_gene);
 
                 continue; // Skip standard processing for this gene
