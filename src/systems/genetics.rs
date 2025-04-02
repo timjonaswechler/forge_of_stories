@@ -1,27 +1,57 @@
 // src/systems/genetics.rs
 use bevy::prelude::*;
-use rand::Rng;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use crate::components::attributes::{MentalAttributes, PhysicalAttributes, SocialAttributes};
 use crate::components::genetics::{
     ChromosomeType, GeneExpression, Genotype, Phenotype, PhenotypeGene,
 };
-use crate::components::visual_traits::VisualTraits;
-
-use crate::resources::gene_library::GeneLibrary;
+use crate::components::visual_traits::EyeColor;
+use crate::resources::eye_color_inheritance::EyeColorInheritance;
 
 // System zur Berechnung des Phänotyps aus dem Genotyp
-pub fn genotype_to_phenotype_system(mut query: Query<(&Genotype, &mut Phenotype)>) {
+pub fn genotype_to_phenotype_system(
+    mut query: Query<(&Genotype, &mut Phenotype)>,
+    eye_inheritance: Res<EyeColorInheritance>,
+) {
     for (genotype, mut phenotype) in query.iter_mut() {
         // Leere die Phänotyp-Gruppen
         phenotype.attribute_groups.clear();
         phenotype.attributes.clear();
 
         for (gene_id, gene_pair) in genotype.gene_pairs.iter() {
-            // Bestimme den phänotypischen Wert und die resultierende Expression
+            // Spezielle Verarbeitung für Augenfarben
+            if gene_id == "gene_eye_color" {
+                let maternal_eye_color = EyeColor::from_f32(gene_pair.maternal.value);
+                let paternal_eye_color = EyeColor::from_f32(gene_pair.paternal.value);
+
+                // Vererbung der Augenfarbe
+                let resulting_eye_color = if maternal_eye_color == paternal_eye_color {
+                    maternal_eye_color
+                } else {
+                    eye_inheritance.inherit_eye_color(maternal_eye_color, paternal_eye_color)
+                };
+
+                let phenotype_gene = PhenotypeGene {
+                    value: resulting_eye_color.to_f32(),
+                    expression: GeneExpression::Codominant,
+                };
+
+                phenotype.attributes.insert(gene_id.clone(), phenotype_gene);
+
+                phenotype
+                    .attribute_groups
+                    .entry(gene_pair.chromosome_type)
+                    .or_insert_with(|| HashMap::new()) // Hier war der Fehler - wir brauchen einen Closure
+                    .insert(gene_id.clone(), phenotype_gene);
+
+                continue; // Skip standard processing for this gene
+            }
+
+            // Standardverarbeitung für alle anderen Gene
             let (value, expression) =
                 match (gene_pair.maternal.expression, gene_pair.paternal.expression) {
+                    // ... bestehender Code ...
                     // Wenn beide dominant sind oder beide rezessiv, nimm den Durchschnitt und behalte die Expression
                     (GeneExpression::Dominant, GeneExpression::Dominant) => (
                         (gene_pair.maternal.value + gene_pair.paternal.value) / 2.0,
@@ -59,12 +89,11 @@ pub fn genotype_to_phenotype_system(mut query: Query<(&Genotype, &mut Phenotype)
             phenotype
                 .attribute_groups
                 .entry(gene_pair.chromosome_type)
-                .or_insert_with(HashMap::new)
+                .or_insert_with(|| HashMap::new()) // Korrigiert mit einem Closure
                 .insert(gene_id.clone(), phenotype_gene);
         }
     }
 }
-
 // System zur Anwendung des Phänotyps auf die physischen Attribute
 pub fn apply_physical_attributes_system(mut query: Query<(&Phenotype, &mut PhysicalAttributes)>) {
     for (phenotype, mut physical_attrs) in query.iter_mut() {

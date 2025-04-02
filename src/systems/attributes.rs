@@ -3,6 +3,7 @@ use crate::components::attributes::{
     Attribute, MentalAttributes, PhysicalAttributes, SocialAttributes,
 };
 use crate::components::genetics::{ChromosomeType, Phenotype};
+use crate::components::visual_traits::EyeColor;
 use bevy::prelude::*;
 use bevy::time::Time;
 
@@ -170,15 +171,21 @@ pub fn apply_visual_traits_system(
                 );
             }
 
-            if visual_values.contains_key("gene_eye_r")
-                && visual_values.contains_key("gene_eye_g")
-                && visual_values.contains_key("gene_eye_b")
-            {
-                visual_traits.eye_color = (
-                    visual_values.get("gene_eye_r").unwrap().value,
-                    visual_values.get("gene_eye_g").unwrap().value,
-                    visual_values.get("gene_eye_b").unwrap().value,
-                );
+            // Augenfarbe
+            if let Some(eye_color_gene) = visual_values.get("gene_eye_color") {
+                let eye_color = EyeColor::from_f32(eye_color_gene.value);
+
+                // Temporäre einfache RGB-Zuordnung (später durch Lookup-Tabelle ersetzen)
+                visual_traits.eye_color = match eye_color {
+                    EyeColor::Brown => (0.55, 0.27, 0.07),
+                    EyeColor::Green => (0.21, 0.47, 0.21),
+                    EyeColor::Blue => (0.21, 0.35, 0.80),
+                    EyeColor::Gray => (0.50, 0.50, 0.50),
+                    EyeColor::Yellow => (0.80, 0.80, 0.20),
+                    EyeColor::Red => (0.80, 0.20, 0.20),
+                    EyeColor::Black => (0.10, 0.10, 0.10),
+                    EyeColor::White => (0.90, 0.90, 0.90),
+                };
             }
         }
     }

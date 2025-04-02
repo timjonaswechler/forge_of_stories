@@ -1,4 +1,5 @@
 // src/plugins/genetics_plugin.rs
+use crate::resources::eye_color_inheritance::EyeColorInheritance;
 use crate::systems::attributes as attr_systems;
 use crate::systems::genetics::*;
 use bevy::prelude::*;
@@ -41,6 +42,7 @@ impl Plugin for GeneticsPlugin {
                 )
                     .chain(),
             )
+            .insert_resource(EyeColorInheritance::new())
             // Grundlegende genetische Systeme
             .add_systems(
                 Update,

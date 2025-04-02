@@ -19,3 +19,32 @@ pub enum EyeColor {
     Black,  // Schwarz
     White,  // Weiß
 }
+impl EyeColor {
+    // Konvertierung zwischen EyeColor und f32 für die Speicherung in GeneVariant
+    pub fn to_f32(&self) -> f32 {
+        match self {
+            EyeColor::Brown => 0.0,
+            EyeColor::Green => 1.0,
+            EyeColor::Blue => 2.0,
+            EyeColor::Gray => 3.0,
+            EyeColor::Yellow => 4.0,
+            EyeColor::Red => 5.0,
+            EyeColor::Black => 6.0,
+            EyeColor::White => 7.0,
+        }
+    }
+
+    pub fn from_f32(value: f32) -> Self {
+        match value as i32 {
+            0 => EyeColor::Brown,
+            1 => EyeColor::Green,
+            2 => EyeColor::Blue,
+            3 => EyeColor::Gray,
+            4 => EyeColor::Yellow,
+            5 => EyeColor::Red,
+            6 => EyeColor::Black,
+            7 => EyeColor::White,
+            _ => EyeColor::Brown, // Fallback
+        }
+    }
+}

@@ -75,20 +75,16 @@ impl GeneticsHelper {
         }
 
         // Augenfarben-Gene
-        if let Some((gene_r, gene_g, gene_b)) = gene_library.create_eye_color_genes(species) {
-            genotype.gene_pairs.insert("gene_eye_r".to_string(), gene_r);
-            genotype.gene_pairs.insert("gene_eye_g".to_string(), gene_g);
-            genotype.gene_pairs.insert("gene_eye_b".to_string(), gene_b);
+        if let Some(gene_eye_color) = gene_library.create_eye_color_genes(species) {
+            genotype
+                .gene_pairs
+                .insert("gene_eye_color".to_string(), gene_eye_color);
 
             genotype
                 .chromosome_groups
                 .entry(ChromosomeType::VisualTraits)
                 .or_insert_with(Vec::new)
-                .append(&mut vec![
-                    "gene_eye_r".to_string(),
-                    "gene_eye_g".to_string(),
-                    "gene_eye_b".to_string(),
-                ]);
+                .append(&mut vec!["gene_eye_color".to_string()]);
         }
     }
 

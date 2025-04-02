@@ -2,7 +2,7 @@
 use crate::components::genetics::{ChromosomeType, GeneExpression, GenePair, GeneVariant};
 use crate::components::visual_traits::EyeColor;
 use bevy::prelude::*;
-use rand::{thread_rng, Rng};
+use rand::Rng;
 use std::collections::HashMap;
 
 #[derive(Resource)]
@@ -185,8 +185,6 @@ impl Default for GeneLibrary {
         eye_colors.insert(
             "Ork".to_string(),
             vec![
-                EyeColor::Brown,
-                EyeColor::Green,
                 EyeColor::Red,
                 EyeColor::Black,
                 EyeColor::Yellow,
@@ -318,24 +316,27 @@ impl GeneLibrary {
     }
 
     // Erzeugt RGB-Gene für Hautfarbe basierend auf einer Spezies
-    pub fn create_eye_color_genes(&self, species: &str) -> Option<(GenePair)> {
-        let mut rng = rand::thread_rng();
+    pub fn create_eye_color_genes(&self, species: &str) -> Option<GenePair> {
+        let mut rng1 = rand::thread_rng();
+        let mut rng2 = rand::thread_rng();
 
         if let Some(colors) = self.eye_colors.get(species) {
             if !colors.is_empty() {
-                let index = rng.gen_range(0..colors.len());
-                let color = colors[index];
-
-
+                let index1 = rng1.gen_range(0..colors.len());
+                let index2 = rng2.gen_range(0..colors.len());
+                let color1 = colors[index1];
+                let color2 = colors[index2];
+                println!("Farbe 1: {:?} ({})", color1, color1.to_f32());
+                println!("Farbe 2: {:?} ({})", color2, color2.to_f32());
                 let gene_pair = GenePair {
                     maternal: GeneVariant {
                         gene_id: "gene_eye_color".to_string(),
-                        value: color.to_f32(), // R-Wert
+                        value: color1.to_f32(),
                         expression: GeneExpression::Codominant,
                     },
                     paternal: GeneVariant {
                         gene_id: "gene_eye_color".to_string(),
-                        value: , // Gleicher R-Wert
+                        value: color2.to_f32(),
                         expression: GeneExpression::Codominant,
                     },
                     chromosome_type: ChromosomeType::VisualTraits,

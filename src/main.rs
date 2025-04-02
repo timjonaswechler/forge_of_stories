@@ -10,7 +10,8 @@ mod systems; // Neues Modul für den EntityBuilder
 use builders::entity_builder::EntityBuilder;
 use builders::genetics_helper::GeneticsHelper;
 use components::attributes::{MentalAttributes, PhysicalAttributes, SocialAttributes};
-use components::genetics::{Phenotype, SpeciesGenes, VisualTraits};
+use components::genetics::{Phenotype, SpeciesGenes};
+use components::visual_traits::VisualTraits;
 use plugins::genetics_plugin::GeneticsPlugin;
 use resources::gene_library::GeneLibrary;
 
@@ -84,12 +85,12 @@ fn debug_entities(
         &SpeciesGenes,
         // &components::genetics::Personality,
     )>,
-    time: Res<Time>,
+    // time: Res<Time>,
     mut state: ResMut<AppState>,
 ) {
     if state.running {
         // Erster Durchlauf: Markiere als bereit für Debug
-        state.running = false;
+        state.running = true;
     } else if !state.running {
         info!("=== DETAILLIERTE ENTITY-INFORMATIONEN ===");
 
@@ -173,6 +174,6 @@ fn debug_entities(
             info!("========================================\n");
         }
 
-        state.running = true;
+        state.running = false;
     }
 }
