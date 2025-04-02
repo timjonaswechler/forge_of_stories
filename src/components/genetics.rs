@@ -1,7 +1,8 @@
 // src/components/genetics.rs
+use crate::components::gene_types::{AttributeGene, GeneType, VisualGene};
 use bevy::prelude::*;
 use std::collections::HashMap;
-
+use std::str::FromStr;
 // Chromosomen-Typ
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ChromosomeType {
@@ -81,6 +82,42 @@ impl Genotype {
             .entry(chromosome_type)
             .or_insert_with(Vec::new)
             .push(gene_id.to_string());
+    }
+    /// Fügt ein Genpaar mit Enum-basierter Gen-ID hinzu
+    pub fn add_gene_pair_enum(
+        &mut self,
+        gene_type: GeneType,
+        maternal_value: f32,
+        paternal_value: f32,
+        expression: GeneExpression,
+        chromosome_type: ChromosomeType,
+    ) {
+        let gene_id = gene_type.to_string();
+        self.add_gene_pair(
+            &gene_id,
+            maternal_value,
+            paternal_value,
+            expression,
+            chromosome_type,
+        );
+    }
+
+    /// Gibt ein Genpaar basierend auf dem Enum-Typ zurück
+    pub fn get_gene_pair(&self, gene_type: GeneType) -> Option<&GenePair> {
+        self.gene_pairs.get(&gene_type.to_string())
+    }
+
+    /// Gibt ein Genpaar basierend auf dem Enum-Typ zurück (mutable)
+    pub fn get_gene_pair_mut(&mut self, gene_type: GeneType) -> Option<&mut GenePair> {
+        self.gene_pairs.get_mut(&gene_type.to_string())
+    }
+
+    /// Konvertiert alle String-Gen-IDs in der Genotype-Struktur zu Enum-Typen
+    pub fn get_all_gene_types(&self) -> Vec<GeneType> {
+        self.gene_pairs
+            .keys()
+            .filter_map(|key| GeneType::from_str(key).ok())
+            .collect()
     }
 }
 

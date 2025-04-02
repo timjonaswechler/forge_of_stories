@@ -2,9 +2,9 @@
 use bevy::prelude::*;
 use rand::prelude::*;
 
+use crate::components::gene_types::{AttributeGene, GeneType, VisualGene};
 use crate::components::genetics::{ChromosomeType, GeneExpression, Genotype};
 use crate::resources::gene_library::GeneLibrary;
-
 /// Hilfsfunktionen für die Genotyp-Generierung
 pub struct GeneticsHelper;
 
@@ -107,138 +107,148 @@ impl GeneticsHelper {
         };
 
         // Physische Attribute
-        genotype.add_gene_pair(
-            "gene_strength",
+        genotype.add_gene_pair_enum(
+            GeneType::Attribute(AttributeGene::Strength),
             generate_random_value(0.5),
             generate_random_value(0.5),
             GeneExpression::Codominant,
             ChromosomeType::Attributes,
         );
 
-        genotype.add_gene_pair(
-            "gene_agility",
+        genotype.add_gene_pair_enum(
+            GeneType::Attribute(AttributeGene::Agility),
             generate_random_value(0.6),
             generate_random_value(0.6),
             GeneExpression::Codominant,
             ChromosomeType::Attributes,
         );
 
-        genotype.add_gene_pair(
-            "gene_toughness",
+        genotype.add_gene_pair_enum(
+            GeneType::Attribute(AttributeGene::Toughness),
             generate_random_value(0.5),
             generate_random_value(0.5),
             GeneExpression::Codominant,
             ChromosomeType::Attributes,
         );
 
-        genotype.add_gene_pair(
-            "gene_endurance",
+        genotype.add_gene_pair_enum(
+            GeneType::Attribute(AttributeGene::Endurance),
             generate_random_value(0.5),
             generate_random_value(0.5),
             GeneExpression::Codominant,
             ChromosomeType::Attributes,
         );
 
-        genotype.add_gene_pair(
-            "gene_recuperation",
+        genotype.add_gene_pair_enum(
+            GeneType::Attribute(AttributeGene::Recuperation),
             generate_random_value(0.5),
             generate_random_value(0.5),
             GeneExpression::Codominant,
             ChromosomeType::Attributes,
         );
 
-        genotype.add_gene_pair(
-            "gene_disease_resistance",
+        genotype.add_gene_pair_enum(
+            GeneType::Attribute(AttributeGene::DiseaseResistance),
             generate_random_value(0.5),
             generate_random_value(0.5),
             GeneExpression::Codominant,
             ChromosomeType::Attributes,
         );
 
-        // Mentale Attribute
-        genotype.add_gene_pair(
-            "gene_focus",
+        genotype.add_gene_pair_enum(
+            GeneType::Attribute(AttributeGene::Focus),
             generate_random_value(0.5),
             generate_random_value(0.5),
             GeneExpression::Codominant,
             ChromosomeType::Attributes,
         );
 
-        genotype.add_gene_pair(
-            "gene_creativity",
+        genotype.add_gene_pair_enum(
+            GeneType::Attribute(AttributeGene::Creativity),
             generate_random_value(0.5),
             generate_random_value(0.5),
             GeneExpression::Codominant,
             ChromosomeType::Attributes,
         );
-
-        genotype.add_gene_pair(
-            "gene_willpower",
+        genotype.add_gene_pair_enum(
+            GeneType::Attribute(AttributeGene::Willpower),
             generate_random_value(0.5),
             generate_random_value(0.5),
             GeneExpression::Codominant,
             ChromosomeType::Attributes,
         );
-
-        genotype.add_gene_pair(
-            "gene_analytical_ability",
+        genotype.add_gene_pair_enum(
+            GeneType::Attribute(AttributeGene::AnalyticalAbility),
             generate_random_value(0.5),
             generate_random_value(0.5),
             GeneExpression::Codominant,
             ChromosomeType::Attributes,
         );
-
-        genotype.add_gene_pair(
-            "gene_intuition",
+        genotype.add_gene_pair_enum(
+            GeneType::Attribute(AttributeGene::Intuition),
             generate_random_value(0.5),
             generate_random_value(0.5),
             GeneExpression::Codominant,
             ChromosomeType::Attributes,
         );
-
-        genotype.add_gene_pair(
-            "gene_memory",
+        genotype.add_gene_pair_enum(
+            GeneType::Attribute(AttributeGene::Memory),
             generate_random_value(0.5),
             generate_random_value(0.5),
             GeneExpression::Codominant,
             ChromosomeType::Attributes,
         );
-
-        // Soziale Attribute
-        genotype.add_gene_pair(
-            "gene_empathy",
+        genotype.add_gene_pair_enum(
+            GeneType::Attribute(AttributeGene::Patience),
             generate_random_value(0.5),
             generate_random_value(0.5),
             GeneExpression::Codominant,
             ChromosomeType::Attributes,
         );
-
-        genotype.add_gene_pair(
-            "gene_leadership",
+        genotype.add_gene_pair_enum(
+            GeneType::Attribute(AttributeGene::SpatialSense),
             generate_random_value(0.5),
             generate_random_value(0.5),
             GeneExpression::Codominant,
             ChromosomeType::Attributes,
         );
-
-        genotype.add_gene_pair(
-            "gene_social_awareness",
+        genotype.add_gene_pair_enum(
+            GeneType::Attribute(AttributeGene::Empathy),
             generate_random_value(0.5),
             generate_random_value(0.5),
             GeneExpression::Codominant,
             ChromosomeType::Attributes,
         );
-
-        genotype.add_gene_pair(
-            "gene_linguistic_ability",
+        genotype.add_gene_pair_enum(
+            GeneType::Attribute(AttributeGene::Leadership),
             generate_random_value(0.5),
             generate_random_value(0.5),
             GeneExpression::Codominant,
             ChromosomeType::Attributes,
         );
-
-        genotype.add_gene_pair(
-            "gene_negotiation",
+        genotype.add_gene_pair_enum(
+            GeneType::Attribute(AttributeGene::SocialAwareness),
+            generate_random_value(0.5),
+            generate_random_value(0.5),
+            GeneExpression::Codominant,
+            ChromosomeType::Attributes,
+        );
+        genotype.add_gene_pair_enum(
+            GeneType::Attribute(AttributeGene::LinguisticAbility),
+            generate_random_value(0.5),
+            generate_random_value(0.5),
+            GeneExpression::Codominant,
+            ChromosomeType::Attributes,
+        );
+        genotype.add_gene_pair_enum(
+            GeneType::Attribute(AttributeGene::Negotiation),
+            generate_random_value(0.5),
+            generate_random_value(0.5),
+            GeneExpression::Codominant,
+            ChromosomeType::Attributes,
+        );
+        genotype.add_gene_pair_enum(
+            GeneType::Attribute(AttributeGene::Musicality),
             generate_random_value(0.5),
             generate_random_value(0.5),
             GeneExpression::Codominant,

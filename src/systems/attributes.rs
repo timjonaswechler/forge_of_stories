@@ -51,6 +51,7 @@ impl AttributeGroup for SocialAttributes {
             "empathy" => Some(&mut self.empathy),
             "social_awareness" => Some(&mut self.social_awareness),
             "linguistic_ability" => Some(&mut self.linguistic_ability),
+            "musicality" => Some(&mut self.musicality),
             "leadership" => Some(&mut self.leadership),
             "negotiation" => Some(&mut self.negotiation),
             _ => None,

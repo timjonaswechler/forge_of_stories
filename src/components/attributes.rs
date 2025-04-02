@@ -134,6 +134,7 @@ pub struct SocialAttributes {
     pub empathy: Attribute,            // Verständnis für andere
     pub social_awareness: Attribute,   // Soziale Intelligenz
     pub linguistic_ability: Attribute, // Kommunikationsfähigkeit
+    pub musicality: Attribute,         // Musikalität
     pub leadership: Attribute,         // Führungsqualitäten
     pub negotiation: Attribute,        // Handel, Diplomatie
 }
@@ -156,6 +157,12 @@ impl SocialAttributes {
             leadership: Attribute::new(
                 "leadership",
                 "Führungsstärke",
+                AttributeCategory::Social,
+                50.0,
+            ),
+            musicality: Attribute::new(
+                "musicality",
+                "Musikalität",
                 AttributeCategory::Social,
                 50.0,
             ),
