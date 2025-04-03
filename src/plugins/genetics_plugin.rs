@@ -12,79 +12,76 @@ use bevy::prelude::*;
 #[derive(Default)]
 pub struct GeneticsPlugin;
 
-// Definition der verschiedenen SystemSets für bessere Kontrolle
 #[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
 pub enum GeneticsSystemSet {
-    // Genetische Grundlagenberechnungen
     GenotypePhenotype,
-    // Anwendung von Genen auf Attribute und Eigenschaften
     AttributeApplication,
-    // Berechnung von Attributen und deren Effekten
     AttributeCalculation,
-    // Visuelle und körperliche Eigenschaften
     PhysicalTraits,
-    // Spezies und Fortpflanzung
     SpeciesReproduction,
 }
 
 impl Plugin for GeneticsPlugin {
     fn build(&self, app: &mut App) {
-        app
-            // Definieren der SystemSets und ihrer Abhängigkeiten
-            .configure_sets(
-                Update,
-                (
-                    GeneticsSystemSet::GenotypePhenotype,
-                    GeneticsSystemSet::AttributeApplication,
-                    GeneticsSystemSet::AttributeCalculation,
-                    GeneticsSystemSet::PhysicalTraits,
-                    GeneticsSystemSet::SpeciesReproduction,
-                )
-                    .chain(),
+        app.configure_sets(
+            Update,
+            (
+                GeneticsSystemSet::GenotypePhenotype,
+                GeneticsSystemSet::AttributeApplication,
+                GeneticsSystemSet::AttributeCalculation,
+                GeneticsSystemSet::PhysicalTraits,
+                GeneticsSystemSet::SpeciesReproduction,
             )
-            .insert_resource(EyeColorInheritance::new())
-            .insert_resource(GeneticsGenerator::default())
-            // Grundlegende genetische Systeme
-            .add_systems(
-                Update,
-                genotype_to_phenotype_system.in_set(GeneticsSystemSet::GenotypePhenotype),
+                .chain(),
+        )
+        .insert_resource(EyeColorInheritance::new())
+        .insert_resource(GeneticsGenerator::default())
+        // Genetische Systeme
+        .add_systems(
+            Update,
+            genotype_to_phenotype_system.in_set(GeneticsSystemSet::GenotypePhenotype),
+        )
+        // Attribut-Anwendungs-Systeme (ohne Prefix-Argument)
+        .add_systems(
+            Update,
+            (
+                // Closure ruft apply_attributes jetzt ohne String-Prefix auf
+                |query: Query<(&Phenotype, &mut PhysicalAttributes), Changed<Phenotype>>| {
+                    attr_systems::apply_attributes::<PhysicalAttributes>(query);
+                    // <- Kein Prefix mehr
+                },
+                |query: Query<(&Phenotype, &mut MentalAttributes), Changed<Phenotype>>| {
+                    attr_systems::apply_attributes::<MentalAttributes>(query); // <- Kein Prefix mehr
+                },
+                |query: Query<(&Phenotype, &mut SocialAttributes), Changed<Phenotype>>| {
+                    attr_systems::apply_attributes::<SocialAttributes>(query); // <- Kein Prefix mehr
+                },
             )
-            // Attribut-Anwendungs-Systeme mit generischem apply_attributes und Changed<Phenotype>
-            .add_systems(
-                Update,
-                (
-                    |query: Query<(&Phenotype, &mut PhysicalAttributes), Changed<Phenotype>>| {
-                        attr_systems::apply_attributes::<PhysicalAttributes>(query, "gene_")
-                    },
-                    |query: Query<(&Phenotype, &mut MentalAttributes), Changed<Phenotype>>| {
-                        attr_systems::apply_attributes::<MentalAttributes>(query, "gene_")
-                    },
-                    |query: Query<(&Phenotype, &mut SocialAttributes), Changed<Phenotype>>| {
-                        attr_systems::apply_attributes::<SocialAttributes>(query, "gene_")
-                    },
-                )
-                    .in_set(GeneticsSystemSet::AttributeApplication),
+                .in_set(GeneticsSystemSet::AttributeApplication),
+        )
+        // Attribut-Berechnungs-Systeme
+        .add_systems(
+            Update,
+            (
+                attr_systems::calculate_effective_attribute_values,
+                attr_systems::update_attribute_rust,
+                // Die update_*_attributes Systeme sind noch Platzhalter
+                attr_systems::update_physical_attributes,
+                attr_systems::update_mental_attributes,
+                attr_systems::update_social_attributes,
             )
-            // Attribut-Berechnungs-Systeme
-            .add_systems(
-                Update,
-                (
-                    attr_systems::calculate_effective_attribute_values,
-                    attr_systems::update_attribute_rust,
-                    attr_systems::update_physical_attributes,
-                    attr_systems::update_mental_attributes,
-                    attr_systems::update_social_attributes,
-                )
-                    .in_set(GeneticsSystemSet::AttributeCalculation),
+                .in_set(GeneticsSystemSet::AttributeCalculation),
+        )
+        // Körperliche/Visuelle Systeme
+        .add_systems(
+            Update,
+            (
+                attr_systems::apply_visual_traits_system,
+                // attr_systems::apply_body_structure_system, // Falls implementiert
             )
-            // Körperliche und visuelle Systeme
-            .add_systems(
-                Update,
-                (
-                    attr_systems::apply_visual_traits_system,
-                    // attr_systems::apply_body_structure_system,
-                )
-                    .in_set(GeneticsSystemSet::PhysicalTraits),
-            );
+                .in_set(GeneticsSystemSet::PhysicalTraits),
+        );
+        // Das ReproductionSystem wird NICHT hier hinzugefügt, da es eher auf Events reagiert
+        // und nicht Teil der Genotyp->Phänotyp Pipeline ist. Es wird in main.rs hinzugefügt.
     }
 }

@@ -1,30 +1,109 @@
-// src/resources/gen_library.rs
+// src/resources/gene_library.rs
+use crate::components::gene_types::{AttributeGene, GeneType, VisualGene};
 use crate::components::genetics::{ChromosomeType, GeneExpression, GenePair, GeneVariant};
 use crate::components::visual_traits::EyeColor;
 use bevy::prelude::*;
 use rand::Rng;
+use rand_distr::{Distribution, Normal}; // Für Normalverteilung
 use std::collections::HashMap;
+
+// Struktur zur Beschreibung der Verteilung eines Gens (Mittelwert und Standardabweichung für 0.0-1.0 Skala)
+#[derive(Debug, Clone, Copy)]
+pub struct GeneDistribution {
+    pub mean: f32,    // Mittelwert (sollte zwischen 0 und 1 liegen)
+    pub std_dev: f32, // Standardabweichung
+}
+
+impl Default for GeneDistribution {
+    fn default() -> Self {
+        // Ein generischer Default (z.B. für unbekannte Gene/Spezies)
+        GeneDistribution {
+            mean: 0.5,     // Entspricht 2500 auf der 0-5000 Skala
+            std_dev: 0.15, // Standardabweichung auf der 0-1 Skala
+        }
+    }
+}
 
 #[derive(Resource)]
 pub struct GeneLibrary {
-    // Gene für visuelle Merkmale (RGB-Werte)
+    // --- Visuelle Merkmale (Presets/Paletten) ---
     pub skin_colors: HashMap<String, Vec<(f32, f32, f32)>>,
     pub hair_colors: HashMap<String, Vec<(f32, f32, f32)>>,
-    pub eye_colors: HashMap<String, Vec<EyeColor>>,
+    pub eye_colors: HashMap<String, Vec<EyeColor>>, // Wird für initiale Allele genutzt
+
+    // --- Attribut-Merkmale (Verteilungen auf 0.0-1.0 Skala) ---
+    // Spezies -> Attribut-Typ -> Verteilung
+    pub attribute_distributions: HashMap<String, HashMap<AttributeGene, GeneDistribution>>,
 }
 
 impl Default for GeneLibrary {
     fn default() -> Self {
-        // Erstelle eine neue GeneLibrary mit Standardwerten
-        let mut skin_colors = HashMap::new();
-        let mut hair_colors = HashMap::new();
-        let mut eye_colors: HashMap<String, Vec<EyeColor>> = HashMap::new();
+        let mut lib = Self {
+            skin_colors: HashMap::new(),
+            hair_colors: HashMap::new(),
+            eye_colors: HashMap::new(),
+            attribute_distributions: HashMap::new(),
+        };
+        lib.populate_color_palettes();
+        lib.populate_attribute_distributions();
+        lib
+    }
+}
 
-        // Hautfarben direkt aus SkinColorPalette übernommen
-        skin_colors.insert(
+impl GeneLibrary {
+    // --- Methoden zur Abfrage ---
+
+    /// Gibt die Verteilung (Mittelwert/StdAbw auf 0-1 Skala) für ein spezifisches Attribut-Gen einer Spezies zurück.
+    /// Fällt auf einen generischen Default zurück, wenn nichts gefunden wird.
+    pub fn get_attribute_distribution(
+        &self,
+        species: &str,
+        attribute: AttributeGene,
+    ) -> GeneDistribution {
+        self.attribute_distributions
+            .get(species)
+            .and_then(|species_dist| species_dist.get(&attribute))
+            .copied() // Kopiert die gefundene Distribution
+            .unwrap_or_else(|| {
+                 // Warnung, wenn Spezies oder Attribut nicht gefunden wurde, nutze Default
+                warn!("Keine spezifische Genverteilung für {:?} in Spezies '{}' gefunden. Verwende Default (0.5 ± 0.15).", attribute, species);
+                GeneDistribution::default()
+            })
+    }
+
+    /// Generiert einen zufälligen Wert (0.0 bis 1.0) für ein Gen basierend auf seiner Verteilung.
+    /// Der Wert wird auf den Bereich [0.0, 1.0] geklemmt.
+    pub fn generate_value_from_distribution<R: Rng + ?Sized>(
+        &self,
+        species: &str,
+        attribute: AttributeGene,
+        rng: &mut R,
+    ) -> f32 {
+        // Gibt jetzt immer einen f32 zurück (mit Fallback)
+        let dist_params = self.get_attribute_distribution(species, attribute);
+        match Normal::new(dist_params.mean, dist_params.std_dev) {
+            Ok(normal_dist) => {
+                let value = normal_dist.sample(rng);
+                value.clamp(0.0, 1.0) // Klemmt den Wert auf [0.0, 1.0]
+            }
+            Err(err) => {
+                warn!(
+                    "Konnte Normalverteilung nicht erstellen für Spezies '{}', Gen '{:?}': {:?}. Parameter: {:?}. Verwende Mittelwert als Fallback.",
+                    species, attribute, err, dist_params
+                );
+                // Fallback auf Mittelwert, wenn Verteilung ungültig
+                dist_params.mean.clamp(0.0, 1.0)
+            }
+        }
+    }
+
+    // --- Methoden zur Initialisierung ---
+
+    fn populate_color_palettes(&mut self) {
+        // Kopiere hier die langen Farbvektoren aus deinem alten Code rein
+        self.skin_colors.insert(
             "Mensch".to_string(),
             vec![
-                // [255, 233, 219] -> (255/255, 233/255, 219/255)
                 (1.000, 0.914, 0.859),
                 (1.000, 0.878, 0.800),
                 (0.984, 0.843, 0.749),
@@ -83,8 +162,7 @@ impl Default for GeneLibrary {
                 (0.290, 0.149, 0.086),
             ],
         );
-
-        skin_colors.insert(
+        self.skin_colors.insert(
             "Elf".to_string(),
             vec![
                 (1.000, 0.922, 0.804),
@@ -93,8 +171,7 @@ impl Default for GeneLibrary {
                 (0.706, 0.784, 0.902),
             ],
         );
-        // Orkische Hautfarben
-        skin_colors.insert(
+        self.skin_colors.insert(
             "Ork".to_string(),
             vec![
                 (0.843, 0.878, 0.592),
@@ -123,44 +200,39 @@ impl Default for GeneLibrary {
                 (0.349, 0.275, 0.102),
             ],
         );
-        // Menschliche Haarfarben
-        hair_colors.insert(
+
+        self.hair_colors.insert(
             "Mensch".to_string(),
             vec![
-                (0.1, 0.1, 0.1), // Schwarz
-                (0.3, 0.2, 0.1), // Dunkelbraun
-                (0.6, 0.4, 0.2), // Hellbraun
-                (0.8, 0.7, 0.3), // Blond
-                (0.6, 0.3, 0.1), // Rotbraun
-                (0.8, 0.1, 0.1), // Rot
+                (0.1, 0.1, 0.1),
+                (0.3, 0.2, 0.1),
+                (0.6, 0.4, 0.2),
+                (0.8, 0.7, 0.3),
+                (0.6, 0.3, 0.1),
+                (0.8, 0.1, 0.1),
             ],
         );
-
-        // Elfische Haarfarben
-        hair_colors.insert(
+        self.hair_colors.insert(
             "Elf".to_string(),
             vec![
-                (0.9, 0.9, 0.8), // Platinblond
-                (0.8, 0.8, 0.6), // Hellblond
-                (0.7, 0.6, 0.3), // Goldblond
-                (0.3, 0.2, 0.1), // Dunkelbraun
-                (0.1, 0.1, 0.1), // Schwarz
+                (0.9, 0.9, 0.8),
+                (0.8, 0.8, 0.6),
+                (0.7, 0.6, 0.3),
+                (0.3, 0.2, 0.1),
+                (0.1, 0.1, 0.1),
             ],
         );
-
-        // Orkische Haarfarben
-        hair_colors.insert(
+        self.hair_colors.insert(
             "Ork".to_string(),
             vec![
-                (0.1, 0.1, 0.1),    // Schwarz
-                (0.25, 0.15, 0.05), // Sehr Dunkelbraun
-                (0.4, 0.2, 0.1),    // Dunkelbraun
-                (0.5, 0.3, 0.2),    // Braun
+                (0.1, 0.1, 0.1),
+                (0.25, 0.15, 0.05),
+                (0.4, 0.2, 0.1),
+                (0.5, 0.3, 0.2),
             ],
         );
 
-        // Menschliche Augenfarben
-        eye_colors.insert(
+        self.eye_colors.insert(
             "Mensch".to_string(),
             vec![
                 EyeColor::Brown,
@@ -169,9 +241,7 @@ impl Default for GeneLibrary {
                 EyeColor::Gray,
             ],
         );
-
-        // Elfische Augenfarben
-        eye_colors.insert(
+        self.eye_colors.insert(
             "Elf".to_string(),
             vec![
                 EyeColor::Green,
@@ -180,9 +250,7 @@ impl Default for GeneLibrary {
                 EyeColor::Brown,
             ],
         );
-
-        // Orkische Augenfarben
-        eye_colors.insert(
+        self.eye_colors.insert(
             "Ork".to_string(),
             vec![
                 EyeColor::Red,
@@ -191,160 +259,524 @@ impl Default for GeneLibrary {
                 EyeColor::Gray,
             ],
         );
+    }
 
-        Self {
-            skin_colors,
-            hair_colors,
-            eye_colors,
+    fn populate_attribute_distributions(&mut self) {
+        // --- Mensch (Alle Werte um 0.5 ± 0.1 bis 0.2) ---
+        let mut human_dist = HashMap::new();
+        human_dist.insert(
+            AttributeGene::Strength,
+            GeneDistribution {
+                mean: 0.5,
+                std_dev: 0.1,
+            },
+        );
+        human_dist.insert(
+            AttributeGene::Agility,
+            GeneDistribution {
+                mean: 0.5,
+                std_dev: 0.1,
+            },
+        );
+        human_dist.insert(
+            AttributeGene::Toughness,
+            GeneDistribution {
+                mean: 0.5,
+                std_dev: 0.1,
+            },
+        );
+        human_dist.insert(
+            AttributeGene::Endurance,
+            GeneDistribution {
+                mean: 0.5,
+                std_dev: 0.1,
+            },
+        );
+        human_dist.insert(
+            AttributeGene::Recuperation,
+            GeneDistribution {
+                mean: 0.5,
+                std_dev: 0.1,
+            },
+        );
+        human_dist.insert(
+            AttributeGene::DiseaseResistance,
+            GeneDistribution {
+                mean: 0.5,
+                std_dev: 0.1,
+            },
+        );
+        human_dist.insert(
+            AttributeGene::Focus,
+            GeneDistribution {
+                mean: 0.5,
+                std_dev: 0.15,
+            },
+        );
+        human_dist.insert(
+            AttributeGene::Creativity,
+            GeneDistribution {
+                mean: 0.5,
+                std_dev: 0.15,
+            },
+        );
+        human_dist.insert(
+            AttributeGene::Willpower,
+            GeneDistribution {
+                mean: 0.5,
+                std_dev: 0.15,
+            },
+        );
+        human_dist.insert(
+            AttributeGene::AnalyticalAbility,
+            GeneDistribution {
+                mean: 0.5,
+                std_dev: 0.15,
+            },
+        );
+        human_dist.insert(
+            AttributeGene::Intuition,
+            GeneDistribution {
+                mean: 0.5,
+                std_dev: 0.15,
+            },
+        );
+        human_dist.insert(
+            AttributeGene::Memory,
+            GeneDistribution {
+                mean: 0.5,
+                std_dev: 0.15,
+            },
+        );
+        human_dist.insert(
+            AttributeGene::Patience,
+            GeneDistribution {
+                mean: 0.5,
+                std_dev: 0.15,
+            },
+        );
+        human_dist.insert(
+            AttributeGene::SpatialSense,
+            GeneDistribution {
+                mean: 0.5,
+                std_dev: 0.15,
+            },
+        );
+        human_dist.insert(
+            AttributeGene::Empathy,
+            GeneDistribution {
+                mean: 0.5,
+                std_dev: 0.2,
+            },
+        );
+        human_dist.insert(
+            AttributeGene::Leadership,
+            GeneDistribution {
+                mean: 0.5,
+                std_dev: 0.2,
+            },
+        );
+        human_dist.insert(
+            AttributeGene::SocialAwareness,
+            GeneDistribution {
+                mean: 0.5,
+                std_dev: 0.2,
+            },
+        );
+        human_dist.insert(
+            AttributeGene::LinguisticAbility,
+            GeneDistribution {
+                mean: 0.5,
+                std_dev: 0.2,
+            },
+        );
+        human_dist.insert(
+            AttributeGene::Negotiation,
+            GeneDistribution {
+                mean: 0.5,
+                std_dev: 0.2,
+            },
+        );
+        human_dist.insert(
+            AttributeGene::Musicality,
+            GeneDistribution {
+                mean: 0.5,
+                std_dev: 0.2,
+            },
+        );
+        self.attribute_distributions
+            .insert("Mensch".to_string(), human_dist);
+
+        // --- Elf (Angepasste Mittelwerte/StdAbw auf 0-1 Skala) ---
+        let mut elf_dist = HashMap::new();
+        elf_dist.insert(
+            AttributeGene::Strength,
+            GeneDistribution {
+                mean: 0.35,
+                std_dev: 0.08,
+            },
+        ); // Unterdurchschnittlich stark
+        elf_dist.insert(
+            AttributeGene::Agility,
+            GeneDistribution {
+                mean: 0.7,
+                std_dev: 0.1,
+            },
+        ); // Sehr agil
+        elf_dist.insert(
+            AttributeGene::Toughness,
+            GeneDistribution {
+                mean: 0.35,
+                std_dev: 0.08,
+            },
+        ); // Zerbrechlicher
+        elf_dist.insert(
+            AttributeGene::Endurance,
+            GeneDistribution {
+                mean: 0.6,
+                std_dev: 0.1,
+            },
+        ); // Gute Ausdauer
+        elf_dist.insert(
+            AttributeGene::Recuperation,
+            GeneDistribution {
+                mean: 0.6,
+                std_dev: 0.1,
+            },
+        );
+        elf_dist.insert(
+            AttributeGene::DiseaseResistance,
+            GeneDistribution {
+                mean: 0.65,
+                std_dev: 0.1,
+            },
+        );
+        elf_dist.insert(
+            AttributeGene::Focus,
+            GeneDistribution {
+                mean: 0.7,
+                std_dev: 0.1,
+            },
+        ); // Sehr fokussiert
+        elf_dist.insert(
+            AttributeGene::Creativity,
+            GeneDistribution {
+                mean: 0.65,
+                std_dev: 0.15,
+            },
+        );
+        elf_dist.insert(
+            AttributeGene::Willpower,
+            GeneDistribution {
+                mean: 0.6,
+                std_dev: 0.15,
+            },
+        );
+        elf_dist.insert(
+            AttributeGene::AnalyticalAbility,
+            GeneDistribution {
+                mean: 0.6,
+                std_dev: 0.1,
+            },
+        );
+        elf_dist.insert(
+            AttributeGene::Intuition,
+            GeneDistribution {
+                mean: 0.65,
+                std_dev: 0.15,
+            },
+        );
+        elf_dist.insert(
+            AttributeGene::Memory,
+            GeneDistribution {
+                mean: 0.7,
+                std_dev: 0.1,
+            },
+        );
+        elf_dist.insert(
+            AttributeGene::Patience,
+            GeneDistribution {
+                mean: 0.7,
+                std_dev: 0.1,
+            },
+        );
+        elf_dist.insert(
+            AttributeGene::SpatialSense,
+            GeneDistribution {
+                mean: 0.6,
+                std_dev: 0.15,
+            },
+        );
+        elf_dist.insert(
+            AttributeGene::Empathy,
+            GeneDistribution {
+                mean: 0.4,
+                std_dev: 0.15,
+            },
+        ); // Etwas weniger empathisch?
+        elf_dist.insert(
+            AttributeGene::Leadership,
+            GeneDistribution {
+                mean: 0.45,
+                std_dev: 0.15,
+            },
+        );
+        elf_dist.insert(
+            AttributeGene::SocialAwareness,
+            GeneDistribution {
+                mean: 0.5,
+                std_dev: 0.15,
+            },
+        );
+        elf_dist.insert(
+            AttributeGene::LinguisticAbility,
+            GeneDistribution {
+                mean: 0.75,
+                std_dev: 0.1,
+            },
+        ); // Sehr sprachbegabt
+        elf_dist.insert(
+            AttributeGene::Negotiation,
+            GeneDistribution {
+                mean: 0.55,
+                std_dev: 0.15,
+            },
+        );
+        elf_dist.insert(
+            AttributeGene::Musicality,
+            GeneDistribution {
+                mean: 0.8,
+                std_dev: 0.1,
+            },
+        ); // Sehr musikalisch
+        self.attribute_distributions
+            .insert("Elf".to_string(), elf_dist);
+
+        // --- Ork (Angepasste Mittelwerte/StdAbw auf 0-1 Skala) ---
+        let mut orc_dist = HashMap::new();
+        orc_dist.insert(
+            AttributeGene::Strength,
+            GeneDistribution {
+                mean: 0.75,
+                std_dev: 0.12,
+            },
+        ); // Sehr stark
+        orc_dist.insert(
+            AttributeGene::Agility,
+            GeneDistribution {
+                mean: 0.3,
+                std_dev: 0.1,
+            },
+        ); // Unbeholfener
+        orc_dist.insert(
+            AttributeGene::Toughness,
+            GeneDistribution {
+                mean: 0.8,
+                std_dev: 0.1,
+            },
+        ); // Sehr zäh
+        orc_dist.insert(
+            AttributeGene::Endurance,
+            GeneDistribution {
+                mean: 0.7,
+                std_dev: 0.1,
+            },
+        ); // Gute Ausdauer (kämpferisch)
+        orc_dist.insert(
+            AttributeGene::Recuperation,
+            GeneDistribution {
+                mean: 0.65,
+                std_dev: 0.1,
+            },
+        );
+        orc_dist.insert(
+            AttributeGene::DiseaseResistance,
+            GeneDistribution {
+                mean: 0.75,
+                std_dev: 0.1,
+            },
+        ); // Robust
+        orc_dist.insert(
+            AttributeGene::Focus,
+            GeneDistribution {
+                mean: 0.3,
+                std_dev: 0.15,
+            },
+        ); // Wenig Fokus
+        orc_dist.insert(
+            AttributeGene::Creativity,
+            GeneDistribution {
+                mean: 0.2,
+                std_dev: 0.1,
+            },
+        ); // Geringe Kreativität
+        orc_dist.insert(
+            AttributeGene::Willpower,
+            GeneDistribution {
+                mean: 0.75,
+                std_dev: 0.15,
+            },
+        ); // Hohe Willenskraft
+        orc_dist.insert(
+            AttributeGene::AnalyticalAbility,
+            GeneDistribution {
+                mean: 0.25,
+                std_dev: 0.1,
+            },
+        );
+        orc_dist.insert(
+            AttributeGene::Intuition,
+            GeneDistribution {
+                mean: 0.4,
+                std_dev: 0.15,
+            },
+        );
+        orc_dist.insert(
+            AttributeGene::Memory,
+            GeneDistribution {
+                mean: 0.3,
+                std_dev: 0.1,
+            },
+        );
+        orc_dist.insert(
+            AttributeGene::Patience,
+            GeneDistribution {
+                mean: 0.25,
+                std_dev: 0.1,
+            },
+        );
+        orc_dist.insert(
+            AttributeGene::SpatialSense,
+            GeneDistribution {
+                mean: 0.4,
+                std_dev: 0.1,
+            },
+        );
+        orc_dist.insert(
+            AttributeGene::Empathy,
+            GeneDistribution {
+                mean: 0.2,
+                std_dev: 0.1,
+            },
+        ); // Sehr geringe Empathie
+        orc_dist.insert(
+            AttributeGene::Leadership,
+            GeneDistribution {
+                mean: 0.7,
+                std_dev: 0.15,
+            },
+        ); // Führungsstark (auf ihre Art)
+        orc_dist.insert(
+            AttributeGene::SocialAwareness,
+            GeneDistribution {
+                mean: 0.3,
+                std_dev: 0.1,
+            },
+        );
+        orc_dist.insert(
+            AttributeGene::LinguisticAbility,
+            GeneDistribution {
+                mean: 0.3,
+                std_dev: 0.1,
+            },
+        );
+        orc_dist.insert(
+            AttributeGene::Negotiation,
+            GeneDistribution {
+                mean: 0.2,
+                std_dev: 0.1,
+            },
+        ); // Kaum Verhandlung
+        orc_dist.insert(
+            AttributeGene::Musicality,
+            GeneDistribution {
+                mean: 0.1,
+                std_dev: 0.05,
+            },
+        ); // Kaum musikalisch
+        self.attribute_distributions
+            .insert("Ork".to_string(), orc_dist);
+
+        // Füge hier bei Bedarf weitere Spezies hinzu
+    }
+
+    // --- Methoden zur Farb-Gene-Erzeugung (basierend auf Paletten) ---
+    // Diese Methoden bleiben weitgehend gleich, aber wir verwenden den RNG jetzt expliziter.
+    // TODO: Vereinheitliche RNG Nutzung (thread_rng entfernen)
+    fn create_color_gene_pair(visual_gene: VisualGene, value: f32) -> GenePair {
+        let gene_id = GeneType::Visual(visual_gene).to_string(); // Korrekte String-ID ableiten
+        GenePair {
+            maternal: GeneVariant {
+                gene_id: gene_id.clone(),
+                value,
+                expression: GeneExpression::Codominant,
+            },
+            paternal: GeneVariant {
+                gene_id, // Move statt Clone ist ok
+                value,
+                expression: GeneExpression::Codominant,
+            },
+            chromosome_type: ChromosomeType::VisualTraits,
         }
     }
-}
-impl GeneLibrary {
-    // Erzeugt RGB-Gene für Hautfarbe basierend auf einer Spezies
-    pub fn create_skin_color_genes(&self, species: &str) -> Option<(GenePair, GenePair, GenePair)> {
-        let mut rng = rand::thread_rng();
 
+    pub fn create_skin_color_genes(&self, species: &str) -> Option<(GenePair, GenePair, GenePair)> {
+        let mut rng = rand::thread_rng(); // TODO: RNG von außen
         if let Some(colors) = self.skin_colors.get(species) {
             if !colors.is_empty() {
-                let index = rng.gen_range(0..colors.len());
-                let color = colors[index];
+                let color = colors[rng.gen_range(0..colors.len())];
+                let (r_val, g_val, b_val) = color;
 
-                let gene_r = GenePair {
-                    maternal: GeneVariant {
-                        gene_id: "gene_skin_r".to_string(),
-                        value: color.0, // R-Wert
-                        expression: GeneExpression::Codominant,
-                    },
-                    paternal: GeneVariant {
-                        gene_id: "gene_skin_r".to_string(),
-                        value: color.0, // Gleicher R-Wert
-                        expression: GeneExpression::Codominant,
-                    },
-                    chromosome_type: ChromosomeType::VisualTraits,
-                };
-
-                let gene_g = GenePair {
-                    maternal: GeneVariant {
-                        gene_id: "gene_skin_g".to_string(),
-                        value: color.1, // G-Wert
-                        expression: GeneExpression::Codominant,
-                    },
-                    paternal: GeneVariant {
-                        gene_id: "gene_skin_g".to_string(),
-                        value: color.1, // Gleicher G-Wert
-                        expression: GeneExpression::Codominant,
-                    },
-                    chromosome_type: ChromosomeType::VisualTraits,
-                };
-
-                let gene_b = GenePair {
-                    maternal: GeneVariant {
-                        gene_id: "gene_skin_b".to_string(),
-                        value: color.2, // B-Wert
-                        expression: GeneExpression::Codominant,
-                    },
-                    paternal: GeneVariant {
-                        gene_id: "gene_skin_b".to_string(),
-                        value: color.2, // Gleicher B-Wert
-                        expression: GeneExpression::Codominant,
-                    },
-                    chromosome_type: ChromosomeType::VisualTraits,
-                };
-
+                // Nutze die Enum-Varianten für create_color_gene_pair
+                let gene_r = Self::create_color_gene_pair(VisualGene::SkinColorR, r_val);
+                let gene_g = Self::create_color_gene_pair(VisualGene::SkinColorG, g_val);
+                let gene_b = Self::create_color_gene_pair(VisualGene::SkinColorB, b_val);
                 return Some((gene_r, gene_g, gene_b));
             }
         }
-
         None
     }
-    // Erzeugt RGB-Gene für Hautfarbe basierend auf einer Spezies
-    pub fn create_hair_color_genes(&self, species: &str) -> Option<(GenePair, GenePair, GenePair)> {
-        let mut rng = rand::thread_rng();
 
+    pub fn create_hair_color_genes(&self, species: &str) -> Option<(GenePair, GenePair, GenePair)> {
+        let mut rng = rand::thread_rng(); // TODO: RNG von außen
         if let Some(colors) = self.hair_colors.get(species) {
             if !colors.is_empty() {
-                let index = rng.gen_range(0..colors.len());
-                let color = colors[index];
+                let color = colors[rng.gen_range(0..colors.len())];
+                let (r_val, g_val, b_val) = color;
 
-                let gene_r = GenePair {
-                    maternal: GeneVariant {
-                        gene_id: "gene_hair_r".to_string(),
-                        value: color.0, // R-Wert
-                        expression: GeneExpression::Codominant,
-                    },
-                    paternal: GeneVariant {
-                        gene_id: "gene_hair_r".to_string(),
-                        value: color.0, // Gleicher R-Wert
-                        expression: GeneExpression::Codominant,
-                    },
-                    chromosome_type: ChromosomeType::VisualTraits,
-                };
-
-                let gene_g = GenePair {
-                    maternal: GeneVariant {
-                        gene_id: "gene_hair_g".to_string(),
-                        value: color.1, // G-Wert
-                        expression: GeneExpression::Codominant,
-                    },
-                    paternal: GeneVariant {
-                        gene_id: "gene_hair_g".to_string(),
-                        value: color.1, // Gleicher G-Wert
-                        expression: GeneExpression::Codominant,
-                    },
-                    chromosome_type: ChromosomeType::VisualTraits,
-                };
-
-                let gene_b = GenePair {
-                    maternal: GeneVariant {
-                        gene_id: "gene_hair_b".to_string(),
-                        value: color.2, // B-Wert
-                        expression: GeneExpression::Codominant,
-                    },
-                    paternal: GeneVariant {
-                        gene_id: "gene_hair_b".to_string(),
-                        value: color.2, // Gleicher B-Wert
-                        expression: GeneExpression::Codominant,
-                    },
-                    chromosome_type: ChromosomeType::VisualTraits,
-                };
-
+                let gene_r = Self::create_color_gene_pair(VisualGene::HairColorR, r_val);
+                let gene_g = Self::create_color_gene_pair(VisualGene::HairColorG, g_val);
+                let gene_b = Self::create_color_gene_pair(VisualGene::HairColorB, b_val);
                 return Some((gene_r, gene_g, gene_b));
             }
         }
-
         None
     }
 
-    // Erzeugt RGB-Gene für Hautfarbe basierend auf einer Spezies
     pub fn create_eye_color_genes(&self, species: &str) -> Option<GenePair> {
-        let mut rng1 = rand::thread_rng();
-        let mut rng2 = rand::thread_rng();
-
+        let mut rng = rand::thread_rng(); // TODO: RNG von außen
         if let Some(colors) = self.eye_colors.get(species) {
             if !colors.is_empty() {
-                let index1 = rng1.gen_range(0..colors.len());
-                let index2 = rng2.gen_range(0..colors.len());
-                let color1 = colors[index1];
-                let color2 = colors[index2];
-                println!("Farbe 1: {:?} ({})", color1, color1.to_f32());
-                println!("Farbe 2: {:?} ({})", color2, color2.to_f32());
-                let gene_pair = GenePair {
+                let color1 = colors[rng.gen_range(0..colors.len())];
+                let color2 = colors[rng.gen_range(0..colors.len())];
+                // Der GeneType::Visual(VisualGene::EyeColor) String wird hier weiterhin verwendet, da der Key String sein muss.
+                let gene_id = GeneType::Visual(VisualGene::EyeColor).to_string();
+
+                return Some(GenePair {
                     maternal: GeneVariant {
-                        gene_id: "gene_eye_color".to_string(),
+                        gene_id: gene_id.clone(),
                         value: color1.to_f32(),
                         expression: GeneExpression::Codominant,
                     },
                     paternal: GeneVariant {
-                        gene_id: "gene_eye_color".to_string(),
+                        gene_id,
                         value: color2.to_f32(),
                         expression: GeneExpression::Codominant,
                     },
                     chromosome_type: ChromosomeType::VisualTraits,
-                };
-                return Some(gene_pair);
+                });
             }
         }
-
         None
     }
 }

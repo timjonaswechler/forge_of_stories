@@ -6,7 +6,6 @@ use crate::components::attributes::{MentalAttributes, PhysicalAttributes, Social
 use crate::components::genetics::{
     ChromosomeType, GeneExpression, Genotype, Phenotype, PhenotypeGene, SpeciesGenes,
 };
-use crate::resources::eye_color_inheritance::EyeColorInheritance;
 
 // System zur Berechnung des Phänotyps aus dem Genotyp
 // Reagiert nur auf Änderungen am Genotyp

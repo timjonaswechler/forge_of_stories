@@ -2,59 +2,57 @@
 use crate::components::attributes::{
     Attribute, MentalAttributes, PhysicalAttributes, SocialAttributes,
 };
+use crate::components::gene_types::{AttributeGene, GeneType, VisualGene};
 use crate::components::genetics::{ChromosomeType, Phenotype};
 use crate::components::visual_traits::EyeColor;
 use bevy::prelude::*;
 use bevy::time::Time;
+use std::str::FromStr;
 
 // Generischer Trait für Attributgruppen
 pub trait AttributeGroup {
-    fn get_attribute_mut(&mut self, name: &str) -> Option<&mut Attribute>;
+    fn get_attribute_mut(&mut self, id: AttributeGene) -> Option<&mut Attribute>;
 }
 
-// Implementierung für PhysicalAttributes
+// Implementierungen für PhysicalAttributes, MentalAttributes, SocialAttributes (unverändert)...
 impl AttributeGroup for PhysicalAttributes {
-    fn get_attribute_mut(&mut self, name: &str) -> Option<&mut Attribute> {
-        match name {
-            "strength" => Some(&mut self.strength),
-            "agility" => Some(&mut self.agility),
-            "toughness" => Some(&mut self.toughness),
-            "endurance" => Some(&mut self.endurance),
-            "recuperation" => Some(&mut self.recuperation),
-            "disease_resistance" => Some(&mut self.disease_resistance),
-            _ => None,
+    fn get_attribute_mut(&mut self, id: AttributeGene) -> Option<&mut Attribute> {
+        match id {
+            AttributeGene::Strength => Some(&mut self.strength),
+            AttributeGene::Agility => Some(&mut self.agility),
+            AttributeGene::Toughness => Some(&mut self.toughness),
+            AttributeGene::Endurance => Some(&mut self.endurance),
+            AttributeGene::Recuperation => Some(&mut self.recuperation),
+            AttributeGene::DiseaseResistance => Some(&mut self.disease_resistance),
+            _ => None, // Ignoriere mentale/soziale Gene hier
         }
     }
 }
-
-// Implementierung für MentalAttributes
 impl AttributeGroup for MentalAttributes {
-    fn get_attribute_mut(&mut self, name: &str) -> Option<&mut Attribute> {
-        match name {
-            "analytical_ability" => Some(&mut self.analytical_ability),
-            "focus" => Some(&mut self.focus),
-            "willpower" => Some(&mut self.willpower),
-            "creativity" => Some(&mut self.creativity),
-            "intuition" => Some(&mut self.intuition),
-            "patience" => Some(&mut self.patience),
-            "memory" => Some(&mut self.memory),
-            "spatial_sense" => Some(&mut self.spatial_sense),
-            _ => None,
+    fn get_attribute_mut(&mut self, id: AttributeGene) -> Option<&mut Attribute> {
+        match id {
+            AttributeGene::AnalyticalAbility => Some(&mut self.analytical_ability),
+            AttributeGene::Focus => Some(&mut self.focus),
+            AttributeGene::Willpower => Some(&mut self.willpower),
+            AttributeGene::Creativity => Some(&mut self.creativity),
+            AttributeGene::Intuition => Some(&mut self.intuition),
+            AttributeGene::Patience => Some(&mut self.patience),
+            AttributeGene::Memory => Some(&mut self.memory),
+            AttributeGene::SpatialSense => Some(&mut self.spatial_sense),
+            _ => None, // Ignoriere physische/soziale Gene hier
         }
     }
 }
-
-// Implementierung für SocialAttributes
 impl AttributeGroup for SocialAttributes {
-    fn get_attribute_mut(&mut self, name: &str) -> Option<&mut Attribute> {
-        match name {
-            "empathy" => Some(&mut self.empathy),
-            "social_awareness" => Some(&mut self.social_awareness),
-            "linguistic_ability" => Some(&mut self.linguistic_ability),
-            "musicality" => Some(&mut self.musicality),
-            "leadership" => Some(&mut self.leadership),
-            "negotiation" => Some(&mut self.negotiation),
-            _ => None,
+    fn get_attribute_mut(&mut self, id: AttributeGene) -> Option<&mut Attribute> {
+        match id {
+            AttributeGene::Empathy => Some(&mut self.empathy),
+            AttributeGene::SocialAwareness => Some(&mut self.social_awareness),
+            AttributeGene::LinguisticAbility => Some(&mut self.linguistic_ability),
+            AttributeGene::Musicality => Some(&mut self.musicality),
+            AttributeGene::Leadership => Some(&mut self.leadership),
+            AttributeGene::Negotiation => Some(&mut self.negotiation),
+            _ => None, // Ignoriere physische/mentale Gene hier
         }
     }
 }
@@ -62,86 +60,88 @@ impl AttributeGroup for SocialAttributes {
 // System zur Berechnung der effektiven Attributwerte
 pub fn calculate_effective_attribute_values(mut query: Query<&mut Attribute>) {
     for mut attribute in query.iter_mut() {
-        let mut value = attribute.current_value;
+        let mut value = attribute.current_value; // Startet mit dem aktuellen Wert (der temporäre Effekte beinhalten könnte)
 
         // Berücksichtige Rust/Decay
         if let Some(rust) = attribute.rust_level {
-            value *= 1.0 - (rust as f32 * 0.05); // Jeder Rust-Level reduziert um 5%
+            value *= 1.0 - (rust as f32 * 0.05);
         }
 
-        // Begrenze den Wert auf den erlaubten Bereich
-        attribute.effective_value = value.max(0.0).min(attribute.max_value);
+        // Begrenze den Wert auf den erlaubten Bereich [0.0, max_value]
+        attribute.effective_value = value.clamp(0.0, attribute.max_value);
     }
 }
 
-// System für Attributverfall/Rust
+// System für Attributverfall/Rust (unverändert)
 pub fn update_attribute_rust(time: Res<Time>, mut query: Query<&mut Attribute>) {
-    // Konstanten für den Verfall
     const RUST_THRESHOLD_DAYS: f32 = 30.0; // 30 Tage ohne Nutzung = 1 Rust-Level
 
     for mut attribute in query.iter_mut() {
         if let Some(last_used) = attribute.last_used {
-            // Berechne die Zeit seit der letzten Nutzung
             let time_since_used = time.elapsed() - last_used;
             let days_since_used = time_since_used.as_secs_f32() / (24.0 * 60.0 * 60.0);
 
-            // Berechne neuen Rust-Level
             if days_since_used > RUST_THRESHOLD_DAYS {
                 let new_rust_level = (days_since_used / RUST_THRESHOLD_DAYS).floor() as u8;
                 attribute.rust_level = Some(new_rust_level.min(6)); // Maximal 6 Rust-Level
             }
+            // Optional: Rust zurücksetzen, wenn Tage < Threshold?
+            // else { attribute.rust_level = Some(0) oder None; }
         }
+        // Optional: Was passiert, wenn last_used None ist? Soll Rust starten?
+        // else { attribute.rust_level = Some(initial_rust); }
     }
 }
 
 // Generisches System zur Anwendung von Phänotypwerten auf Attribute
-// Reagiert nur auf Änderungen am Phänotyp
+// Reagiert nur auf Änderungen am Phänotyp und verwendet jetzt GeneType
 pub fn apply_attributes<T: AttributeGroup + Component>(
     mut query: Query<(&Phenotype, &mut T), Changed<Phenotype>>,
-    attribute_prefix: &str,
+    // Kein attribute_prefix mehr nötig
 ) {
     for (phenotype, mut attribute_group) in query.iter_mut() {
-        // Attributwerte aus der Attribut-Chromosomen-Gruppe holen
         if let Some(attribute_values) = phenotype.attribute_groups.get(&ChromosomeType::Attributes)
         {
-            // Für jedes Attribut im Phänotyp prüfen, ob es angewendet werden soll
-            for (gene_id, phenotype_gene) in attribute_values.iter() {
-                // Nur Gene mit dem richtigen Präfix verwenden
-                if gene_id.starts_with(attribute_prefix) {
-                    // Attribute-Namen vom Präfix trennen, z.B. "gene_strength" -> "strength"
-                    let attribute_name = gene_id.strip_prefix(attribute_prefix).unwrap_or(gene_id);
-
-                    // Attribute aktualisieren, falls es existiert
-                    if let Some(attribute) = attribute_group.get_attribute_mut(attribute_name) {
-                        attribute.base_value = phenotype_gene.value * 100.0;
-                        attribute.current_value = attribute.base_value;
+            // Iteriere über die Gene im Phenotyp für diese Chromosomen-Gruppe
+            for (gene_id_str, phenotype_gene) in attribute_values.iter() {
+                // Versuche, die String-ID in unseren GeneType zu parsen
+                if let Ok(gene_type) = GeneType::from_str(gene_id_str) {
+                    // Prüfe, ob es sich um ein Attribut-Gen handelt
+                    if let GeneType::Attribute(attribute_gene_id) = gene_type {
+                        // Hole das passende mutable Attribut über den AttributeGene Enum
+                        if let Some(attribute) =
+                            attribute_group.get_attribute_mut(attribute_gene_id)
+                        {
+                            // Skalierung und Zuweisung wie vorher
+                            attribute.base_value = phenotype_gene.value() * attribute.max_value;
+                            attribute.base_value =
+                                attribute.base_value.clamp(0.0, attribute.max_value);
+                            attribute.current_value = attribute.base_value;
+                        } else {
+                            // Sollte nicht passieren, wenn die AttributeGroup korrekt implementiert ist
+                            // und alle AttributeGene-Varianten abdeckt.
+                            trace!(
+                                "Attribut {:?} nicht in Komponente {} gefunden für Gen ID '{}'.",
+                                attribute_gene_id,
+                                std::any::type_name::<T>(),
+                                gene_id_str
+                            );
+                        }
                     }
+                    // Falls es kein Attribut-Gen ist (z.B. VisualGene), ignoriere es hier einfach.
+                } else {
+                    // Gen ID konnte nicht geparsed werden (z.B. alte/fremde Gene im Phenotyp?)
+                    warn!(
+                        "Konnte Gen ID '{}' nicht zu GeneType parsen in apply_attributes.",
+                        gene_id_str
+                    );
                 }
             }
         }
     }
 }
 
-// Die ursprünglichen Systeme können jetzt erheblich vereinfacht werden:
-
-pub fn apply_physical_attributes_system(
-    query: Query<(&Phenotype, &mut PhysicalAttributes), Changed<Phenotype>>,
-) {
-    apply_attributes::<PhysicalAttributes>(query, "gene_");
-}
-
-pub fn apply_mental_attributes_system(
-    query: Query<(&Phenotype, &mut MentalAttributes), Changed<Phenotype>>,
-) {
-    apply_attributes::<MentalAttributes>(query, "gene_");
-}
-
-pub fn apply_social_attributes_system(
-    query: Query<(&Phenotype, &mut SocialAttributes), Changed<Phenotype>>,
-) {
-    apply_attributes::<SocialAttributes>(query, "gene_");
-}
-
+// Visuelle Traits Anwendung
 pub fn apply_visual_traits_system(
     mut query: Query<
         (
@@ -151,88 +151,77 @@ pub fn apply_visual_traits_system(
         Changed<Phenotype>,
     >,
 ) {
+    // Generiere die String Keys einmal außerhalb der Loop
+    let key_skin_r = GeneType::Visual(VisualGene::SkinColorR).to_string();
+    let key_skin_g = GeneType::Visual(VisualGene::SkinColorG).to_string();
+    let key_skin_b = GeneType::Visual(VisualGene::SkinColorB).to_string();
+    let key_hair_r = GeneType::Visual(VisualGene::HairColorR).to_string();
+    let key_hair_g = GeneType::Visual(VisualGene::HairColorG).to_string();
+    let key_hair_b = GeneType::Visual(VisualGene::HairColorB).to_string();
+    let key_eye_color = GeneType::Visual(VisualGene::EyeColor).to_string();
+
     for (phenotype, mut visual_traits) in query.iter_mut() {
-        // Für visuelle Merkmale verwenden wir primär die VisualTraits-Chromosomengruppe
         if let Some(visual_values) = phenotype
             .attribute_groups
             .get(&ChromosomeType::VisualTraits)
         {
-            // RGB-Komponenten für Hautfarbe
-            if visual_values.contains_key("gene_skin_r")
-                && visual_values.contains_key("gene_skin_g")
-                && visual_values.contains_key("gene_skin_b")
-            {
-                visual_traits.skin_color = (
-                    visual_values.get("gene_skin_r").unwrap().value,
-                    visual_values.get("gene_skin_g").unwrap().value,
-                    visual_values.get("gene_skin_b").unwrap().value,
-                );
-            }
+            // Hautfarbe
+            let skin_r = visual_values.get(&key_skin_r).map_or(0.5, |g| g.value());
+            let skin_g = visual_values.get(&key_skin_g).map_or(0.5, |g| g.value());
+            let skin_b = visual_values.get(&key_skin_b).map_or(0.5, |g| g.value());
+            visual_traits.skin_color = (
+                skin_r.clamp(0.0, 1.0),
+                skin_g.clamp(0.0, 1.0),
+                skin_b.clamp(0.0, 1.0),
+            );
 
-            // RGB-Komponenten für Haarfarbe
-            if visual_values.contains_key("gene_hair_r")
-                && visual_values.contains_key("gene_hair_g")
-                && visual_values.contains_key("gene_hair_b")
-            {
-                visual_traits.hair_color = (
-                    visual_values.get("gene_hair_r").unwrap().value,
-                    visual_values.get("gene_hair_g").unwrap().value,
-                    visual_values.get("gene_hair_b").unwrap().value,
-                );
-            }
+            // Haarfarbe
+            let hair_r = visual_values.get(&key_hair_r).map_or(0.5, |g| g.value());
+            let hair_g = visual_values.get(&key_hair_g).map_or(0.5, |g| g.value());
+            let hair_b = visual_values.get(&key_hair_b).map_or(0.5, |g| g.value());
+            visual_traits.hair_color = (
+                hair_r.clamp(0.0, 1.0),
+                hair_g.clamp(0.0, 1.0),
+                hair_b.clamp(0.0, 1.0),
+            );
 
-            // Augenfarbe - jetzt werden wir den numerischen Wert in eine EyeColor umwandeln
-            // und dann in RGB-Werte
-            if let Some(eye_color_gene) = visual_values.get("gene_eye_color") {
-                let eye_color = EyeColor::from_f32(eye_color_gene.value);
-
-                // Zuordnung von EyeColor zu RGB-Werten
-                visual_traits.eye_color = match eye_color {
-                    EyeColor::Brown => (0.55, 0.27, 0.07),
-                    EyeColor::Green => (0.21, 0.47, 0.21),
-                    EyeColor::Blue => (0.21, 0.35, 0.80),
-                    EyeColor::Gray => (0.50, 0.50, 0.50),
-                    EyeColor::Yellow => (0.80, 0.80, 0.20),
-                    EyeColor::Red => (0.80, 0.20, 0.20),
-                    EyeColor::Black => (0.10, 0.10, 0.10),
-                    EyeColor::White => (0.90, 0.90, 0.90),
-                };
+            // Augenfarbe
+            if let Some(eye_color_gene) = visual_values.get(&key_eye_color) {
+                let eye_color_val = eye_color_gene.value();
+                if eye_color_val >= 0.0 {
+                    let eye_color = EyeColor::from_f32(eye_color_val);
+                    // ... (match eye_color zu RGB wie vorher) ...
+                    visual_traits.eye_color = match eye_color {
+                        EyeColor::Brown => (0.55, 0.27, 0.07),
+                        EyeColor::Green => (0.21, 0.47, 0.21),
+                        EyeColor::Blue => (0.21, 0.35, 0.80),
+                        EyeColor::Gray => (0.50, 0.50, 0.50),
+                        EyeColor::Yellow => (0.80, 0.80, 0.20),
+                        EyeColor::Red => (0.80, 0.20, 0.20),
+                        EyeColor::Black => (0.10, 0.10, 0.10),
+                        EyeColor::White => (0.90, 0.90, 0.90),
+                    };
+                } else {
+                    warn!(
+                        "Ungültiger Genwert für Augenfarbe gefunden: {}",
+                        eye_color_val
+                    );
+                    visual_traits.eye_color = (0.5, 0.5, 0.5);
+                }
+            } else {
+                visual_traits.eye_color = (0.5, 0.5, 0.5);
             }
         }
     }
 }
 
-// System zur Aktualisierung der physischen Attribut-Sammlung
-pub fn update_physical_attributes(query: Query<&PhysicalAttributes>) {
-    for _physical_attrs in query.iter() {
-        // Hier könnten zusätzliche Berechnungen für die gesamte Attributgruppe erfolgen
-        // z.B. Abhängigkeiten zwischen Attributen
-    }
+// --- Update-Systeme (unverändert) ---
+pub fn update_physical_attributes(query: Query<&PhysicalAttributes>) { /* ... */
 }
-
-// System zur Aktualisierung der mentalen Attribut-Sammlung
-pub fn update_mental_attributes(query: Query<&MentalAttributes>) {
-    for _mental_attrs in query.iter() {
-        // Hier könnten zusätzliche Berechnungen für die gesamte Attributgruppe erfolgen
-    }
+pub fn update_mental_attributes(query: Query<&MentalAttributes>) { /* ... */
 }
-
-// System zur Aktualisierung der sozialen Attribut-Sammlung
-pub fn update_social_attributes(query: Query<&SocialAttributes>) {
-    for _social_attrs in query.iter() {
-        // Hier könnten zusätzliche Berechnungen für die gesamte Attributgruppe erfolgen
-    }
+pub fn update_social_attributes(query: Query<&SocialAttributes>) { /* ... */
 }
-
-// Hilfssystem zur Aktualisierung der "last_used" Zeit für Attribute
-#[allow(dead_code)]
-pub fn update_attribute_usage(
-    mut attribute_query: Query<&mut Attribute>,
-    _time: Res<Time>, // Underscore-Präfix um die Warnung zu vermeiden
-) {
-    // Beispielhafter Rahmen für die Implementierung
-    for _attribute in attribute_query.iter_mut() {
-        // Hier würde man prüfen, ob das Attribut verwendet wurde
-        // und entsprechend last_used aktualisieren
-    }
+pub fn update_attribute_usage(mut attribute_query: Query<&mut Attribute>, _time: Res<Time>) {
+    /* ... */
 }

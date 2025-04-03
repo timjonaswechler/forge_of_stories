@@ -17,6 +17,12 @@ impl VisualTraits {
     }
 }
 
+impl Default for VisualTraits {
+    fn default() -> Self {
+        Self::new() // Oder direkt die Werte hier definieren
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EyeColor {
     Brown,  // Braun

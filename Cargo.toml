@@ -7,6 +7,8 @@ edition = "2021"
 bevy = "*"
 rand = "*"
 rand_distr = "*"
+strum = "*"
+strum_macros = "*"
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]

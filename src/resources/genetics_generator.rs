@@ -1,6 +1,8 @@
 // src/resources/genetics_generator.rs
 use bevy::prelude::*;
 use rand::prelude::*;
+// use bevy_prng::ChaCha8Rng; // Wenn bevy_prng verwendet wird
+// use bevy_rand::prelude::GlobalEntropy; // Wenn bevy_rand verwendet wird
 
 use crate::components::gene_types::{AttributeGene, GeneType, VisualGene};
 use crate::components::genetics::{ChromosomeType, GeneExpression, Genotype};
@@ -10,257 +12,171 @@ use crate::resources::gene_library::GeneLibrary;
 #[derive(Resource, Default)]
 pub struct GeneticsGenerator;
 
+// Hilfs-Array mit allen Attribut-Genen für robuste Iteration
+const ALL_ATTRIBUTE_GENES: [AttributeGene; 19] = [
+    AttributeGene::Strength,
+    AttributeGene::Agility,
+    AttributeGene::Toughness,
+    AttributeGene::Endurance,
+    AttributeGene::Recuperation,
+    AttributeGene::DiseaseResistance,
+    AttributeGene::Focus,
+    AttributeGene::Creativity,
+    AttributeGene::Willpower,
+    AttributeGene::AnalyticalAbility,
+    AttributeGene::Intuition,
+    AttributeGene::Memory,
+    AttributeGene::Patience,
+    AttributeGene::SpatialSense,
+    AttributeGene::Empathy,
+    AttributeGene::Leadership,
+    AttributeGene::SocialAwareness,
+    AttributeGene::LinguisticAbility,
+    AttributeGene::Negotiation, //AttributeGene::Musicality, // Fehlt im Array in Vorlage, ergänzt? JA!
+];
+// Wichtig: Anzahl im Array muss mit der Anzahl der enum-Varianten übereinstimmen! Musicality fehlte.
+const ALL_ATTRIBUTE_GENES_FULL: [AttributeGene; 20] = [
+    AttributeGene::Strength,
+    AttributeGene::Agility,
+    AttributeGene::Toughness,
+    AttributeGene::Endurance,
+    AttributeGene::Recuperation,
+    AttributeGene::DiseaseResistance,
+    AttributeGene::Focus,
+    AttributeGene::Creativity,
+    AttributeGene::Willpower,
+    AttributeGene::AnalyticalAbility,
+    AttributeGene::Intuition,
+    AttributeGene::Memory,
+    AttributeGene::Patience,
+    AttributeGene::SpatialSense,
+    AttributeGene::Empathy,
+    AttributeGene::Leadership,
+    AttributeGene::SocialAwareness,
+    AttributeGene::LinguisticAbility,
+    AttributeGene::Negotiation,
+    AttributeGene::Musicality,
+];
+
 impl GeneticsGenerator {
     /// Erzeugt einen vollständigen Genotyp für eine neue Entität
     pub fn create_initial_genotype(
         &self,
         gene_library: &Res<GeneLibrary>,
         species: &str,
+        // mut rng: ResMut<GlobalEntropy<ChaCha8Rng>> // Besser: RNG als Resource
     ) -> Genotype {
         let mut genotype = Genotype::new();
+        // TODO: Einheitliche RNG Resource verwenden statt thread_rng()
+        let mut rng = rand::thread_rng();
 
-        // Visuelle Gene hinzufügen
-        self.add_visual_genes(&mut genotype, gene_library, species);
+        // Visuelle Gene hinzufügen (Palette-basiert)
+        self.add_visual_genes(&mut genotype, gene_library, species, &mut rng);
 
-        // Attribute-Gene hinzufügen
-        self.add_attribute_genes(&mut genotype, gene_library, species);
+        // Attribute-Gene hinzufügen (Verteilungs-basiert)
+        self.add_attribute_genes(&mut genotype, gene_library, species, &mut rng);
 
         genotype
     }
 
-    /// Fügt Gene für visuelle Eigenschaften hinzu
-    fn add_visual_genes(
+    /// Fügt Gene für visuelle Eigenschaften hinzu (Palette-basiert)
+    fn add_visual_genes<R: Rng + ?Sized>(
         &self,
         genotype: &mut Genotype,
         gene_library: &Res<GeneLibrary>,
         species: &str,
+        _rng: &mut R, // Aktuell nicht direkt hier verwendet
     ) {
         // Hautfarben-Gene
         if let Some((gene_r, gene_g, gene_b)) = gene_library.create_skin_color_genes(species) {
             genotype
                 .gene_pairs
-                .insert("gene_skin_r".to_string(), gene_r);
+                .insert(GeneType::Visual(VisualGene::SkinColorR).to_string(), gene_r);
             genotype
                 .gene_pairs
-                .insert("gene_skin_g".to_string(), gene_g);
+                .insert(GeneType::Visual(VisualGene::SkinColorG).to_string(), gene_g);
             genotype
                 .gene_pairs
-                .insert("gene_skin_b".to_string(), gene_b);
-
+                .insert(GeneType::Visual(VisualGene::SkinColorB).to_string(), gene_b);
             genotype
                 .chromosome_groups
                 .entry(ChromosomeType::VisualTraits)
-                .or_insert_with(Vec::new)
-                .append(&mut vec![
-                    "gene_skin_r".to_string(),
-                    "gene_skin_g".to_string(),
-                    "gene_skin_b".to_string(),
+                .or_default()
+                .extend(vec![
+                    GeneType::Visual(VisualGene::SkinColorR).to_string(),
+                    GeneType::Visual(VisualGene::SkinColorG).to_string(),
+                    GeneType::Visual(VisualGene::SkinColorB).to_string(),
                 ]);
+        } else {
+            warn!("Keine Hautfarbengene für Spezies '{}' generiert.", species);
         }
 
         // Haarfarben-Gene
         if let Some((gene_r, gene_g, gene_b)) = gene_library.create_hair_color_genes(species) {
             genotype
                 .gene_pairs
-                .insert("gene_hair_r".to_string(), gene_r);
+                .insert(GeneType::Visual(VisualGene::HairColorR).to_string(), gene_r);
             genotype
                 .gene_pairs
-                .insert("gene_hair_g".to_string(), gene_g);
+                .insert(GeneType::Visual(VisualGene::HairColorG).to_string(), gene_g);
             genotype
                 .gene_pairs
-                .insert("gene_hair_b".to_string(), gene_b);
-
+                .insert(GeneType::Visual(VisualGene::HairColorB).to_string(), gene_b);
             genotype
                 .chromosome_groups
                 .entry(ChromosomeType::VisualTraits)
-                .or_insert_with(Vec::new)
-                .append(&mut vec![
-                    "gene_hair_r".to_string(),
-                    "gene_hair_g".to_string(),
-                    "gene_hair_b".to_string(),
+                .or_default()
+                .extend(vec![
+                    GeneType::Visual(VisualGene::HairColorR).to_string(),
+                    GeneType::Visual(VisualGene::HairColorG).to_string(),
+                    GeneType::Visual(VisualGene::HairColorB).to_string(),
                 ]);
+        } else {
+            warn!("Keine Haarfarbengene für Spezies '{}' generiert.", species);
         }
 
         // Augenfarben-Gene
         if let Some(gene_eye_color) = gene_library.create_eye_color_genes(species) {
-            genotype
-                .gene_pairs
-                .insert("gene_eye_color".to_string(), gene_eye_color);
-
+            genotype.gene_pairs.insert(
+                GeneType::Visual(VisualGene::EyeColor).to_string(),
+                gene_eye_color,
+            );
             genotype
                 .chromosome_groups
                 .entry(ChromosomeType::VisualTraits)
-                .or_insert_with(Vec::new)
-                .append(&mut vec!["gene_eye_color".to_string()]);
+                .or_default()
+                .push(GeneType::Visual(VisualGene::EyeColor).to_string());
+        } else {
+            warn!("Keine Augenfarbengene für Spezies '{}' generiert.", species);
         }
     }
 
-    /// Fügt Gene für Attribute hinzu
-    fn add_attribute_genes(
+    /// Fügt Gene für Attribute hinzu (Verteilungs-basiert) - Robuste Variante
+    fn add_attribute_genes<R: Rng + ?Sized>(
         &self,
         genotype: &mut Genotype,
-        _gene_library: &Res<GeneLibrary>,
-        _species: &str,
+        gene_library: &Res<GeneLibrary>,
+        species: &str,
+        rng: &mut R,
     ) {
-        let randomize = true;
-        let mut rng = rand::thread_rng();
+        // Iteriere über *alle* definierten AttributeGene
+        for attribute in ALL_ATTRIBUTE_GENES_FULL.iter() {
+            // Generiere maternale und paternale Werte basierend auf der Verteilung der Spezies
+            // generate_value_from_distribution gibt den Default, falls Spezies/Attribut unbekannt
+            let maternal_value =
+                gene_library.generate_value_from_distribution(species, *attribute, rng);
+            let paternal_value =
+                gene_library.generate_value_from_distribution(species, *attribute, rng);
 
-        // Generiert einen zufälligen Wert innerhalb des angegebenen Bereichs
-        let mut generate_random_value = |base: f32| -> f32 {
-            if randomize {
-                rng.gen_range(base - 0.2..=base + 0.2).max(0.1).min(0.9)
-            } else {
-                base
-            }
-        };
-
-        // Physische Attribute
-        genotype.add_gene_pair_enum(
-            GeneType::Attribute(AttributeGene::Strength),
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::Attributes,
-        );
-
-        genotype.add_gene_pair_enum(
-            GeneType::Attribute(AttributeGene::Agility),
-            generate_random_value(0.6),
-            generate_random_value(0.6),
-            GeneExpression::Codominant,
-            ChromosomeType::Attributes,
-        );
-
-        genotype.add_gene_pair_enum(
-            GeneType::Attribute(AttributeGene::Toughness),
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::Attributes,
-        );
-
-        genotype.add_gene_pair_enum(
-            GeneType::Attribute(AttributeGene::Endurance),
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::Attributes,
-        );
-
-        genotype.add_gene_pair_enum(
-            GeneType::Attribute(AttributeGene::Recuperation),
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::Attributes,
-        );
-
-        genotype.add_gene_pair_enum(
-            GeneType::Attribute(AttributeGene::DiseaseResistance),
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::Attributes,
-        );
-
-        genotype.add_gene_pair_enum(
-            GeneType::Attribute(AttributeGene::Focus),
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::Attributes,
-        );
-
-        genotype.add_gene_pair_enum(
-            GeneType::Attribute(AttributeGene::Creativity),
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::Attributes,
-        );
-        genotype.add_gene_pair_enum(
-            GeneType::Attribute(AttributeGene::Willpower),
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::Attributes,
-        );
-        genotype.add_gene_pair_enum(
-            GeneType::Attribute(AttributeGene::AnalyticalAbility),
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::Attributes,
-        );
-        genotype.add_gene_pair_enum(
-            GeneType::Attribute(AttributeGene::Intuition),
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::Attributes,
-        );
-        genotype.add_gene_pair_enum(
-            GeneType::Attribute(AttributeGene::Memory),
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::Attributes,
-        );
-        genotype.add_gene_pair_enum(
-            GeneType::Attribute(AttributeGene::Patience),
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::Attributes,
-        );
-        genotype.add_gene_pair_enum(
-            GeneType::Attribute(AttributeGene::SpatialSense),
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::Attributes,
-        );
-        genotype.add_gene_pair_enum(
-            GeneType::Attribute(AttributeGene::Empathy),
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::Attributes,
-        );
-        genotype.add_gene_pair_enum(
-            GeneType::Attribute(AttributeGene::Leadership),
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::Attributes,
-        );
-        genotype.add_gene_pair_enum(
-            GeneType::Attribute(AttributeGene::SocialAwareness),
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::Attributes,
-        );
-        genotype.add_gene_pair_enum(
-            GeneType::Attribute(AttributeGene::LinguisticAbility),
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::Attributes,
-        );
-        genotype.add_gene_pair_enum(
-            GeneType::Attribute(AttributeGene::Negotiation),
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::Attributes,
-        );
-        genotype.add_gene_pair_enum(
-            GeneType::Attribute(AttributeGene::Musicality),
-            generate_random_value(0.5),
-            generate_random_value(0.5),
-            GeneExpression::Codominant,
-            ChromosomeType::Attributes,
-        );
+            // Füge das Genpaar hinzu (nehme Kodominant als Standard-Expression an)
+            // Die `add_gene_pair_enum` fügt es auch zur Chromosomengruppe hinzu.
+            genotype.add_gene_pair_enum(
+                GeneType::Attribute(*attribute),
+                maternal_value,
+                paternal_value,
+                GeneExpression::Codominant, // TODO: Expression könnte auch aus Library kommen?
+                ChromosomeType::Attributes,
+            );
+        }
     }
 }

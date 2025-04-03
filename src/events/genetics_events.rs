@@ -1,4 +1,5 @@
 // src/events/genetics_events.rs
+use crate::components::gene_types::AttributeGene; // Verwende den Enum
 use bevy::prelude::*;
 
 /// Wird ausgelöst, wenn eine Entität vollständig initialisiert wurde
@@ -9,13 +10,26 @@ pub struct EntityInitializedEvent {
 }
 
 /// Wird ausgelöst, wenn ein Attribut temporär modifiziert werden soll
-#[derive(Event)]
+#[derive(Event, Debug)] // Füge Debug hinzu
 pub struct TemporaryAttributeModifierEvent {
     pub entity: Entity,
-    pub attribute_id: String,
-    pub value_change: f32, // Kann positiv oder negativ sein
-    pub duration: f32,     // Dauer in Sekunden
+
+    pub attribute_id: AttributeGene, // <- Enum als ID
+    pub value_change: f32,
+    pub duration: f32,
 }
 
-// Weitere Events für genetische Ereignisse können hier hinzugefügt werden
-// z.B. Mutationen, Vererbung, usw.
+/// Event, um Reproduktion anzufordern (Beispiel)
+#[derive(Event, Debug)]
+pub struct ReproduceRequestEvent {
+    pub parent1: Entity,
+    pub parent2: Entity,
+}
+
+/// Event, das nach erfolgreicher Reproduktion gesendet wird (Beispiel)
+#[derive(Event, Debug)]
+pub struct ChildBornEvent {
+    pub child: Entity,
+    pub parent1: Entity,
+    pub parent2: Entity,
+}

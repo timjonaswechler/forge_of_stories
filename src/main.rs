@@ -1,5 +1,6 @@
 // src/main.rs
 use bevy::prelude::*;
+use std::str::FromStr; // Nötig für GeneType::from_str im Debug-System
 
 mod builders;
 mod components;
@@ -8,16 +9,25 @@ mod plugins;
 mod resources;
 mod systems;
 
-use crate::plugins::genetics_plugin::GeneticsSystemSet;
-use builders::entity_builder::EntityBuilder;
-use components::attributes::{MentalAttributes, PhysicalAttributes, SocialAttributes};
-use components::genetics::{Phenotype, SpeciesGenes};
-use components::visual_traits::VisualTraits;
-use events::genetics_events::{EntityInitializedEvent, TemporaryAttributeModifierEvent};
-use plugins::genetics_plugin::GeneticsPlugin;
-use resources::gene_library::GeneLibrary;
-use resources::genetics_generator::GeneticsGenerator;
-use systems::attributes::AttributeGroup; // Hinzugefügt für den Trait
+// Gezielte Imports
+use crate::builders::entity_builder::EntityBuilder;
+use crate::components::attributes::{
+    Attribute,
+    AttributeGroup,
+    MentalAttributes,
+    PhysicalAttributes,
+    SocialAttributes, // Import Attribute und AttributeGroup hier
+};
+use crate::components::gene_types::GeneType; // GeneType importieren
+use crate::components::genetics::{Genotype, Phenotype, SpeciesGenes}; // Genotype importieren
+use crate::components::visual_traits::VisualTraits;
+use crate::events::genetics_events::{
+    ChildBornEvent, EntityInitializedEvent, ReproduceRequestEvent, TemporaryAttributeModifierEvent,
+};
+use crate::plugins::genetics_plugin::{GeneticsPlugin, GeneticsSystemSet}; // Plugin + Set
+use crate::resources::gene_library::GeneLibrary;
+use crate::resources::genetics_generator::GeneticsGenerator;
+use crate::systems::reproduction::reproduction_system;
 
 fn main() {
     App::new()
@@ -31,16 +41,18 @@ fn main() {
         .add_plugins(GeneticsPlugin)
         .add_systems(Startup, setup)
         .insert_resource(GeneLibrary::default())
-        .insert_resource(GeneticsGenerator::default())
         // Events registrieren
         .add_event::<EntityInitializedEvent>()
         .add_event::<TemporaryAttributeModifierEvent>()
-        // System zum Senden von Events nach der Initialisierung hinzufügen
+        .add_event::<ReproduceRequestEvent>()
+        .add_event::<ChildBornEvent>()
+        // Systeme hinzufügen
         .add_systems(
             Update,
             (
-                send_entity_initialized_events.after(GeneticsSystemSet::PhysicalTraits),
-                handle_temporary_attribute_modifiers,
+                send_entity_initialized_events,
+                handle_temporary_attribute_modifiers, // Verwendet jetzt Option
+                reproduction_system,
                 debug_entities.after(GeneticsSystemSet::PhysicalTraits),
             ),
         )
@@ -52,56 +64,55 @@ fn setup(
     gene_library: Res<GeneLibrary>,
     genetics_generator: Res<GeneticsGenerator>,
 ) {
-    // Kamera
     commands.spawn(Camera2d);
-
     info!("Erstelle Testcharaktere...");
 
-    // Erstelle verschiedene Charaktere mit dem EntityBuilder
-    create_initial_entity(&mut commands, &gene_library, &genetics_generator, "Mensch");
-    create_initial_entity(&mut commands, &gene_library, &genetics_generator, "Elf");
-    create_initial_entity(&mut commands, &gene_library, &genetics_generator, "Ork");
+    // Unused variables mit _ markieren
+    let _mensch =
+        create_initial_entity(&mut commands, &gene_library, &genetics_generator, "Mensch");
+    let _elf = create_initial_entity(&mut commands, &gene_library, &genetics_generator, "Elf");
+    let _ork = create_initial_entity(&mut commands, &gene_library, &genetics_generator, "Ork");
+
+    // Beispiel: Reproduktionsversuch starten (Kommentar entfernen zum Testen)
+    // commands.trigger(ReproduceRequestEvent { parent1: _mensch, parent2: _elf });
 
     info!("Setup abgeschlossen!");
 }
 
-// Funktion zum Erstellen einer Entität mit dem EntityBuilder
+// Erstellt eine initiale Entität (unverändert)
 fn create_initial_entity(
     commands: &mut Commands,
     gene_library: &Res<GeneLibrary>,
     genetics_generator: &Res<GeneticsGenerator>,
     species: &str,
 ) -> Entity {
-    // Erstelle einen vollständigen Genotyp mit dem GeneticsGenerator
     let genotype = genetics_generator.create_initial_genotype(gene_library, species);
-
-    // Verwende den EntityBuilder, um die Entität zu erstellen
     EntityBuilder::create_entity_from_genotype(commands, genotype, vec![species.to_string()])
 }
 
 // System zum Senden von EntityInitializedEvents für neue Entitäten
+// Wird jetzt ausgelöst, wenn Phenotype *hinzugefügt* wird (normalerweise 1 Frame nach dem Spawnen)
 fn send_entity_initialized_events(
+    // Changed<...> prüft auf Änderung, Added<...> auf Hinzufügen der Komponente
     query: Query<(Entity, &SpeciesGenes), Added<Phenotype>>,
     mut entity_initialized_events: EventWriter<EntityInitializedEvent>,
 ) {
     for (entity, species_genes) in query.iter() {
-        // Ein Event senden, dass diese Entität initialisiert wurde
         entity_initialized_events.send(EntityInitializedEvent {
             entity,
             species: species_genes.species.clone(),
         });
-
         info!(
-            "Entität {:?} wurde vollständig initialisiert (Spezies: {:?})",
+            "Entity {:?} wurde initialisiert (Phenotype hinzugefügt, Spezies: {:?})",
             entity, species_genes.species
         );
     }
 }
 
-// System zur Verarbeitung temporärer Attribut-Modifikatoren
+// handle_temporary_attribute_modifiers (Jetzt ohne boolean 'attribute_found')
 fn handle_temporary_attribute_modifiers(
-    mut commands: Commands,
-    time: Res<Time>,
+    _commands: Commands,
+    _time: Res<Time>,
     mut temp_modifier_events: EventReader<TemporaryAttributeModifierEvent>,
     mut query: Query<(
         &mut PhysicalAttributes,
@@ -111,45 +122,44 @@ fn handle_temporary_attribute_modifiers(
 ) {
     for event in temp_modifier_events.read() {
         if let Ok((mut physical, mut mental, mut social)) = query.get_mut(event.entity) {
-            // Versuche zuerst physische Attribute
-            let mut attribute_found = false;
+            // Verwende Option direkt, um den mutablen Referenz zu speichern
+            let attribute_ref_option = physical
+                .get_attribute_mut(event.attribute_id)
+                .or_else(|| mental.get_attribute_mut(event.attribute_id))
+                .or_else(|| social.get_attribute_mut(event.attribute_id));
 
-            // Physische Attribute prüfen
-            if let Some(attribute) = physical.get_attribute_mut(&event.attribute_id) {
+            if let Some(attribute) = attribute_ref_option {
+                let old_value = attribute.current_value;
                 attribute.current_value += event.value_change;
-                attribute_found = true;
+                attribute.current_value = attribute.current_value.clamp(0.0, attribute.max_value);
 
-                // Man könnte hier eine Komponente mit Timer hinzufügen, um den Effekt später rückgängig zu machen
-                // Für dieses Beispiel lassen wir das der Einfachheit halber weg
                 info!(
-                    "Temporärer Modifikator auf {:?} angewendet: {} um {:.1} für {:.1} Sekunden",
-                    event.entity, event.attribute_id, event.value_change, event.duration
+                    "TempMod angewendet auf Entität {:?}: Attribut '{}' ({:?}) geändert von {:.1} um {:+.1} -> Neuer Wert: {:.1} (Dauer: {:.1}s)",
+                    event.entity,
+                    attribute.name,
+                    event.attribute_id,
+                    old_value,
+                    event.value_change,
+                    attribute.current_value,
+                    event.duration
+                );
+            } else {
+                warn!(
+                    "Attribut Enum '{:?}' für temporären Modifikator auf {:?} konnte in keiner Attributgruppe gefunden werden.",
+                    event.attribute_id, event.entity
                 );
             }
-
-            // Wenn nicht in physischen Attributen, prüfe mentale
-            if !attribute_found {
-                if let Some(attribute) = mental.get_attribute_mut(&event.attribute_id) {
-                    attribute.current_value += event.value_change;
-                    attribute_found = true;
-                }
-            }
-
-            // Wenn immer noch nicht gefunden, prüfe soziale
-            if !attribute_found {
-                if let Some(attribute) = social.get_attribute_mut(&event.attribute_id) {
-                    attribute.current_value += event.value_change;
-                }
-            }
+        } else {
+            warn!("Entität {:?} für TempMod nicht gefunden.", event.entity);
         }
     }
 }
 
-// Debug-System, das Informationen über die erzeugten Entitäten ausgibt
+// Debug-System (Verwendet jetzt auch GeneType::from_str)
 fn debug_entities(
     query: Query<(
         Entity,
-        &components::genetics::Genotype,
+        &Genotype, // <-- Use hinzugefügt
         &Phenotype,
         &PhysicalAttributes,
         &MentalAttributes,
@@ -161,58 +171,55 @@ fn debug_entities(
 ) {
     if !*ran_once {
         info!("=== DETAILLIERTE ENTITY-INFORMATIONEN ===");
-
         for (entity, genotype, phenotype, physical, mental, social, visual, species) in query.iter()
         {
             info!("Entity: {:?}", entity);
             info!("----------------------------------------");
-
-            // Genotyp-Informationen
             info!("GENOTYP: {} Gene", genotype.gene_pairs.len());
-            for (gene_id, gene_pair) in &genotype.gene_pairs {
-                info!(
-                    "  Gen '{}': Maternal: value: {:.2}, Expression: {:?}, Paternal: value: {:.2}, Expression: {:?}",
-                    gene_id,
-                    gene_pair.maternal.value,
-                    gene_pair.maternal.expression,
-                    gene_pair.paternal.value,
-                    gene_pair.paternal.expression
-                );
-            }
-
-            // Phänotyp-Informationen
             info!("PHÄNOTYP:");
             for (chrom_type, attributes) in &phenotype.attribute_groups {
                 info!("  Chromosomentyp: {:?}", chrom_type);
-                for (attr_id, gene_value) in attributes {
+                for (attr_id_str, gene_value) in attributes {
+                    // Parse für schönere Ausgabe
+                    let gene_type_str = GeneType::from_str(attr_id_str).map_or_else(
+                        // <-- Use hinzugefügt
+                        |_| format!("Unbekannt: '{}'", attr_id_str),
+                        |gt| format!("{:?}", gt),
+                    );
                     info!(
-                        "    {}: {:.2} (Expression: {:?})",
-                        attr_id,
+                        "    {:<30}: Pheno-Wert: {:<6.3} (Expression: {:?})",
+                        gene_type_str,
                         gene_value.value(),
                         gene_value.expression()
                     );
                 }
             }
-
-            // Physische Attribute
             info!("PHYSISCHE ATTRIBUTE:");
-            info!("  Stärke: {:.1}", physical.strength.current_value);
-            info!("  Beweglichkeit: {:.1}", physical.agility.current_value);
-            info!(
-                "  Widerstandsfähigkeit: {:.1}",
-                physical.toughness.current_value
-            );
-            info!("  Ausdauer: {:.1}", physical.endurance.current_value);
-            info!(
-                "  Heilungsfähigkeit: {:.1}",
-                physical.recuperation.current_value
-            );
-            info!(
-                "  Krankheitsresistenz: {:.1}",
-                physical.disease_resistance.current_value
-            );
+            debug_attribute(&physical.strength);
+            debug_attribute(&physical.agility);
+            debug_attribute(&physical.toughness);
+            debug_attribute(&physical.endurance);
+            debug_attribute(&physical.recuperation);
+            debug_attribute(&physical.disease_resistance);
 
-            // Visualtraits
+            info!("MENTALE ATTRIBUTE:");
+            debug_attribute(&mental.analytical_ability);
+            debug_attribute(&mental.focus);
+            debug_attribute(&mental.willpower);
+            debug_attribute(&mental.creativity);
+            debug_attribute(&mental.intuition);
+            debug_attribute(&mental.patience);
+            debug_attribute(&mental.memory);
+            debug_attribute(&mental.spatial_sense);
+
+            info!("SOZIALE ATTRIBUTE:");
+            debug_attribute(&social.empathy);
+            debug_attribute(&social.social_awareness);
+            debug_attribute(&social.linguistic_ability);
+            debug_attribute(&social.musicality);
+            debug_attribute(&social.leadership);
+            debug_attribute(&social.negotiation);
+
             info!("VISUELLE MERKMALE:");
             info!(
                 "  Hautfarbe: RGB({:.3}, {:.3}, {:.3})",
@@ -226,13 +233,23 @@ fn debug_entities(
                 "  Augenfarbe: RGB({:.3}, {:.3}, {:.3})",
                 visual.eye_color.0, visual.eye_color.1, visual.eye_color.2
             );
-
-            // Spezies
             info!("SPEZIES: {:?}", species.species);
-
             info!("========================================\n");
         }
-
-        *ran_once = true
+        *ran_once = true;
     }
+}
+
+// Debug-Hilfsfunktion (unverändert)
+fn debug_attribute(attribute: &Attribute) {
+    info!(
+        "  {:<20} ({:<20}): Base: {:<7.1}, Current: {:<7.1}, Effective: {:<7.1} (Max: {:.0}, Rust: {:?})",
+        attribute.name,
+        format!("{:?}", attribute.id),
+        attribute.base_value,
+        attribute.current_value,
+        attribute.effective_value,
+        attribute.max_value,
+        attribute.rust_level
+    );
 }

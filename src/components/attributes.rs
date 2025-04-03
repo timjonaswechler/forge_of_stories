@@ -1,8 +1,8 @@
 // src/components/attributes.rs
+use crate::components::gene_types::AttributeGene;
 use bevy::prelude::*;
 use std::time::Duration;
 
-// Attribut-Kategorien
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AttributeCategory {
     Physical,
@@ -10,168 +10,292 @@ pub enum AttributeCategory {
     Social,
 }
 
-// Attribut-Komponente
 #[derive(Component, Debug, Clone)]
-#[allow(dead_code)]
 pub struct Attribute {
-    pub id: String,
+    pub id: AttributeGene,
     pub name: String,
     pub category: AttributeCategory,
-    pub base_value: f32,             // Grundwert (0.0-100.0)
-    pub current_value: f32,          // Aktueller Wert mit temporären Modifikatoren
-    pub effective_value: f32,        // Berechneter Wert mit allen Modifikatoren
-    pub max_value: f32,              // Maximaler Wert (normalerweise 100.0)
-    pub last_used: Option<Duration>, // Wann das Attribut zuletzt verwendet wurde
-    pub rust_level: Option<u8>,      // 0-6 wie in DF
+    pub base_value: f32,
+    pub current_value: f32,
+    pub effective_value: f32,
+    pub max_value: f32,
+    pub last_used: Option<Duration>,
+    pub rust_level: Option<u8>,
 }
 
+// KEINE Default Implementierung für Attribute nötig
+
 impl Attribute {
-    pub fn new(id: &str, name: &str, category: AttributeCategory, base_value: f32) -> Self {
+    pub fn new(
+        id: AttributeGene,
+        name: &str,
+        category: AttributeCategory,
+        base_value: f32,
+    ) -> Self {
+        const MAX_ATTRIBUTE_VALUE: f32 = 5000.0;
         Self {
-            id: id.to_string(),
+            id,
             name: name.to_string(),
             category,
             base_value,
             current_value: base_value,
             effective_value: base_value,
-            max_value: 100.0,
+            max_value: MAX_ATTRIBUTE_VALUE,
             last_used: None,
             rust_level: None,
         }
     }
 }
 
-// Physische Attribute Komponente
+// Physische Attribute Komponente (KEIN Default derive mehr)
 #[derive(Component, Debug, Clone)]
 pub struct PhysicalAttributes {
-    pub strength: Attribute,           // Stärke, Tragfähigkeit, Nahkampfschaden
-    pub agility: Attribute,            // Geschwindigkeit, Geschicklichkeit
-    pub toughness: Attribute,          // Widerstand gegen Schaden
-    pub endurance: Attribute,          // Ausdauer, Widerstand gegen Erschöpfung
-    pub recuperation: Attribute,       // Heilungsrate
-    pub disease_resistance: Attribute, // Widerstand gegen Krankheiten
+    pub strength: Attribute,
+    pub agility: Attribute,
+    pub toughness: Attribute,
+    pub endurance: Attribute,
+    pub recuperation: Attribute,
+    pub disease_resistance: Attribute,
 }
 
 impl PhysicalAttributes {
     pub fn new() -> Self {
+        let default_base = 2500.0;
         Self {
-            strength: Attribute::new("strength", "Stärke", AttributeCategory::Physical, 50.0),
+            strength: Attribute::new(
+                AttributeGene::Strength,
+                "Stärke",
+                AttributeCategory::Physical,
+                default_base,
+            ),
             agility: Attribute::new(
-                "agility",
+                AttributeGene::Agility,
                 "Beweglichkeit",
                 AttributeCategory::Physical,
-                50.0,
+                default_base,
             ),
             toughness: Attribute::new(
-                "toughness",
+                AttributeGene::Toughness,
                 "Widerstandsfähigkeit",
                 AttributeCategory::Physical,
-                50.0,
+                default_base,
             ),
-            endurance: Attribute::new("endurance", "Ausdauer", AttributeCategory::Physical, 50.0),
+            endurance: Attribute::new(
+                AttributeGene::Endurance,
+                "Ausdauer",
+                AttributeCategory::Physical,
+                default_base,
+            ),
             recuperation: Attribute::new(
-                "recuperation",
+                AttributeGene::Recuperation,
                 "Heilungsfähigkeit",
                 AttributeCategory::Physical,
-                50.0,
+                default_base,
             ),
             disease_resistance: Attribute::new(
-                "disease_resistance",
+                AttributeGene::DiseaseResistance,
                 "Krankheitsresistenz",
                 AttributeCategory::Physical,
-                50.0,
+                default_base,
             ),
         }
     }
 }
+// Füge explizite Default Implementierung hinzu, die ::new() aufruft
+impl Default for PhysicalAttributes {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
-// Mentale Attribute Komponente
+// Mentale Attribute Komponente (KEIN Default derive mehr)
 #[derive(Component, Debug, Clone)]
 pub struct MentalAttributes {
-    pub analytical_ability: Attribute, // Problemlösung, Forschung
-    pub focus: Attribute,              // Konzentration, Präzisionsarbeit
-    pub willpower: Attribute,          // Stressresistenz, mentale Stärke
-    pub creativity: Attribute,         // Kunstfertigkeit, Ideenreichtum
-    pub intuition: Attribute,          // Entscheidungsfindung
-    pub patience: Attribute,           // Geduld bei langwierigen Aufgaben
-    pub memory: Attribute,             // Lernfähigkeit
-    pub spatial_sense: Attribute,      // Konstruktion, Navigation
+    pub analytical_ability: Attribute,
+    pub focus: Attribute,
+    pub willpower: Attribute,
+    pub creativity: Attribute,
+    pub intuition: Attribute,
+    pub patience: Attribute,
+    pub memory: Attribute,
+    pub spatial_sense: Attribute,
 }
 
 impl MentalAttributes {
     pub fn new() -> Self {
+        let default_base = 2500.0;
         Self {
             analytical_ability: Attribute::new(
-                "analytical_ability",
+                AttributeGene::AnalyticalAbility,
                 "Analytische Fähigkeit",
                 AttributeCategory::Mental,
-                50.0,
+                default_base,
             ),
-            focus: Attribute::new("focus", "Konzentration", AttributeCategory::Mental, 50.0),
-            willpower: Attribute::new("willpower", "Willenskraft", AttributeCategory::Mental, 50.0),
+            focus: Attribute::new(
+                AttributeGene::Focus,
+                "Konzentration",
+                AttributeCategory::Mental,
+                default_base,
+            ),
+            willpower: Attribute::new(
+                AttributeGene::Willpower,
+                "Willenskraft",
+                AttributeCategory::Mental,
+                default_base,
+            ),
             creativity: Attribute::new(
-                "creativity",
+                AttributeGene::Creativity,
                 "Kreativität",
                 AttributeCategory::Mental,
-                50.0,
+                default_base,
             ),
-            intuition: Attribute::new("intuition", "Intuition", AttributeCategory::Mental, 50.0),
-            patience: Attribute::new("patience", "Geduld", AttributeCategory::Mental, 50.0),
-            memory: Attribute::new("memory", "Gedächtnis", AttributeCategory::Mental, 50.0),
+            intuition: Attribute::new(
+                AttributeGene::Intuition,
+                "Intuition",
+                AttributeCategory::Mental,
+                default_base,
+            ),
+            patience: Attribute::new(
+                AttributeGene::Patience,
+                "Geduld",
+                AttributeCategory::Mental,
+                default_base,
+            ),
+            memory: Attribute::new(
+                AttributeGene::Memory,
+                "Gedächtnis",
+                AttributeCategory::Mental,
+                default_base,
+            ),
             spatial_sense: Attribute::new(
-                "spatial_sense",
+                AttributeGene::SpatialSense,
                 "Räumliches Vorstellungsvermögen",
                 AttributeCategory::Mental,
-                50.0,
+                default_base,
             ),
         }
     }
 }
+// Füge explizite Default Implementierung hinzu
+impl Default for MentalAttributes {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
-// Soziale Attribute Komponente
+// Soziale Attribute Komponente (KEIN Default derive mehr)
 #[derive(Component, Debug, Clone)]
 pub struct SocialAttributes {
-    pub empathy: Attribute,            // Verständnis für andere
-    pub social_awareness: Attribute,   // Soziale Intelligenz
-    pub linguistic_ability: Attribute, // Kommunikationsfähigkeit
-    pub musicality: Attribute,         // Musikalität
-    pub leadership: Attribute,         // Führungsqualitäten
-    pub negotiation: Attribute,        // Handel, Diplomatie
+    pub empathy: Attribute,
+    pub social_awareness: Attribute,
+    pub linguistic_ability: Attribute,
+    pub musicality: Attribute,
+    pub leadership: Attribute,
+    pub negotiation: Attribute,
 }
+
 impl SocialAttributes {
     pub fn new() -> Self {
+        let default_base = 2500.0;
         Self {
-            empathy: Attribute::new("empathy", "Empathie", AttributeCategory::Social, 50.0),
+            empathy: Attribute::new(
+                AttributeGene::Empathy,
+                "Empathie",
+                AttributeCategory::Social,
+                default_base,
+            ),
             social_awareness: Attribute::new(
-                "social_awareness",
+                AttributeGene::SocialAwareness,
                 "Soziale Wahrnehmung",
                 AttributeCategory::Social,
-                50.0,
+                default_base,
             ),
             linguistic_ability: Attribute::new(
-                "linguistic_ability",
+                AttributeGene::LinguisticAbility,
                 "Sprachliche Fähigkeit",
                 AttributeCategory::Social,
-                50.0,
-            ),
-            leadership: Attribute::new(
-                "leadership",
-                "Führungsstärke",
-                AttributeCategory::Social,
-                50.0,
+                default_base,
             ),
             musicality: Attribute::new(
-                "musicality",
+                AttributeGene::Musicality,
                 "Musikalität",
                 AttributeCategory::Social,
-                50.0,
+                default_base,
+            ),
+            leadership: Attribute::new(
+                AttributeGene::Leadership,
+                "Führungsstärke",
+                AttributeCategory::Social,
+                default_base,
             ),
             negotiation: Attribute::new(
-                "negotiation",
+                AttributeGene::Negotiation,
                 "Verhandlungsgeschick",
                 AttributeCategory::Social,
-                50.0,
+                default_base,
             ),
+        }
+    }
+}
+// Füge explizite Default Implementierung hinzu
+impl Default for SocialAttributes {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// -- AttributeGroup Trait Anpassung --
+
+// Generischer Trait für Attributgruppen (Nimmt jetzt AttributeGene)
+pub trait AttributeGroup {
+    fn get_attribute_mut(&mut self, id: AttributeGene) -> Option<&mut Attribute>;
+    // Optional: Eine Methode, um alle Attribute aufzulisten
+    // fn get_all_attributes_mut(&mut self) -> Vec<&mut Attribute>;
+}
+
+// Implementierung für PhysicalAttributes (Matching auf AttributeGene)
+impl AttributeGroup for PhysicalAttributes {
+    fn get_attribute_mut(&mut self, id: AttributeGene) -> Option<&mut Attribute> {
+        match id {
+            AttributeGene::Strength => Some(&mut self.strength),
+            AttributeGene::Agility => Some(&mut self.agility),
+            AttributeGene::Toughness => Some(&mut self.toughness),
+            AttributeGene::Endurance => Some(&mut self.endurance),
+            AttributeGene::Recuperation => Some(&mut self.recuperation),
+            AttributeGene::DiseaseResistance => Some(&mut self.disease_resistance),
+            _ => None, // Ignoriere mentale/soziale Gene hier
+        }
+    }
+}
+
+// Implementierung für MentalAttributes (Matching auf AttributeGene)
+impl AttributeGroup for MentalAttributes {
+    fn get_attribute_mut(&mut self, id: AttributeGene) -> Option<&mut Attribute> {
+        match id {
+            AttributeGene::AnalyticalAbility => Some(&mut self.analytical_ability),
+            AttributeGene::Focus => Some(&mut self.focus),
+            AttributeGene::Willpower => Some(&mut self.willpower),
+            AttributeGene::Creativity => Some(&mut self.creativity),
+            AttributeGene::Intuition => Some(&mut self.intuition),
+            AttributeGene::Patience => Some(&mut self.patience),
+            AttributeGene::Memory => Some(&mut self.memory),
+            AttributeGene::SpatialSense => Some(&mut self.spatial_sense),
+            _ => None, // Ignoriere physische/soziale Gene hier
+        }
+    }
+}
+
+// Implementierung für SocialAttributes (Matching auf AttributeGene)
+impl AttributeGroup for SocialAttributes {
+    fn get_attribute_mut(&mut self, id: AttributeGene) -> Option<&mut Attribute> {
+        match id {
+            AttributeGene::Empathy => Some(&mut self.empathy),
+            AttributeGene::SocialAwareness => Some(&mut self.social_awareness),
+            AttributeGene::LinguisticAbility => Some(&mut self.linguistic_ability),
+            AttributeGene::Musicality => Some(&mut self.musicality),
+            AttributeGene::Leadership => Some(&mut self.leadership),
+            AttributeGene::Negotiation => Some(&mut self.negotiation),
+            _ => None, // Ignoriere physische/mentale Gene hier
         }
     }
 }
