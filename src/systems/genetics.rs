@@ -6,64 +6,21 @@ use crate::components::attributes::{MentalAttributes, PhysicalAttributes, Social
 use crate::components::genetics::{
     ChromosomeType, GeneExpression, Genotype, Phenotype, PhenotypeGene, SpeciesGenes,
 };
-use crate::components::visual_traits::EyeColor;
 use crate::resources::eye_color_inheritance::EyeColorInheritance;
 
 // System zur Berechnung des Phänotyps aus dem Genotyp
-pub fn genotype_to_phenotype_system(
-    mut query: Query<(&Genotype, &mut Phenotype, &SpeciesGenes)>,
-    eye_inheritance: Res<EyeColorInheritance>,
-) {
-    for (genotype, mut phenotype, species_genes) in query.iter_mut() {
+// src/systems/genetics.rs
+pub fn genotype_to_phenotype_system(mut query: Query<(&Genotype, &mut Phenotype, &SpeciesGenes)>) {
+    for (genotype, mut phenotype, _species_genes) in query.iter_mut() {
         // Leere die Phänotyp-Gruppen
         phenotype.attribute_groups.clear();
         phenotype.attributes.clear();
 
-        // Bestimme die primäre Spezies (verwende die erste, falls vorhanden)
-        let primary_species = species_genes
-            .species
-            .first()
-            .map(|s| s.as_str())
-            .unwrap_or("Mensch"); // Fallback auf Mensch
-
         for (gene_id, gene_pair) in genotype.gene_pairs.iter() {
-            // Spezielle Verarbeitung für Augenfarben
-            if gene_id == "gene_eye_color" {
-                let maternal_eye_color = EyeColor::from_f32(gene_pair.maternal.value);
-                let paternal_eye_color = EyeColor::from_f32(gene_pair.paternal.value);
-
-                // Verwende die Spezies-spezifische Vererbungslogik
-                let resulting_eye_color = if maternal_eye_color == paternal_eye_color {
-                    maternal_eye_color
-                } else {
-                    eye_inheritance.inherit_eye_color(
-                        primary_species,
-                        maternal_eye_color,
-                        paternal_eye_color,
-                    )
-                };
-
-                let phenotype_gene = PhenotypeGene {
-                    value: resulting_eye_color.to_f32(),
-                    expression: GeneExpression::Codominant,
-                };
-
-                phenotype.attributes.insert(gene_id.clone(), phenotype_gene);
-
-                phenotype
-                    .attribute_groups
-                    .entry(gene_pair.chromosome_type)
-                    .or_insert_with(|| HashMap::new())
-                    .insert(gene_id.clone(), phenotype_gene);
-
-                continue; // Skip standard processing for this gene
-            }
-
-            // Standardverarbeitung für alle anderen Gene
+            // Standardverarbeitung für alle Gene
             let (value, expression) =
                 match (gene_pair.maternal.expression, gene_pair.paternal.expression) {
-                    // ... bestehender Code ...
-                    // Wenn beide dominant sind oder beide rezessiv, nimm den Durchschnitt und behalte die Expression
+                    // Wenn beide dominant sind oder beide rezessiv, nimm den Durchschnitt
                     (GeneExpression::Dominant, GeneExpression::Dominant) => (
                         (gene_pair.maternal.value + gene_pair.paternal.value) / 2.0,
                         GeneExpression::Dominant,
@@ -100,11 +57,12 @@ pub fn genotype_to_phenotype_system(
             phenotype
                 .attribute_groups
                 .entry(gene_pair.chromosome_type)
-                .or_insert_with(|| HashMap::new()) // Korrigiert mit einem Closure
+                .or_insert_with(HashMap::new)
                 .insert(gene_id.clone(), phenotype_gene);
         }
     }
 }
+
 // System zur Anwendung des Phänotyps auf die physischen Attribute
 pub fn apply_physical_attributes_system(mut query: Query<(&Phenotype, &mut PhysicalAttributes)>) {
     for (phenotype, mut physical_attrs) in query.iter_mut() {

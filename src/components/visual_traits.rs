@@ -7,6 +7,15 @@ pub struct VisualTraits {
     pub hair_color: (f32, f32, f32),
     pub eye_color: (f32, f32, f32),
 }
+impl VisualTraits {
+    pub fn new() -> Self {
+        Self {
+            skin_color: (0.5, 0.5, 0.5),
+            hair_color: (0.5, 0.5, 0.5),
+            eye_color: (0.5, 0.5, 0.5),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EyeColor {

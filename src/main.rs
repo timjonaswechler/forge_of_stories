@@ -7,6 +7,7 @@ mod plugins;
 mod resources;
 mod systems; // Neues Modul für den EntityBuilder
 
+use crate::plugins::genetics_plugin::GeneticsSystemSet;
 use builders::entity_builder::EntityBuilder;
 use builders::genetics_helper::GeneticsHelper;
 use components::attributes::{MentalAttributes, PhysicalAttributes, SocialAttributes};
@@ -30,13 +31,15 @@ fn main() {
             }),
             ..default()
         }))
-        .insert_resource(AppState { running: true })
+        // Keine AppState mehr nötig
         .add_plugins(GeneticsPlugin)
         .add_systems(Startup, setup)
-        // Füge GeneLibrary als Ressource hinzu
         .insert_resource(GeneLibrary::default())
-        // Debug-System, das Informationen über die erzeugten Entitäten ausgibt
-        .add_systems(Update, debug_entities)
+        // Debug-System wird jetzt nach dem letzten GeneticsSystemSet ausgeführt
+        .add_systems(
+            Update,
+            debug_entities.after(GeneticsSystemSet::PhysicalTraits),
+        )
         .run();
 }
 
@@ -64,12 +67,7 @@ fn create_initial_entity(
     let genotype = GeneticsHelper::create_initial_genotype(gene_library, species);
 
     // Verwende den EntityBuilder, um die Entität zu erstellen
-    EntityBuilder::create_entity_from_genotype(
-        commands,
-        genotype,
-        vec![species.to_string()],
-        gene_library,
-    )
+    EntityBuilder::create_entity_from_genotype(commands, genotype, vec![species.to_string()])
 }
 
 // Debug-System, das Informationen über die erzeugten Entitäten ausgibt
@@ -83,15 +81,10 @@ fn debug_entities(
         &SocialAttributes,
         &VisualTraits,
         &SpeciesGenes,
-        // &components::genetics::Personality,
     )>,
-    // time: Res<Time>,
-    mut state: ResMut<AppState>,
+    mut ran_once: Local<bool>, // Lokaler Zustand statt globaler Resource
 ) {
-    if state.running {
-        // Erster Durchlauf: Markiere als bereit für Debug
-        state.running = true;
-    } else if !state.running {
+    if !*ran_once {
         info!("=== DETAILLIERTE ENTITY-INFORMATIONEN ===");
 
         for (
@@ -174,6 +167,6 @@ fn debug_entities(
             info!("========================================\n");
         }
 
-        state.running = false;
+        *ran_once = true
     }
 }

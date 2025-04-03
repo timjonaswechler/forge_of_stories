@@ -135,7 +135,6 @@ pub fn apply_social_attributes_system(query: Query<(&Phenotype, &mut SocialAttri
     apply_attributes::<SocialAttributes>(query, "gene_");
 }
 
-// System zur Berechnung visueller Merkmale basierend auf Genen
 pub fn apply_visual_traits_system(
     mut query: Query<(
         &Phenotype,
@@ -148,7 +147,7 @@ pub fn apply_visual_traits_system(
             .attribute_groups
             .get(&ChromosomeType::VisualTraits)
         {
-            // Wenn wir spezifische Gene für RGB-Komponenten haben, verwenden wir diese
+            // RGB-Komponenten für Hautfarbe
             if visual_values.contains_key("gene_skin_r")
                 && visual_values.contains_key("gene_skin_g")
                 && visual_values.contains_key("gene_skin_b")
@@ -160,7 +159,7 @@ pub fn apply_visual_traits_system(
                 );
             }
 
-            // Optional: Auch Haar- und Augenfarbe aktualisieren
+            // RGB-Komponenten für Haarfarbe
             if visual_values.contains_key("gene_hair_r")
                 && visual_values.contains_key("gene_hair_g")
                 && visual_values.contains_key("gene_hair_b")
@@ -172,11 +171,12 @@ pub fn apply_visual_traits_system(
                 );
             }
 
-            // Augenfarbe
+            // Augenfarbe - jetzt werden wir den numerischen Wert in eine EyeColor umwandeln
+            // und dann in RGB-Werte
             if let Some(eye_color_gene) = visual_values.get("gene_eye_color") {
                 let eye_color = EyeColor::from_f32(eye_color_gene.value);
 
-                // Temporäre einfache RGB-Zuordnung (später durch Lookup-Tabelle ersetzen)
+                // Zuordnung von EyeColor zu RGB-Werten
                 visual_traits.eye_color = match eye_color {
                     EyeColor::Brown => (0.55, 0.27, 0.07),
                     EyeColor::Green => (0.21, 0.47, 0.21),

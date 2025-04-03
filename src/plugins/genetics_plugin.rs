@@ -1,5 +1,9 @@
 // src/plugins/genetics_plugin.rs
 use crate::resources::eye_color_inheritance::EyeColorInheritance;
+
+use crate::components::attributes::{MentalAttributes, PhysicalAttributes, SocialAttributes};
+use crate::components::genetics::Phenotype;
+
 use crate::systems::attributes as attr_systems;
 use crate::systems::genetics::*;
 use bevy::prelude::*;
@@ -9,7 +13,7 @@ pub struct GeneticsPlugin;
 
 // Definition der verschiedenen SystemSets für bessere Kontrolle
 #[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
-enum GeneticsSystemSet {
+pub enum GeneticsSystemSet {
     // Genetische Grundlagenberechnungen
     GenotypePhenotype,
     // Anwendung von Genen auf Attribute und Eigenschaften
@@ -29,15 +33,10 @@ impl Plugin for GeneticsPlugin {
             .configure_sets(
                 Update,
                 (
-                    // Genetische Grundmechanismen müssen zuerst berechnet werden
                     GeneticsSystemSet::GenotypePhenotype,
-                    // Dann werden Attribute angewendet
                     GeneticsSystemSet::AttributeApplication,
-                    // Danach werden abgeleitete Attribute berechnet
                     GeneticsSystemSet::AttributeCalculation,
-                    // Anschließend visuelle und körperliche Eigenschaften
                     GeneticsSystemSet::PhysicalTraits,
-                    // Schließlich Spezies und Fortpflanzung
                     GeneticsSystemSet::SpeciesReproduction,
                 )
                     .chain(),
@@ -48,13 +47,19 @@ impl Plugin for GeneticsPlugin {
                 Update,
                 genotype_to_phenotype_system.in_set(GeneticsSystemSet::GenotypePhenotype),
             )
-            // Attribut-Anwendungs-Systeme
+            // Attribut-Anwendungs-Systeme mit generischem apply_attributes
             .add_systems(
                 Update,
                 (
-                    attr_systems::apply_physical_attributes_system,
-                    attr_systems::apply_mental_attributes_system,
-                    attr_systems::apply_social_attributes_system,
+                    |phenotype: Query<(&Phenotype, &mut PhysicalAttributes)>| {
+                        attr_systems::apply_attributes::<PhysicalAttributes>(phenotype, "gene_")
+                    },
+                    |phenotype: Query<(&Phenotype, &mut MentalAttributes)>| {
+                        attr_systems::apply_attributes::<MentalAttributes>(phenotype, "gene_")
+                    },
+                    |phenotype: Query<(&Phenotype, &mut SocialAttributes)>| {
+                        attr_systems::apply_attributes::<SocialAttributes>(phenotype, "gene_")
+                    },
                 )
                     .in_set(GeneticsSystemSet::AttributeApplication),
             )
