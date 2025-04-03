@@ -1,29 +1,36 @@
-// src/builders/genetics_helper.rs
+// src/resources/genetics_generator.rs
 use bevy::prelude::*;
 use rand::prelude::*;
 
 use crate::components::gene_types::{AttributeGene, GeneType, VisualGene};
 use crate::components::genetics::{ChromosomeType, GeneExpression, Genotype};
 use crate::resources::gene_library::GeneLibrary;
-/// Hilfsfunktionen für die Genotyp-Generierung
-pub struct GeneticsHelper;
 
-impl GeneticsHelper {
+/// Resource für die Genotyp-Generierung
+#[derive(Resource, Default)]
+pub struct GeneticsGenerator;
+
+impl GeneticsGenerator {
     /// Erzeugt einen vollständigen Genotyp für eine neue Entität
-    pub fn create_initial_genotype(gene_library: &Res<GeneLibrary>, species: &str) -> Genotype {
+    pub fn create_initial_genotype(
+        &self,
+        gene_library: &Res<GeneLibrary>,
+        species: &str,
+    ) -> Genotype {
         let mut genotype = Genotype::new();
 
         // Visuelle Gene hinzufügen
-        Self::add_visual_genes(&mut genotype, gene_library, species);
+        self.add_visual_genes(&mut genotype, gene_library, species);
 
         // Attribute-Gene hinzufügen
-        Self::add_attribute_genes(&mut genotype, gene_library, species);
+        self.add_attribute_genes(&mut genotype, gene_library, species);
 
         genotype
     }
 
     /// Fügt Gene für visuelle Eigenschaften hinzu
-    pub fn add_visual_genes(
+    fn add_visual_genes(
+        &self,
         genotype: &mut Genotype,
         gene_library: &Res<GeneLibrary>,
         species: &str,
@@ -89,10 +96,11 @@ impl GeneticsHelper {
     }
 
     /// Fügt Gene für Attribute hinzu
-    pub fn add_attribute_genes(
+    fn add_attribute_genes(
+        &self,
         genotype: &mut Genotype,
-        gene_library: &Res<GeneLibrary>,
-        species: &str,
+        _gene_library: &Res<GeneLibrary>,
+        _species: &str,
     ) {
         let randomize = true;
         let mut rng = rand::thread_rng();

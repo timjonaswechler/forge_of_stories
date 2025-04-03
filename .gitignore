@@ -1,2 +1,4 @@
 /target
 Cargo.lock
+script.py
+combined_source.md

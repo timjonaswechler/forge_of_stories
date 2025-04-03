@@ -1,5 +1,6 @@
 // src/plugins/genetics_plugin.rs
 use crate::resources::eye_color_inheritance::EyeColorInheritance;
+use crate::resources::genetics_generator::GeneticsGenerator;
 
 use crate::components::attributes::{MentalAttributes, PhysicalAttributes, SocialAttributes};
 use crate::components::genetics::Phenotype;
@@ -42,23 +43,24 @@ impl Plugin for GeneticsPlugin {
                     .chain(),
             )
             .insert_resource(EyeColorInheritance::new())
+            .insert_resource(GeneticsGenerator::default())
             // Grundlegende genetische Systeme
             .add_systems(
                 Update,
                 genotype_to_phenotype_system.in_set(GeneticsSystemSet::GenotypePhenotype),
             )
-            // Attribut-Anwendungs-Systeme mit generischem apply_attributes
+            // Attribut-Anwendungs-Systeme mit generischem apply_attributes und Changed<Phenotype>
             .add_systems(
                 Update,
                 (
-                    |phenotype: Query<(&Phenotype, &mut PhysicalAttributes)>| {
-                        attr_systems::apply_attributes::<PhysicalAttributes>(phenotype, "gene_")
+                    |query: Query<(&Phenotype, &mut PhysicalAttributes), Changed<Phenotype>>| {
+                        attr_systems::apply_attributes::<PhysicalAttributes>(query, "gene_")
                     },
-                    |phenotype: Query<(&Phenotype, &mut MentalAttributes)>| {
-                        attr_systems::apply_attributes::<MentalAttributes>(phenotype, "gene_")
+                    |query: Query<(&Phenotype, &mut MentalAttributes), Changed<Phenotype>>| {
+                        attr_systems::apply_attributes::<MentalAttributes>(query, "gene_")
                     },
-                    |phenotype: Query<(&Phenotype, &mut SocialAttributes)>| {
-                        attr_systems::apply_attributes::<SocialAttributes>(phenotype, "gene_")
+                    |query: Query<(&Phenotype, &mut SocialAttributes), Changed<Phenotype>>| {
+                        attr_systems::apply_attributes::<SocialAttributes>(query, "gene_")
                     },
                 )
                     .in_set(GeneticsSystemSet::AttributeApplication),

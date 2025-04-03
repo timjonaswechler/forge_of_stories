@@ -9,8 +9,10 @@ use crate::components::genetics::{
 use crate::resources::eye_color_inheritance::EyeColorInheritance;
 
 // System zur Berechnung des Phänotyps aus dem Genotyp
-// src/systems/genetics.rs
-pub fn genotype_to_phenotype_system(mut query: Query<(&Genotype, &mut Phenotype, &SpeciesGenes)>) {
+// Reagiert nur auf Änderungen am Genotyp
+pub fn genotype_to_phenotype_system(
+    mut query: Query<(&Genotype, &mut Phenotype, &SpeciesGenes), Changed<Genotype>>,
+) {
     for (genotype, mut phenotype, _species_genes) in query.iter_mut() {
         // Leere die Phänotyp-Gruppen
         phenotype.attribute_groups.clear();
@@ -64,7 +66,10 @@ pub fn genotype_to_phenotype_system(mut query: Query<(&Genotype, &mut Phenotype,
 }
 
 // System zur Anwendung des Phänotyps auf die physischen Attribute
-pub fn apply_physical_attributes_system(mut query: Query<(&Phenotype, &mut PhysicalAttributes)>) {
+// Reagiert nur auf Änderungen am Phänotyp
+pub fn apply_physical_attributes_system(
+    mut query: Query<(&Phenotype, &mut PhysicalAttributes), Changed<Phenotype>>,
+) {
     for (phenotype, mut physical_attrs) in query.iter_mut() {
         // Holen der Attributwerte aus der Attribut-Chromosomen-Gruppe
         if let Some(attribute_values) = phenotype.attribute_groups.get(&ChromosomeType::Attributes)
@@ -107,7 +112,10 @@ pub fn apply_physical_attributes_system(mut query: Query<(&Phenotype, &mut Physi
 }
 
 // System zur Anwendung des Phänotyps auf die mentalen Attribute
-pub fn apply_mental_attributes_system(mut query: Query<(&Phenotype, &mut MentalAttributes)>) {
+// Reagiert nur auf Änderungen am Phänotyp
+pub fn apply_mental_attributes_system(
+    mut query: Query<(&Phenotype, &mut MentalAttributes), Changed<Phenotype>>,
+) {
     for (phenotype, mut mental_attrs) in query.iter_mut() {
         // Holen der Attributwerte aus der Attribut-Chromosomen-Gruppe
         if let Some(attribute_values) = phenotype.attribute_groups.get(&ChromosomeType::Attributes)
@@ -148,7 +156,10 @@ pub fn apply_mental_attributes_system(mut query: Query<(&Phenotype, &mut MentalA
 }
 
 // System zur Anwendung des Phänotyps auf die sozialen Attribute
-pub fn apply_social_attributes_system(mut query: Query<(&Phenotype, &mut SocialAttributes)>) {
+// Reagiert nur auf Änderungen am Phänotyp
+pub fn apply_social_attributes_system(
+    mut query: Query<(&Phenotype, &mut SocialAttributes), Changed<Phenotype>>,
+) {
     for (phenotype, mut social_attrs) in query.iter_mut() {
         // Holen der Attributwerte aus der Attribut-Chromosomen-Gruppe
         if let Some(attribute_values) = phenotype.attribute_groups.get(&ChromosomeType::Attributes)

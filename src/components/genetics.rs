@@ -1,5 +1,5 @@
 // src/components/genetics.rs
-use crate::components::gene_types::{AttributeGene, GeneType, VisualGene};
+use crate::components::gene_types::GeneType;
 use bevy::prelude::*;
 use std::collections::HashMap;
 use std::str::FromStr;

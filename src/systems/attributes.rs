@@ -95,8 +95,9 @@ pub fn update_attribute_rust(time: Res<Time>, mut query: Query<&mut Attribute>) 
 }
 
 // Generisches System zur Anwendung von Phänotypwerten auf Attribute
+// Reagiert nur auf Änderungen am Phänotyp
 pub fn apply_attributes<T: AttributeGroup + Component>(
-    mut query: Query<(&Phenotype, &mut T)>,
+    mut query: Query<(&Phenotype, &mut T), Changed<Phenotype>>,
     attribute_prefix: &str,
 ) {
     for (phenotype, mut attribute_group) in query.iter_mut() {
@@ -123,23 +124,32 @@ pub fn apply_attributes<T: AttributeGroup + Component>(
 
 // Die ursprünglichen Systeme können jetzt erheblich vereinfacht werden:
 
-pub fn apply_physical_attributes_system(query: Query<(&Phenotype, &mut PhysicalAttributes)>) {
+pub fn apply_physical_attributes_system(
+    query: Query<(&Phenotype, &mut PhysicalAttributes), Changed<Phenotype>>,
+) {
     apply_attributes::<PhysicalAttributes>(query, "gene_");
 }
 
-pub fn apply_mental_attributes_system(query: Query<(&Phenotype, &mut MentalAttributes)>) {
+pub fn apply_mental_attributes_system(
+    query: Query<(&Phenotype, &mut MentalAttributes), Changed<Phenotype>>,
+) {
     apply_attributes::<MentalAttributes>(query, "gene_");
 }
 
-pub fn apply_social_attributes_system(query: Query<(&Phenotype, &mut SocialAttributes)>) {
+pub fn apply_social_attributes_system(
+    query: Query<(&Phenotype, &mut SocialAttributes), Changed<Phenotype>>,
+) {
     apply_attributes::<SocialAttributes>(query, "gene_");
 }
 
 pub fn apply_visual_traits_system(
-    mut query: Query<(
-        &Phenotype,
-        &mut crate::components::visual_traits::VisualTraits,
-    )>,
+    mut query: Query<
+        (
+            &Phenotype,
+            &mut crate::components::visual_traits::VisualTraits,
+        ),
+        Changed<Phenotype>,
+    >,
 ) {
     for (phenotype, mut visual_traits) in query.iter_mut() {
         // Für visuelle Merkmale verwenden wir primär die VisualTraits-Chromosomengruppe
@@ -193,7 +203,6 @@ pub fn apply_visual_traits_system(
 }
 
 // System zur Aktualisierung der physischen Attribut-Sammlung
-//TODO: Implementierung fehlt
 pub fn update_physical_attributes(query: Query<&PhysicalAttributes>) {
     for _physical_attrs in query.iter() {
         // Hier könnten zusätzliche Berechnungen für die gesamte Attributgruppe erfolgen
@@ -202,7 +211,6 @@ pub fn update_physical_attributes(query: Query<&PhysicalAttributes>) {
 }
 
 // System zur Aktualisierung der mentalen Attribut-Sammlung
-//TODO: Implementierung fehlt
 pub fn update_mental_attributes(query: Query<&MentalAttributes>) {
     for _mental_attrs in query.iter() {
         // Hier könnten zusätzliche Berechnungen für die gesamte Attributgruppe erfolgen
@@ -210,7 +218,6 @@ pub fn update_mental_attributes(query: Query<&MentalAttributes>) {
 }
 
 // System zur Aktualisierung der sozialen Attribut-Sammlung
-//TODO: Implementierung fehlt
 pub fn update_social_attributes(query: Query<&SocialAttributes>) {
     for _social_attrs in query.iter() {
         // Hier könnten zusätzliche Berechnungen für die gesamte Attributgruppe erfolgen
@@ -218,7 +225,6 @@ pub fn update_social_attributes(query: Query<&SocialAttributes>) {
 }
 
 // Hilfssystem zur Aktualisierung der "last_used" Zeit für Attribute
-//TODO: Implementierung fehlt
 #[allow(dead_code)]
 pub fn update_attribute_usage(
     mut attribute_query: Query<&mut Attribute>,
