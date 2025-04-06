@@ -1,35 +1,46 @@
+// src/main.rs
 use bevy::prelude::*;
 
-// Konstanten bleiben hier oder werden in ein config-Modul verschoben
-pub const FIXED_SEED: u64 = 1234567890;
-pub const USE_FIXED_SEED: bool = true;
-
-// Modul-Deklarationen bleiben
-mod builders;
-mod components;
-mod config;
-mod events;
-mod plugins;
-mod resources;
-mod systems;
-
-// Importiere die Plugins
-use plugins::{
-    core_plugin::CorePlugin, debug_plugin::DebugPlugin, event_plugin::EventPlugin,
-    genetics_plugin::GeneticsPlugin, setup_plugin::SetupPlugin,
-    simulation_plugin::SimulationPlugin,
+// Importiere direkt aus dem Crate-Root (lib.rs)
+use forge_of_stories::{
+    app_setup::{
+        core_plugin::CorePlugin, event_plugin::EventPlugin, setup_plugin::SetupPlugin, AppState,
+    },
+    attributes::plugin::AttributesPlugin,
+    debug::plugin::DebugPlugin,
+    genetics::plugin::GeneticsCorePlugin, // Füge dies hinzu, wenn du es erstellt hast
+    simulation::plugin::SimulationPlugin,
+    visuals::plugin::VisualsPlugin,
+    SimulationSystemSet, // Importiere das Set
+                         // Konstanten werden jetzt auch hier importiert, falls sie in lib.rs sind
+                         // FIXED_SEED, USE_FIXED_SEED,
 };
 
 fn main() {
     App::new()
+        // Konfiguriere die System Sets für die Update-Phase
+        .configure_sets(
+            Update,
+            (
+                // Reihenfolge der Ausführung definieren
+                SimulationSystemSet::GenotypePhenotype,
+                SimulationSystemSet::AttributeApplication,
+                SimulationSystemSet::VisualTraitApplication,
+                SimulationSystemSet::AttributeCalculation,
+            )
+                .chain()
+                .run_if(in_state(AppState::Running)), // Alle laufen nur im Running State und nacheinander
+        )
+        // Füge die Plugins hinzu
         .add_plugins((
-            CorePlugin,       // Basis-Setup (DefaultPlugins, Log, Window, RNG)
-            EventPlugin,      // Registriert alle Events
-            SetupPlugin,      // Lädt Assets, verwaltet AppState, init GeneLibrary
-            GeneticsPlugin,   // Genotyp->Phänotyp Pipeline, Attribut-Berechnung
-            SimulationPlugin, // Charakter-Erstellung, laufende Systeme (Reproduktion etc.)
-            DebugPlugin,      // Debugging-Systeme (nur im Debug-Build)
-                              // Füge hier zukünftige Plugins hinzu (z.B. UiPlugin)
+            CorePlugin,         // Basis-Setup (DefaultPlugins, Log, Window, RNG)
+            EventPlugin,        // Registriert alle Events
+            SetupPlugin,        // Lädt Assets, verwaltet AppState, init GeneLibrary
+            GeneticsCorePlugin, // Fügt genotype_to_phenotype hinzu (wenn erstellt)
+            AttributesPlugin,   // Fügt Attribut-Systeme hinzu
+            VisualsPlugin,      // Fügt Visual-Systeme und Ressourcen hinzu
+            SimulationPlugin,   // Charakter-Erstellung, laufende Systeme (Reproduktion etc.)
+            DebugPlugin,        // Debugging-Systeme (nur im Debug-Build)
         ))
         .run();
 }
