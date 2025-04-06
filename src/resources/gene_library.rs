@@ -5,10 +5,11 @@ use crate::components::visual_traits::EyeColor;
 use bevy::prelude::*;
 use rand::Rng;
 use rand_distr::{Distribution, Normal};
+use serde::Deserialize;
 use std::collections::HashMap;
 
 // Struktur zur Beschreibung der Verteilung eines Gens (Mittelwert und Standardabweichung für 0.0-1.0 Skala)
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Deserialize)]
 pub struct GeneDistribution {
     pub mean: f32,    // Mittelwert (sollte zwischen 0 und 1 liegen)
     pub std_dev: f32, // Standardabweichung
@@ -36,20 +37,15 @@ pub struct GeneLibrary {
     pub attribute_distributions: HashMap<String, HashMap<AttributeGene, GeneDistribution>>,
 }
 
-// Default Implementierung sollte leer sein, wenn TODO 4 gemacht wird
 impl Default for GeneLibrary {
     fn default() -> Self {
-        let mut lib = Self {
+        // Initialisiert jetzt LEERE HashMaps
+        Self {
             skin_colors: HashMap::new(),
             hair_colors: HashMap::new(),
             eye_colors: HashMap::new(),
             attribute_distributions: HashMap::new(),
-        };
-        // Temporär, bis TODO 4: Fülle die Daten hier.
-        // Diese Methoden sollten dann entfernt werden.
-        lib.populate_color_palettes();
-        lib.populate_attribute_distributions();
-        lib
+        }
     }
 }
 

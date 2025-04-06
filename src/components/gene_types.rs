@@ -1,9 +1,10 @@
 // src/components/gene_types.rs
+use serde::Deserialize;
 use std::fmt::{self, Display};
 use std::str::FromStr;
 
 /// Repräsentiert alle Gene für Attribute
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
 pub enum AttributeGene {
     Strength,
     Agility,
@@ -28,7 +29,7 @@ pub enum AttributeGene {
 }
 
 /// Repräsentiert alle Gene für visuelle Eigenschaften
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
 pub enum VisualGene {
     SkinColorR,
     SkinColorG,
@@ -41,7 +42,7 @@ pub enum VisualGene {
 }
 
 /// Übergeordneter Enum für alle Gen-Typen
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
 pub enum GeneType {
     Attribute(AttributeGene),
     Visual(VisualGene),

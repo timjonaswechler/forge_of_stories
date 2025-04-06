@@ -1,0 +1,21 @@
+(
+    species_name: "Elf",
+    skin_colors: [
+        (1.000, 0.922, 0.804), (1.000, 0.855, 0.725),
+        (0.961, 0.784, 0.569), (0.706, 0.784, 0.902),
+    ],
+    hair_colors: [
+        (0.9, 0.9, 0.8), (0.8, 0.8, 0.6), (0.7, 0.6, 0.3),
+        (0.3, 0.2, 0.1), (0.1, 0.1, 0.1),
+    ],
+    eye_colors: [ Green, Blue, Gray, Brown ], // Reihenfolge geändert
+    attribute_distributions: {
+        Strength: ( mean: 0.35, std_dev: 0.08 ),
+        Agility: ( mean: 0.7, std_dev: 0.1 ),
+        Toughness: ( mean: 0.35, std_dev: 0.08 ),
+        Endurance: ( mean: 0.6, std_dev: 0.1 ),
+        // ... (restliche Elf-Verteilungen) ...
+        LinguisticAbility: ( mean: 0.75, std_dev: 0.1 ),
+        Musicality: ( mean: 0.8, std_dev: 0.1 ),
+    }
+)

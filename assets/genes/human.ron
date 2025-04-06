@@ -1,0 +1,42 @@
+
+(
+    species_name: "Mensch", // Zur Info
+
+    // Vektor von RGB-Tupeln
+    skin_colors: [
+        (1.000, 0.914, 0.859), (1.000, 0.878, 0.800), // ... viele Farben ...
+        (0.290, 0.149, 0.086),
+    ],
+
+    hair_colors: [
+        (0.1, 0.1, 0.1), (0.3, 0.2, 0.1), (0.6, 0.4, 0.2),
+        (0.8, 0.7, 0.3), (0.6, 0.3, 0.1), (0.8, 0.1, 0.1),
+    ],
+
+    // Vektor von EyeColor Enums (als Strings)
+    eye_colors: [ Brown, Green, Blue, Gray ],
+
+    // Map von Attribut-Enum (als String) zu Verteilung
+    attribute_distributions: {
+        Strength: ( mean: 0.5, std_dev: 0.1 ),
+        Agility: ( mean: 0.5, std_dev: 0.1 ),
+        Toughness: ( mean: 0.5, std_dev: 0.1 ),
+        Endurance: ( mean: 0.5, std_dev: 0.1 ),
+        Recuperation: ( mean: 0.5, std_dev: 0.1 ),
+        DiseaseResistance: ( mean: 0.5, std_dev: 0.1 ),
+        Focus: ( mean: 0.5, std_dev: 0.15 ),
+        Creativity: ( mean: 0.5, std_dev: 0.15 ),
+        Willpower: ( mean: 0.5, std_dev: 0.15 ),
+        AnalyticalAbility: ( mean: 0.5, std_dev: 0.15 ),
+        Intuition: ( mean: 0.5, std_dev: 0.15 ),
+        Memory: ( mean: 0.5, std_dev: 0.15 ),
+        Patience: ( mean: 0.5, std_dev: 0.15 ),
+        SpatialSense: ( mean: 0.5, std_dev: 0.15 ),
+        Empathy: ( mean: 0.5, std_dev: 0.2 ),
+        Leadership: ( mean: 0.5, std_dev: 0.2 ),
+        SocialAwareness: ( mean: 0.5, std_dev: 0.2 ),
+        LinguisticAbility: ( mean: 0.5, std_dev: 0.2 ),
+        Negotiation: ( mean: 0.5, std_dev: 0.2 ),
+        Musicality: ( mean: 0.5, std_dev: 0.2 ),
+    }
+)

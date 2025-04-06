@@ -1,14 +1,16 @@
 // src/main.rs
+use bevy::log::LogPlugin;
 use bevy::prelude::*;
 
-// KORREKT: Imports für bevy_rand v0.9 und Rng Trait
 use bevy_rand::prelude::{Entropy, EntropyPlugin, GlobalEntropy, WyRand};
-use rand::Rng; // <- Wird für den Trait Bound benötigt
+use rand::Rng;
 
+use std::ops::Not;
 use std::str::FromStr; // Nötig für GeneType::from_str im Debug-System
 
 mod builders;
 mod components;
+mod config;
 mod events;
 mod plugins;
 mod resources;
@@ -30,83 +32,104 @@ use crate::events::genetics_events::{
     ChildBornEvent, EntityInitializedEvent, ReproduceRequestEvent, TemporaryAttributeModifierEvent,
 };
 use crate::plugins::genetics_plugin::{GeneticsPlugin, GeneticsSystemSet}; // Plugin + Set
+use crate::plugins::setup_plugin::{AppState, SetupPlugin};
 use crate::resources::gene_library::GeneLibrary;
 use crate::resources::genetics_generator::GeneticsGenerator;
 use crate::systems::reproduction::reproduction_system;
 
 const FIXED_SEED: u64 = 1234567890;
+const USE_FIXED_SEED: bool = true; // true für festen Seed, false für System-Seed
 
 fn main() {
     let mut app = App::new();
 
-    app.add_plugins(DefaultPlugins.set(WindowPlugin {
-        primary_window: Some(Window {
-            title: "Forge of Stories".into(),
-            ..default()
-        }),
-        ..default()
-    }));
+    app.add_plugins(
+        DefaultPlugins
+            .set(WindowPlugin {
+                primary_window: Some(Window {
+                    title: "Forge of Stories".into(),
+                    ..default()
+                }),
+                ..default()
+            })
+            // Optional: Konfiguriere Logging Level für weniger Spam
+            .set(LogPlugin {
+                level: bevy::log::Level::INFO, // oder WARN
+                filter: "wgpu=error,naga=warn,bevy_render=info,bevy_app=info".to_string(), // Beispiel-Filter
+                ..default()
+            }),
+    );
 
-    // --- bevy_rand Plugin hinzufügen ---
-    // Entscheide, ob du einen festen Seed möchtest
-    // if USE_FIXED_SEED {
-    // .with_seed() erwartet ein Byte-Array der korrekten Länge für den RNG
-    // WyRand verwendet u64, also 8 Bytes.
-    app.add_plugins(EntropyPlugin::<WyRand>::with_seed(FIXED_SEED.to_le_bytes()));
-    info!("Using fixed RNG seed: {}", FIXED_SEED);
-    // } else {
-    //    app.add_plugins(EntropyPlugin::<WyRand>::default()); // Standard: Seed aus System Entropy
-    //    info!("Using system entropy for RNG seed.");
-    //}
-    // --- Ende bevy_rand Plugin ---
+    if USE_FIXED_SEED {
+        app.add_plugins(EntropyPlugin::<WyRand>::with_seed(FIXED_SEED.to_le_bytes()));
+        info!("Using fixed RNG seed: {}", FIXED_SEED);
+    } else {
+        app.add_plugins(EntropyPlugin::<WyRand>::default()); // Standard: Seed aus System Entropy
+        info!("Using system entropy for RNG seed.");
+    }
 
-    app.add_plugins(GeneticsPlugin)
-        .insert_resource(GeneLibrary::default())
-        .insert_resource(GeneticsGenerator::default())
-        // Events registrieren
-        .add_event::<EntityInitializedEvent>()
+    app.add_plugins((
+        SetupPlugin, // Lädt Assets und verwaltet den State
+        GeneticsPlugin, // Fügt Genetik-Systeme hinzu (laufen nur in AppState::Running)
+                     // Füge hier zukünftige Plugins hinzu, z.B. UiPlugin
+    ));
+
+    // --- Ressourcen (die nicht im SetupPlugin initialisiert werden) ---
+    // GeneLibrary wird jetzt im SetupPlugin initialisiert!
+    // GeneLibrary::default() wird nicht mehr benötigt.
+    // GeneticsGenerator: Überprüfe, ob es noch gebraucht wird.
+    // Wenn ja, kann es hier bleiben oder in ein Plugin verschoben werden.
+    app.insert_resource(GeneticsGenerator::default()); // Behalte vorerst
+
+    // --- Events registrieren (kann hier bleiben) ---
+    app.add_event::<EntityInitializedEvent>()
         .add_event::<TemporaryAttributeModifierEvent>()
         .add_event::<ReproduceRequestEvent>()
-        .add_event::<ChildBornEvent>()
-        // Systeme hinzufügen
-        .add_systems(Startup, setup)
-        .add_systems(
-            Update,
-            (
-                send_entity_initialized_events,
-                handle_temporary_attribute_modifiers, // Verwendet jetzt Option
-                reproduction_system,
-                debug_entities.after(GeneticsSystemSet::PhysicalTraits),
-            ),
+        .add_event::<ChildBornEvent>();
+
+    // --- Systeme hinzufügen ---
+    // Startup-Systeme, die erst nach dem Laden laufen sollen:
+    app.add_systems(OnEnter(AppState::Running), setup); // <- Neues System, OnEnter
+
+    // Update-Systeme, die nur im Running-State laufen sollen:
+    app.add_systems(
+        Update,
+        (
+            send_entity_initialized_events,
+            handle_temporary_attribute_modifiers,
+            reproduction_system,
+            debug_entities, // Debug nach allem anderen
         )
-        .run();
+            .run_if(in_state(AppState::Running)), // <- Wichtig!
+    );
+
+    app.run();
 }
 
 fn setup(
     mut commands: Commands,
-    gene_library: Res<GeneLibrary>,
+    gene_library: Res<GeneLibrary>, // GeneLibrary ist jetzt gefüllt
     genetics_generator: Res<GeneticsGenerator>,
-    // SystemParam direkt anfordern
     mut rng_param: GlobalEntropy<WyRand>,
 ) {
-    commands.spawn(Camera2d);
-    info!("Erstelle Testcharaktere...");
+    commands.spawn(Camera2dBundle::default()); // Verwende Camera2dBundle
+    info!("AppState::Running erreicht. Erstelle Testcharaktere...");
 
-    // KORREKT: Dereferenzieren, um den mutable RNG zu erhalten
-    // rng_param ist der SystemParam `Single<..., &'static mut Entropy<WyRand>>`
-    // *rng_param dereferenziert zu `&'static mut Entropy<WyRand>`
-    // &mut *rng_param nimmt eine mutable Referenz davon -> `&mut Entropy<WyRand>`
     let rng: &mut Entropy<WyRand> = &mut *rng_param;
 
-    // Übergib den eigentlichen mutable RNG (&mut Entropy<WyRand>)
+    // Stelle sicher, dass GeneLibrary Daten hat, bevor du create aufrufst
+    if gene_library.attribute_distributions.is_empty() {
+        error!("GeneLibrary ist leer, kann keine Entitäten erstellen! Asset-Laden fehlgeschlagen?");
+        return;
+    }
+
     let _mensch = create_initial_entity(
         &mut commands,
         &gene_library,
         &genetics_generator,
         "Mensch",
-        rng, // Typ: &mut Entropy<WyRand> (passt zu &mut impl Rng)
+        rng,
     );
-    // rng kann hier weiterverwendet werden, da die Referenz noch gültig ist
     let _elf = create_initial_entity(
         &mut commands,
         &gene_library,
@@ -122,17 +145,23 @@ fn setup(
         rng,
     );
 
-    info!("Setup abgeschlossen!");
+    info!("Testcharaktere erstellt!");
 }
 
-// KORREKT: create_initial_entity nimmt generischen &mut Rng
 fn create_initial_entity<Gen: Rng + ?Sized>(
     commands: &mut Commands,
     gene_library: &Res<GeneLibrary>,
     genetics_generator: &Res<GeneticsGenerator>,
     species: &str,
-    rng: &mut Gen, // <- Nimmt den &mut Entropy<WyRand> oder anderen Rng entgegen
+    rng: &mut Gen,
 ) -> Entity {
+    // Füge eine Überprüfung hinzu, ob die Spezies in der Library existiert
+    if !gene_library.attribute_distributions.contains_key(species) {
+        error!("Spezies '{}' nicht in GeneLibrary gefunden! Erstellung könnte fehlschlagen oder Defaults verwenden.", species);
+        // Optional: Frühzeitig abbrechen oder mit Defaults fortfahren
+        // return Entity::PLACEHOLDER; // Beispiel für Abbruch (Entity::PLACEHOLDER existiert nicht, alternative wählen)
+    }
+
     let genotype = genetics_generator.create_initial_genotype(gene_library, species, rng);
     EntityBuilder::create_entity_from_genotype(commands, genotype, vec![species.to_string()])
 }
@@ -140,7 +169,6 @@ fn create_initial_entity<Gen: Rng + ?Sized>(
 // System zum Senden von EntityInitializedEvents für neue Entitäten
 // Wird jetzt ausgelöst, wenn Phenotype *hinzugefügt* wird (normalerweise 1 Frame nach dem Spawnen)
 fn send_entity_initialized_events(
-    // Changed<...> prüft auf Änderung, Added<...> auf Hinzufügen der Komponente
     query: Query<(Entity, &SpeciesGenes), Added<Phenotype>>,
     mut entity_initialized_events: EventWriter<EntityInitializedEvent>,
 ) {
@@ -206,7 +234,7 @@ fn handle_temporary_attribute_modifiers(
 fn debug_entities(
     query: Query<(
         Entity,
-        &Genotype, // <-- Use hinzugefügt
+        &Genotype,
         &Phenotype,
         &PhysicalAttributes,
         &MentalAttributes,
@@ -215,9 +243,17 @@ fn debug_entities(
         &SpeciesGenes,
     )>,
     mut ran_once: Local<bool>,
+    app_state: Res<State<AppState>>, // Zugriff auf State zum Debuggen
 ) {
+    // Füge eine zusätzliche Prüfung hinzu, um sicherzustellen, dass wir im Running State sind
+    if *app_state != AppState::Running {
+        return;
+    }
     if !*ran_once {
-        info!("=== DETAILLIERTE ENTITY-INFORMATIONEN ===");
+        info!(
+            "=== DETAILLIERTE ENTITY-INFORMATIONEN (State: {:?}) ===",
+            app_state.get()
+        );
         for (entity, genotype, phenotype, physical, mental, social, visual, species) in query.iter()
         {
             info!("Entity: {:?}", entity);

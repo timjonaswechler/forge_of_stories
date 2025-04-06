@@ -1,5 +1,6 @@
 // src/components/visual_traits.rs
 use bevy::prelude::*;
+use serde::Deserialize;
 
 #[derive(Component, Debug, Clone)]
 pub struct VisualTraits {
@@ -23,7 +24,7 @@ impl Default for VisualTraits {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
 pub enum EyeColor {
     Brown,  // Braun
     Green,  // Grün
