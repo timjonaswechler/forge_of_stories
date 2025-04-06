@@ -1,4 +1,24 @@
-/target
-Cargo.lock
-script.py
-combined_source.md
+# Von Cargo generierte Dateien
+/target/
+
+# Temporäre Dateien von Editoren
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Backup-Dateien
+*.bak
+*.tmp
+
+# Debugging-Dateien
+*.pdb
+
+# Log-Dateien
+*.log
+
+# Cargo.lock (nur ignorieren, wenn es sich um eine Bibliothek handelt)
+/Cargo.lock
+
+*.py
+*.md
