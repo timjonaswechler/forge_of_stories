@@ -1,10 +1,8 @@
-// src/genetics/components/genome/components.rs
-// Importiere aus dem übergeordneten components-Modul (das core_types re-exportiert)
-use crate::genetics::components::chromosome::types::ChromosomeType;
-use crate::genetics::components::genome::types::{GeneExpression, GeneType};
+// src/genetics/components/genome.rs
+use crate::genetics::types::{ChromosomeType, GeneExpression, GeneType};
 use bevy::prelude::*;
 use std::collections::HashMap;
-use std::str::FromStr; // für get_all_gene_types
+use std::str::FromStr;
 
 // --- GeneVariant ---
 #[derive(Debug, Clone)]

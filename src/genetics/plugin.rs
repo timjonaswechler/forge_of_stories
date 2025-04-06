@@ -1,10 +1,9 @@
-// src/genetics/plugin.rs
 use bevy::prelude::*;
 
 use crate::{AppState, SimulationSystemSet}; // Importiere aus lib.rs
 
 // Importiere aus dem eigenen Modul
-use super::systems::genotype_to_phenotype_system; // Importiert genotype_to_phenotype_system
+use super::systems::genotype_to_phenotype_system;
 
 pub struct GeneticsCorePlugin;
 

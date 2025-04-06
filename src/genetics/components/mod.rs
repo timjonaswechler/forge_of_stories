@@ -1,8 +1,6 @@
-// src/genetics/components/mod.rs
-pub mod chromosome;
+//src/genetics/components/mod.rs
 pub mod genome;
 pub mod phenotype;
 
-pub use chromosome::*;
 pub use genome::*;
 pub use phenotype::*;

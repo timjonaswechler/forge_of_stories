@@ -1,7 +1,8 @@
 // src/genetics/systems/pipeline.rs
+
 use bevy::prelude::*;
 
-// Nutze die Re-Exports aus src/genetics/mod.rs ODER src/genetics/components/mod.rs
+// Nutze die Re-Exports aus src/genetics/mod.rs
 use crate::genetics::{GeneExpression, Genotype, Phenotype, PhenotypeGene, SpeciesGenes};
 
 // System zur Berechnung des Phänotyps aus dem Genotyp

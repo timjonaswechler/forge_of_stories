@@ -1,5 +1,5 @@
 // src/components/attributes.rs
-use crate::genetics::components::genome::AttributeGene;
+use crate::genetics::AttributeGene;
 use bevy::prelude::*;
 use std::time::Duration;
 

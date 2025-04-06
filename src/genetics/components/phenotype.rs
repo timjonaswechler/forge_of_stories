@@ -1,7 +1,6 @@
-// src/genetics/components/phenotype/components.rs
-// Importiere aus dem übergeordneten components-Modul
-use crate::genetics::components::chromosome::types::ChromosomeType;
-use crate::genetics::components::genome::types::GeneExpression;
+// src/genetics/components/phenotype.rs
+
+use crate::genetics::types::{ChromosomeType, GeneExpression};
 use bevy::prelude::*;
 use std::collections::HashMap;
 
@@ -16,9 +15,11 @@ impl PhenotypeGene {
     pub fn new(value: f32, expression: GeneExpression) -> Self {
         Self { value, expression }
     }
+
     pub fn value(&self) -> f32 {
         self.value
     }
+
     pub fn expression(&self) -> GeneExpression {
         self.expression
     }

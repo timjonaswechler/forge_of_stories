@@ -1,14 +1,8 @@
-// src/genetics/components/expression.rs
+// src/genetics/types/gene.rs
+
 use serde::Deserialize;
 use std::fmt::{self, Display};
 use std::str::FromStr;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
-pub enum GeneExpression {
-    Dominant,
-    Recessive,
-    Codominant,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
 pub enum AttributeGene {

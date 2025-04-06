@@ -1,24 +1,14 @@
-// src/genetics/mod.rs
-pub mod components; // Verweist auf den Ordner components/
+pub mod components;
 pub mod plugin;
-pub mod systems; // Falls vorhanden
+pub mod systems;
+pub mod types;
 
-// Re-exportiere die wichtigsten Typen für den Zugriff via genetics::*
-pub use components::{
-    AttributeGene,
-    // Aus common_types
-    GeneExpression,
-    GenePair,
-    GeneType,
-    GeneVariant,
-    // Aus genome
-    Genotype,
-    ParseGeneError,
-    // Aus phenotype
-    Phenotype,
-    PhenotypeGene,
-    SpeciesGenes,
-    VisualGene,
+// Re-exportiere wichtige Typen für den Zugriff via crate::genetics::*
+pub use components::{GenePair, GeneVariant, Genotype, Phenotype, PhenotypeGene, SpeciesGenes};
+
+pub use types::{
+    AttributeGene, ChromosomeType, GeneExpression, GeneType, ParseGeneError, VisualGene,
 };
+
+pub use plugin::GeneticsCorePlugin;
 pub use systems::genotype_to_phenotype_system;
-// pub use plugin::GeneticsCorePlugin; // Falls vorhanden
