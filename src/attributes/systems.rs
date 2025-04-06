@@ -143,12 +143,27 @@ pub fn apply_attributes<T: AttributeGroup + Component>(
 
 // Visuelle Traits Anwendung
 // --- Update-Systeme (unverändert) ---
-pub fn update_physical_attributes(query: Query<&PhysicalAttributes>) { /* ... */
+// System zum Aktualisieren physischer Attribute (Beispiel)
+pub fn update_physical_attributes(_query: Query<&PhysicalAttributes>) {
+    // Platzhalter - Logik hier einfügen
+    /* ... */
 }
-pub fn update_mental_attributes(query: Query<&MentalAttributes>) { /* ... */
+
+// System zum Aktualisieren mentaler Attribute (Beispiel)
+pub fn update_mental_attributes(_query: Query<&MentalAttributes>) {
+    // Platzhalter - Logik hier einfügen
+    /* ... */
 }
-pub fn update_social_attributes(query: Query<&SocialAttributes>) { /* ... */
+
+// System zum Aktualisieren sozialer Attribute (Beispiel)
+pub fn update_social_attributes(_query: Query<&SocialAttributes>) {
+    // Platzhalter - Logik hier einfügen
+    /* ... */
 }
-pub fn update_attribute_usage(mut attribute_query: Query<&mut Attribute>, _time: Res<Time>) {
+
+// System zur Aktualisierung der Attributnutzung und ggf. Rust-Zurücksetzung
+pub fn update_attribute_usage(mut _attribute_query: Query<&mut Attribute>, _time: Res<Time>) {
+    // Platzhalter - Logik hier einfügen
+    // Beispiel: Wenn ein Attribut genutzt wird, setze last_used und rust_level zurück.
     /* ... */
 }
