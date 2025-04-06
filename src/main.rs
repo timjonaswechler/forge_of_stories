@@ -1,5 +1,10 @@
 // src/main.rs
 use bevy::prelude::*;
+
+// KORREKT: Imports für bevy_rand v0.9 und Rng Trait
+use bevy_rand::prelude::{Entropy, EntropyPlugin, GlobalEntropy, WyRand};
+use rand::Rng; // <- Wird für den Trait Bound benötigt
+
 use std::str::FromStr; // Nötig für GeneType::from_str im Debug-System
 
 mod builders;
@@ -29,24 +34,42 @@ use crate::resources::gene_library::GeneLibrary;
 use crate::resources::genetics_generator::GeneticsGenerator;
 use crate::systems::reproduction::reproduction_system;
 
+const FIXED_SEED: u64 = 1234567890;
+
 fn main() {
-    App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "Forge of Stories".into(),
-                ..default()
-            }),
+    let mut app = App::new();
+
+    app.add_plugins(DefaultPlugins.set(WindowPlugin {
+        primary_window: Some(Window {
+            title: "Forge of Stories".into(),
             ..default()
-        }))
-        .add_plugins(GeneticsPlugin)
-        .add_systems(Startup, setup)
+        }),
+        ..default()
+    }));
+
+    // --- bevy_rand Plugin hinzufügen ---
+    // Entscheide, ob du einen festen Seed möchtest
+    // if USE_FIXED_SEED {
+    // .with_seed() erwartet ein Byte-Array der korrekten Länge für den RNG
+    // WyRand verwendet u64, also 8 Bytes.
+    app.add_plugins(EntropyPlugin::<WyRand>::with_seed(FIXED_SEED.to_le_bytes()));
+    info!("Using fixed RNG seed: {}", FIXED_SEED);
+    // } else {
+    //    app.add_plugins(EntropyPlugin::<WyRand>::default()); // Standard: Seed aus System Entropy
+    //    info!("Using system entropy for RNG seed.");
+    //}
+    // --- Ende bevy_rand Plugin ---
+
+    app.add_plugins(GeneticsPlugin)
         .insert_resource(GeneLibrary::default())
+        .insert_resource(GeneticsGenerator::default())
         // Events registrieren
         .add_event::<EntityInitializedEvent>()
         .add_event::<TemporaryAttributeModifierEvent>()
         .add_event::<ReproduceRequestEvent>()
         .add_event::<ChildBornEvent>()
         // Systeme hinzufügen
+        .add_systems(Startup, setup)
         .add_systems(
             Update,
             (
@@ -63,30 +86,54 @@ fn setup(
     mut commands: Commands,
     gene_library: Res<GeneLibrary>,
     genetics_generator: Res<GeneticsGenerator>,
+    // SystemParam direkt anfordern
+    mut rng_param: GlobalEntropy<WyRand>,
 ) {
     commands.spawn(Camera2d);
     info!("Erstelle Testcharaktere...");
 
-    // Unused variables mit _ markieren
-    let _mensch =
-        create_initial_entity(&mut commands, &gene_library, &genetics_generator, "Mensch");
-    let _elf = create_initial_entity(&mut commands, &gene_library, &genetics_generator, "Elf");
-    let _ork = create_initial_entity(&mut commands, &gene_library, &genetics_generator, "Ork");
+    // KORREKT: Dereferenzieren, um den mutable RNG zu erhalten
+    // rng_param ist der SystemParam `Single<..., &'static mut Entropy<WyRand>>`
+    // *rng_param dereferenziert zu `&'static mut Entropy<WyRand>`
+    // &mut *rng_param nimmt eine mutable Referenz davon -> `&mut Entropy<WyRand>`
+    let rng: &mut Entropy<WyRand> = &mut *rng_param;
 
-    // Beispiel: Reproduktionsversuch starten (Kommentar entfernen zum Testen)
-    // commands.trigger(ReproduceRequestEvent { parent1: _mensch, parent2: _elf });
+    // Übergib den eigentlichen mutable RNG (&mut Entropy<WyRand>)
+    let _mensch = create_initial_entity(
+        &mut commands,
+        &gene_library,
+        &genetics_generator,
+        "Mensch",
+        rng, // Typ: &mut Entropy<WyRand> (passt zu &mut impl Rng)
+    );
+    // rng kann hier weiterverwendet werden, da die Referenz noch gültig ist
+    let _elf = create_initial_entity(
+        &mut commands,
+        &gene_library,
+        &genetics_generator,
+        "Elf",
+        rng,
+    );
+    let _ork = create_initial_entity(
+        &mut commands,
+        &gene_library,
+        &genetics_generator,
+        "Ork",
+        rng,
+    );
 
     info!("Setup abgeschlossen!");
 }
 
-// Erstellt eine initiale Entität (unverändert)
-fn create_initial_entity(
+// KORREKT: create_initial_entity nimmt generischen &mut Rng
+fn create_initial_entity<Gen: Rng + ?Sized>(
     commands: &mut Commands,
     gene_library: &Res<GeneLibrary>,
     genetics_generator: &Res<GeneticsGenerator>,
     species: &str,
+    rng: &mut Gen, // <- Nimmt den &mut Entropy<WyRand> oder anderen Rng entgegen
 ) -> Entity {
-    let genotype = genetics_generator.create_initial_genotype(gene_library, species);
+    let genotype = genetics_generator.create_initial_genotype(gene_library, species, rng);
     EntityBuilder::create_entity_from_genotype(commands, genotype, vec![species.to_string()])
 }
 

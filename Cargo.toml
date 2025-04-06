@@ -4,11 +4,18 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bevy = "*"
-rand = "*"
-rand_distr = "*"
-strum = "*"
-strum_macros = "*"
+bevy = { version = "0.15.3", features = ["dynamic_linking"]}
+bevy_rand = {version = "0.9.0", features = ["rand_chacha", "wyrand"]}
+
+
+rand = "0.8.5"
+rand_distr = "0.4.3" 
+
+# Deine anderen Abhängigkeiten
+strum = "0.27"
+strum_macros = "0.27"
+serde = { version = "1.0", features = ["derive"] }
+ron = "0.8"
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]

@@ -4,7 +4,7 @@ use crate::components::genetics::{ChromosomeType, GeneExpression, GenePair, Gene
 use crate::components::visual_traits::EyeColor;
 use bevy::prelude::*;
 use rand::Rng;
-use rand_distr::{Distribution, Normal}; // Für Normalverteilung
+use rand_distr::{Distribution, Normal};
 use std::collections::HashMap;
 
 // Struktur zur Beschreibung der Verteilung eines Gens (Mittelwert und Standardabweichung für 0.0-1.0 Skala)
@@ -36,6 +36,7 @@ pub struct GeneLibrary {
     pub attribute_distributions: HashMap<String, HashMap<AttributeGene, GeneDistribution>>,
 }
 
+// Default Implementierung sollte leer sein, wenn TODO 4 gemacht wird
 impl Default for GeneLibrary {
     fn default() -> Self {
         let mut lib = Self {
@@ -44,6 +45,8 @@ impl Default for GeneLibrary {
             eye_colors: HashMap::new(),
             attribute_distributions: HashMap::new(),
         };
+        // Temporär, bis TODO 4: Fülle die Daten hier.
+        // Diese Methoden sollten dann entfernt werden.
         lib.populate_color_palettes();
         lib.populate_attribute_distributions();
         lib
@@ -701,8 +704,6 @@ impl GeneLibrary {
     }
 
     // --- Methoden zur Farb-Gene-Erzeugung (basierend auf Paletten) ---
-    // Diese Methoden bleiben weitgehend gleich, aber wir verwenden den RNG jetzt expliziter.
-    // TODO: Vereinheitliche RNG Nutzung (thread_rng entfernen)
     fn create_color_gene_pair(visual_gene: VisualGene, value: f32) -> GenePair {
         let gene_id = GeneType::Visual(visual_gene).to_string(); // Korrekte String-ID ableiten
         GenePair {
@@ -720,8 +721,12 @@ impl GeneLibrary {
         }
     }
 
-    pub fn create_skin_color_genes(&self, species: &str) -> Option<(GenePair, GenePair, GenePair)> {
-        let mut rng = rand::thread_rng(); // TODO: RNG von außen
+    pub fn create_skin_color_genes<R: Rng + ?Sized>(
+        // <- Signatur geändert
+        &self,
+        species: &str,
+        rng: &mut R, // <- RNG Parameter
+    ) -> Option<(GenePair, GenePair, GenePair)> {
         if let Some(colors) = self.skin_colors.get(species) {
             if !colors.is_empty() {
                 let color = colors[rng.gen_range(0..colors.len())];
@@ -737,8 +742,12 @@ impl GeneLibrary {
         None
     }
 
-    pub fn create_hair_color_genes(&self, species: &str) -> Option<(GenePair, GenePair, GenePair)> {
-        let mut rng = rand::thread_rng(); // TODO: RNG von außen
+    pub fn create_hair_color_genes<R: Rng + ?Sized>(
+        // <- Signatur geändert
+        &self,
+        species: &str,
+        rng: &mut R, // <- RNG Parameter
+    ) -> Option<(GenePair, GenePair, GenePair)> {
         if let Some(colors) = self.hair_colors.get(species) {
             if !colors.is_empty() {
                 let color = colors[rng.gen_range(0..colors.len())];
@@ -753,8 +762,12 @@ impl GeneLibrary {
         None
     }
 
-    pub fn create_eye_color_genes(&self, species: &str) -> Option<GenePair> {
-        let mut rng = rand::thread_rng(); // TODO: RNG von außen
+    pub fn create_eye_color_genes<R: Rng + ?Sized>(
+        // <- Signatur geändert
+        &self,
+        species: &str,
+        rng: &mut R, // <- RNG Parameter
+    ) -> Option<GenePair> {
         if let Some(colors) = self.eye_colors.get(species) {
             if !colors.is_empty() {
                 let color1 = colors[rng.gen_range(0..colors.len())];

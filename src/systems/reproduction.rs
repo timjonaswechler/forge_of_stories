@@ -1,27 +1,28 @@
 // src/systems/reproduction.rs
 use bevy::prelude::*;
-use rand::prelude::*;
-// use bevy_prng::ChaCha8Rng; // TODO: Wenn bevy_prng verwendet wird
-// use bevy_rand::prelude::{GlobalEntropy, ForkableRng}; // TODO: Wenn bevy_rand verwendet wird
+use rand::Rng; // Für gen()/gen_range()
+
+// KORRIGIERT: Import aus bevy_rand::prelude
+use bevy_rand::prelude::{Entropy, GlobalEntropy, WyRand};
 
 use crate::builders::entity_builder::EntityBuilder;
-use crate::components::gene_types::{GeneType, VisualGene}; // Für Gen-Typ-Prüfung
-use crate::components::genetics::{GeneExpression, GenePair, GeneVariant, Genotype, SpeciesGenes}; // GeneExpression hinzugefügt
+use crate::components::gene_types::{GeneType, VisualGene};
+use crate::components::genetics::{GeneExpression, GenePair, GeneVariant, Genotype, SpeciesGenes};
 use crate::components::visual_traits::EyeColor;
 use crate::events::genetics_events::{ChildBornEvent, ReproduceRequestEvent};
-use crate::resources::eye_color_inheritance::EyeColorInheritance;
+use crate::resources::eye_color_inheritance::EyeColorInheritance; // Stelle Pfad sicher
 
-// System, das auf Reproduktionsanfragen reagiert
 pub fn reproduction_system(
     mut commands: Commands,
     mut reproduce_requests: EventReader<ReproduceRequestEvent>,
     mut child_born_events: EventWriter<ChildBornEvent>,
-    parent_query: Query<(&Genotype, &SpeciesGenes)>, // Zum Abrufen der Elterndaten
+    parent_query: Query<(&Genotype, &SpeciesGenes)>,
     eye_inheritance: Res<EyeColorInheritance>,
-    // TODO: rng: ResMut<GlobalEntropy<ChaCha8Rng>>, // Beispiel für bevy_rand RNG
+    // Korrekter SystemParam
+    mut rng_param: GlobalEntropy<WyRand>,
 ) {
-    // TODO: RNG als Resource oder Parameter verwenden statt thread_rng()
-    let mut rng = rand::thread_rng();
+    // Korrektes Dereferenzieren
+    let rng: &mut Entropy<WyRand> = &mut *rng_param;
 
     for event in reproduce_requests.read() {
         let parent1_data = parent_query.get(event.parent1);
@@ -30,26 +31,20 @@ pub fn reproduction_system(
         if let (Ok((p1_genotype, p1_species)), Ok((p2_genotype, p2_species))) =
             (parent1_data, parent2_data)
         {
-            // Erzeuge den Genotyp und Spezies-Info des Kindes
             let (child_genotype, child_species) = create_child_genotype(
                 p1_genotype,
                 p2_genotype,
                 p1_species,
                 p2_species,
                 &eye_inheritance,
-                &mut rng, // TODO: Verwende RNG Resource
+                rng, // <- RNG weitergeben
             );
 
-            // Spawne die Entität für das Kind
+            // Spawne Kind Entity (kein RNG hier direkt nötig)
             let child_entity = EntityBuilder::create_entity_from_genotype(
                 &mut commands,
                 child_genotype,
-                child_species.species, // Gib die kombinierten Spezies weiter
-            );
-
-            info!(
-                "Kind {:?} wurde von {:?} und {:?} geboren.",
-                child_entity, event.parent1, event.parent2
+                child_species.species,
             );
 
             child_born_events.send(ChildBornEvent {
@@ -66,23 +61,22 @@ pub fn reproduction_system(
     }
 }
 
-/// Erstellt den Genotyp und die Spezies-Information für ein Kind aus zwei Eltern.
-/// Enthält eine robustere Gen-Iterationslogik.
-fn create_child_genotype<R: Rng + ?Sized>(
+/// Erstellt den Genotyp und die Spezies für ein Kind.
+/// Akzeptiert jetzt einen RNG Parameter.
+fn create_child_genotype<Gen: Rng + ?Sized>(
     p1_genotype: &Genotype,
     p2_genotype: &Genotype,
-    p1_species: &SpeciesGenes,
-    p2_species: &SpeciesGenes,
+    _p1_species: &SpeciesGenes, // KORRIGIERT: Unused markiert
+    _p2_species: &SpeciesGenes, // KORRIGIERT: Unused markiert
     eye_inheritance: &Res<EyeColorInheritance>,
-    rng: &mut R,
+    rng: &mut Gen,
 ) -> (Genotype, SpeciesGenes) {
     let mut child_genotype = Genotype::new();
-
-    // --- Kind Spezies bestimmen ---
-    let mut combined_species: Vec<String> = p1_species
+    // Korrekte Spezies-Logik
+    let mut combined_species: Vec<String> = _p1_species
         .species
         .iter()
-        .chain(p2_species.species.iter())
+        .chain(_p2_species.species.iter())
         .cloned()
         .collect();
     combined_species.sort();
@@ -112,22 +106,22 @@ fn create_child_genotype<R: Rng + ?Sized>(
         let p1_gene_pair_opt = p1_genotype.gene_pairs.get(&gene_id);
         let p2_gene_pair_opt = p2_genotype.gene_pairs.get(&gene_id);
 
-        // Bestimme die Allele für das Kind
         match (p1_gene_pair_opt, p2_gene_pair_opt) {
             (Some(p1_gene_pair), Some(p2_gene_pair)) => {
-                // Beide Eltern haben das Gen
-                let child_maternal_allele: GeneVariant;
-                let child_paternal_allele: GeneVariant;
+                let mut child_maternal_allele: GeneVariant; // Deklariere hier
+                let mut child_paternal_allele: GeneVariant; // Deklariere hier
 
-                // Spezielle Augenfarbe Logik
                 let eye_color_gene_id = GeneType::Visual(VisualGene::EyeColor).to_string();
                 if gene_id == eye_color_gene_id {
-                    let p1_chosen_value = if rng.gen() {
+                    // Augenfarbe: Wähle je ein Allel von jedem Elternteil
+                    let p1_chosen_value = if rng.gen::<bool>() {
+                        // <- Nutze RNG
                         p1_gene_pair.maternal.value
                     } else {
                         p1_gene_pair.paternal.value
                     };
-                    let p2_chosen_value = if rng.gen() {
+                    let p2_chosen_value = if rng.gen::<bool>() {
+                        // <- Nutze RNG
                         p2_gene_pair.maternal.value
                     } else {
                         p2_gene_pair.paternal.value
@@ -135,42 +129,74 @@ fn create_child_genotype<R: Rng + ?Sized>(
                     let p1_chosen_eye = EyeColor::from_f32(p1_chosen_value);
                     let p2_chosen_eye = EyeColor::from_f32(p2_chosen_value);
 
-                    // TODO: Verwende RNG Resource statt internem rng in inherit_eye_color
+                    // Vererbe die Augenfarbe mit der Vererbungsmatrix und dem RNG
                     let child_resulting_eye = eye_inheritance.inherit_eye_color(
                         primary_species,
                         p1_chosen_eye,
                         p2_chosen_eye,
+                        rng, // <- RNG weitergeben
                     );
                     let child_resulting_value = child_resulting_eye.to_f32();
 
+                    // Setze beide Allele des Kindes auf das Ergebnis (da Augenfarbe komplexer ist)
+                    // TODO: Überdenken, ob hier wirklich beide gleich sein sollen oder
+                    // ob man das Vererbungsmodell anpasst, um zwei Allele zu liefern.
+                    // Aktuell simuliert dies eine direkte Phänotyp-Bestimmung für das Kind-Allel.
                     child_maternal_allele = GeneVariant {
                         gene_id: gene_id.clone(),
                         value: child_resulting_value,
-                        expression: GeneExpression::Codominant,
+                        expression: GeneExpression::Codominant, // Expression vom Parent? Oder fix?
                     };
                     child_paternal_allele = GeneVariant {
                         gene_id: gene_id.clone(),
                         value: child_resulting_value,
-                        expression: GeneExpression::Codominant,
+                        expression: GeneExpression::Codominant, // Expression vom Parent? Oder fix?
                     };
                 } else {
-                    // Standard-Vererbung
-                    child_maternal_allele = if rng.gen() {
+                    // Standard-Vererbung: Wähle zufällig ein Allel von jedem Elternteil
+                    child_maternal_allele = if rng.gen::<bool>() {
+                        // <- Nutze RNG
                         p1_gene_pair.maternal.clone()
                     } else {
                         p1_gene_pair.paternal.clone()
                     };
-                    child_paternal_allele = if rng.gen() {
+                    child_paternal_allele = if rng.gen::<bool>() {
+                        // <- Nutze RNG
                         p2_gene_pair.maternal.clone()
                     } else {
                         p2_gene_pair.paternal.clone()
                     };
+
+                    // --- TODO 3 hier implementieren für Haut/Haarfarbe ---
+                    // Statt obiger Standard Vererbung:
+                    // if gene_id matches SkinColorR/G/B or HairColorR/G/B:
+                    //    color1 = get_color_from_parent(p1_genotype, VisualGene::SkinColorR/G/B, rng) // Holt R,G,B für die Farbe von P1
+                    //    color2 = get_color_from_parent(p2_genotype, VisualGene::SkinColorR/G/B, rng) // Holt R,G,B für die Farbe von P2
+                    //    mixed_color = mix_colors(color1, color2)
+                    //    child_maternal_allele.value = mixed_color.R (für R Gen) etc.
+                    //    child_paternal_allele.value = mixed_color.R (für R Gen) etc.
+                    // ----------------------------------------------------
+                }
+
+                // TODO 5 Mutation: Hier nach der Auswahl und *vor* dem Einfügen mutieren
+                let mutation_chance = 0.01; // 1% Chance pro Allel
+                if rng.gen::<f32>() < mutation_chance {
+                    let change = rng.gen_range(-0.05..=0.05);
+                    child_maternal_allele.value =
+                        (child_maternal_allele.value + change).clamp(0.0, 1.0);
+                    // Optional: Log mutation
+                }
+                if rng.gen::<f32>() < mutation_chance {
+                    let change = rng.gen_range(-0.05..=0.05);
+                    child_paternal_allele.value =
+                        (child_paternal_allele.value + change).clamp(0.0, 1.0);
+                    // Optional: Log mutation
                 }
 
                 let child_gene_pair = GenePair {
-                    maternal: child_maternal_allele,
-                    paternal: child_paternal_allele,
-                    chromosome_type: p1_gene_pair.chromosome_type, // Nimm von P1 an
+                    maternal: child_maternal_allele, // Jetzt verwenden
+                    paternal: child_paternal_allele, // Jetzt verwenden
+                    chromosome_type: p1_gene_pair.chromosome_type,
                 };
                 child_genotype
                     .gene_pairs
@@ -179,25 +205,23 @@ fn create_child_genotype<R: Rng + ?Sized>(
                     .chromosome_groups
                     .entry(p1_gene_pair.chromosome_type)
                     .or_default()
-                    .push(gene_id);
+                    .push(gene_id); // Füge zum Chromosom hinzu
             }
             (Some(p1_gene_pair), None) => {
-                // Nur Parent 1 hat das Gen -> Kind bekommt zwei Kopien von P1's Allelen
-                warn!(
-                    "Gen '{}' nur in Parent 1 gefunden. Kind erhält Kopie.",
-                    gene_id
-                );
-                let allele1 = if rng.gen() {
+                // Nur Parent 1 hat Gen - Logik TODO 6
+                warn!("TODO 6: Gen '{}' nur in P1. Kind erhält Kopie.", gene_id);
+                let allele1 = if rng.gen::<bool>() {
                     p1_gene_pair.maternal.clone()
                 } else {
                     p1_gene_pair.paternal.clone()
                 };
-                let allele2 = if rng.gen() {
+                let allele2 = if rng.gen::<bool>() {
                     p1_gene_pair.maternal.clone()
                 } else {
                     p1_gene_pair.paternal.clone()
-                }; // Nochmals von P1 wählen
+                }; // Nochmals von P1
 
+                // Hier könnte Mutation auch angewendet werden
                 let child_gene_pair = GenePair {
                     maternal: allele1,
                     paternal: allele2,
@@ -213,22 +237,20 @@ fn create_child_genotype<R: Rng + ?Sized>(
                     .push(gene_id);
             }
             (None, Some(p2_gene_pair)) => {
-                // Nur Parent 2 hat das Gen -> Kind bekommt zwei Kopien von P2's Allelen
-                warn!(
-                    "Gen '{}' nur in Parent 2 gefunden. Kind erhält Kopie.",
-                    gene_id
-                );
-                let allele1 = if rng.gen() {
+                // Nur Parent 2 hat Gen - Logik TODO 6
+                warn!("TODO 6: Gen '{}' nur in P2. Kind erhält Kopie.", gene_id);
+                let allele1 = if rng.gen::<bool>() {
                     p2_gene_pair.maternal.clone()
                 } else {
                     p2_gene_pair.paternal.clone()
                 };
-                let allele2 = if rng.gen() {
+                let allele2 = if rng.gen::<bool>() {
                     p2_gene_pair.maternal.clone()
                 } else {
                     p2_gene_pair.paternal.clone()
                 };
 
+                // Hier könnte Mutation auch angewendet werden
                 let child_gene_pair = GenePair {
                     maternal: allele1,
                     paternal: allele2,
@@ -243,17 +265,15 @@ fn create_child_genotype<R: Rng + ?Sized>(
                     .or_default()
                     .push(gene_id);
             }
-            (None, None) => {
-                // Sollte nicht vorkommen, wenn wir über vereinigte Schlüssel iterieren
-                error!(
-                    "Unerwarteter Fall: Gen '{}' in keinem Elternteil gefunden.",
-                    gene_id
-                );
-            }
+            (None, None) => { /* Sollte nicht vorkommen */ }
         }
     }
 
-    // TODO: Mutation hinzufügen (nach der Gen-Selektion, vor dem Einfügen?)
+    // Stelle sicher, dass jede Chromosomengruppe im child_genotype unique ist
+    for gene_list in child_genotype.chromosome_groups.values_mut() {
+        gene_list.sort();
+        gene_list.dedup();
+    }
 
     (child_genotype, child_species)
 }

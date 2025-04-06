@@ -1,10 +1,10 @@
 // Neue Datei: src/resources/eye_color_inheritance.rs
 use crate::components::visual_traits::EyeColor;
 use bevy::ecs::system::Resource;
+use bevy::prelude::warn;
 use rand::Rng;
 use std::collections::HashMap;
 
-// Struktur für die Vererbungsmatrix
 #[derive(Resource)]
 pub struct EyeColorInheritance {
     inheritance_matrices: HashMap<String, HashMap<(EyeColor, EyeColor), Vec<(EyeColor, f32)>>>,
@@ -196,39 +196,20 @@ impl EyeColorInheritance {
     }
 
     // Bestimmt die Augenfarbe eines Kindes basierend auf den Eltern und ihrer Spezies
-    pub fn inherit_eye_color(
+    pub fn inherit_eye_color<R: Rng + ?Sized>(
         &self,
         species: &str,
         parent1: EyeColor,
         parent2: EyeColor,
+        rng: &mut R,
     ) -> EyeColor {
-        let mut rng = rand::thread_rng();
-
-        // Hole die Matrix für die angegebene Spezies oder verwende die Standard-Matrix
         let matrix = self
             .inheritance_matrices
             .get(species)
             .unwrap_or(&self.default_matrix);
 
-        // Versuche, die Kombination in der Matrix zu finden
         if let Some(probabilities) = matrix.get(&(parent1, parent2)) {
-            // Zufallszahl zwischen 0 und 1
-            let random_value = rng.gen::<f32>();
-            let mut cumulative_prob = 0.0;
-
-            // Durchlaufe die Wahrscheinlichkeiten und wähle entsprechend aus
-            for (color, prob) in probabilities {
-                cumulative_prob += prob;
-                if random_value <= cumulative_prob {
-                    return *color;
-                }
-            }
-
-            // Fallback bei Rundungsfehlern
-            return probabilities[0].0;
-        } else if let Some(probabilities) = matrix.get(&(parent2, parent1)) {
-            // Versuche die umgekehrte Reihenfolge
-            let random_value = rng.gen::<f32>();
+            let random_value = rng.gen::<f32>(); // <- gen()
             let mut cumulative_prob = 0.0;
 
             for (color, prob) in probabilities {
@@ -237,16 +218,15 @@ impl EyeColorInheritance {
                     return *color;
                 }
             }
-
-            return probabilities[0].0;
-        }
-
-        // Standardregel: Wenn keine spezifische Regel existiert,
-        // mische zufällig zwischen den Elternfarben
-        if rng.gen::<bool>() {
-            parent1
+            probabilities.first().map_or(parent1, |(color, _)| *color) // Fallback
         } else {
-            parent2
+            warn!("Keine Vererbungsregel für Augenfarben {:?} / {:?} bei Spezies '{}' gefunden. Wähle zufällig.", parent1, parent2, species);
+            if rng.gen::<bool>() {
+                // <- gen()
+                parent1
+            } else {
+                parent2
+            }
         }
     }
 }
