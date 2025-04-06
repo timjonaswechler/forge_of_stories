@@ -6,12 +6,13 @@ use forge_of_stories::{
     app_setup::{AppState, CorePlugin, EventPlugin, SetupPlugin},
     attributes::plugin::AttributesPlugin,
     debug::plugin::DebugPlugin,
+    // Konstanten werden jetzt auch hier importiert, falls sie in lib.rs sind
+    // FIXED_SEED, USE_FIXED_SEED,
+    dev_tools::node_graph::NodeGraphPlugin,
     genetics::plugin::GeneticsCorePlugin, // Füge dies hinzu, wenn du es erstellt hast
     simulation::plugin::SimulationPlugin,
     visuals::plugin::VisualsPlugin,
     SimulationSystemSet, // Importiere das Set
-                         // Konstanten werden jetzt auch hier importiert, falls sie in lib.rs sind
-                         // FIXED_SEED, USE_FIXED_SEED,
 };
 
 fn main() {
@@ -39,6 +40,7 @@ fn main() {
             VisualsPlugin,      // Fügt Visual-Systeme und Ressourcen hinzu
             SimulationPlugin,   // Charakter-Erstellung, laufende Systeme (Reproduktion etc.)
             DebugPlugin,        // Debugging-Systeme (nur im Debug-Build)
+            NodeGraphPlugin,
         ))
         .run();
 }

@@ -5,6 +5,7 @@ pub mod app_setup;
 pub mod attributes;
 pub mod config;
 pub mod debug;
+pub mod dev_tools;
 pub mod genetics;
 pub mod simulation;
 pub mod visuals;
