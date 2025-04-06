@@ -2,8 +2,8 @@
 use crate::attributes::components::{
     Attribute, MentalAttributes, PhysicalAttributes, SocialAttributes,
 };
-use crate::genetics::components::gene_types::{AttributeGene, GeneType};
-use crate::genetics::components::genetics::{ChromosomeType, Phenotype};
+use crate::genetics::{AttributeGene, ChromosomeType, GeneType, Phenotype};
+
 // ÄNDERUNG: Importiere VisualTraits direkt
 use bevy::prelude::*;
 use bevy::time::Time;

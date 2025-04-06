@@ -1,5 +1,4 @@
-use crate::genetics::components::gene_types::{GeneType, VisualGene};
-use crate::genetics::components::genetics::{ChromosomeType, Phenotype};
+use crate::genetics::{ChromosomeType, GeneType, Phenotype, VisualGene};
 use crate::visuals::components::{EyeColor, VisualTraits};
 use bevy::prelude::*;
 

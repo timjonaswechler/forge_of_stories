@@ -2,7 +2,7 @@
 use crate::attributes::components::{
     AttributeGroup, MentalAttributes, PhysicalAttributes, SocialAttributes,
 };
-use crate::genetics::components::genetics::{Phenotype, SpeciesGenes};
+use crate::genetics::{Phenotype, SpeciesGenes};
 use crate::simulation::events::{EntityInitializedEvent, TemporaryAttributeModifierEvent};
 use bevy::prelude::*;
 

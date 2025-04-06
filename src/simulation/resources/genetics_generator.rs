@@ -1,8 +1,9 @@
 use bevy::prelude::*;
 use rand::Rng; // Für Rng Trait
 
-use crate::genetics::components::gene_types::{AttributeGene, GeneType, VisualGene};
-use crate::genetics::components::genetics::{ChromosomeType, GeneExpression, Genotype};
+use crate::genetics::{
+    AttributeGene, ChromosomeType, GeneExpression, GeneType, Genotype, VisualGene,
+};
 use crate::simulation::resources::gene_library::GeneLibrary;
 
 #[derive(Resource, Default)]

@@ -3,9 +3,7 @@ use bevy::prelude::*;
 
 // Importiere direkt aus dem Crate-Root (lib.rs)
 use forge_of_stories::{
-    app_setup::{
-        core_plugin::CorePlugin, event_plugin::EventPlugin, setup_plugin::SetupPlugin, AppState,
-    },
+    app_setup::{AppState, CorePlugin, EventPlugin, SetupPlugin},
     attributes::plugin::AttributesPlugin,
     debug::plugin::DebugPlugin,
     genetics::plugin::GeneticsCorePlugin, // Füge dies hinzu, wenn du es erstellt hast

@@ -2,8 +2,8 @@ use crate::app_setup::AppState;
 use crate::attributes::components::{
     Attribute, MentalAttributes, PhysicalAttributes, SocialAttributes,
 };
-use crate::genetics::components::gene_types::GeneType;
-use crate::genetics::components::genetics::{Genotype, Phenotype, SpeciesGenes};
+use crate::genetics::components::genome::{GeneType, Genotype, SpeciesGenes};
+use crate::genetics::components::phenotype::Phenotype;
 use crate::visuals::components::VisualTraits;
 use bevy::prelude::*;
 use std::str::FromStr;

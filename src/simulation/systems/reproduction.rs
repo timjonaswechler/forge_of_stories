@@ -5,9 +5,8 @@ use rand::Rng; // Für gen()/gen_range()
 // KORRIGIERT: Import aus bevy_rand::prelude
 use bevy_rand::prelude::{Entropy, GlobalEntropy, WyRand};
 
-use crate::genetics::components::gene_types::{GeneType, VisualGene};
-use crate::genetics::components::genetics::{
-    GeneExpression, GenePair, GeneVariant, Genotype, SpeciesGenes,
+use crate::genetics::{
+    GeneExpression, GenePair, GeneType, GeneVariant, Genotype, SpeciesGenes, VisualGene,
 };
 use crate::simulation::builders::entity_builder::EntityBuilder;
 use crate::simulation::events::{ChildBornEvent, ReproduceRequestEvent};

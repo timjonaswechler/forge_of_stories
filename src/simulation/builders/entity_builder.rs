@@ -1,6 +1,6 @@
 // src/builders/entity_builder.rs
 use crate::attributes::components::{MentalAttributes, PhysicalAttributes, SocialAttributes};
-use crate::genetics::components::genetics::{Genotype, Phenotype, SpeciesGenes};
+use crate::genetics::components::{Genotype, Phenotype, SpeciesGenes};
 use crate::visuals::components::VisualTraits;
 use bevy::prelude::*;
 // Entferne: use std::default::Default; -> Nicht mehr explizit nötig

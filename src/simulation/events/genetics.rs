@@ -1,5 +1,5 @@
 // src/events/genetics_events.rs
-use crate::genetics::components::gene_types::AttributeGene; // Verwende den Enum
+use crate::genetics::components::AttributeGene; // Verwende den Enum
 use bevy::prelude::*;
 
 /// Wird ausgelöst, wenn eine Entität vollständig initialisiert wurde

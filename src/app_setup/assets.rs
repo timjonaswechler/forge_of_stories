@@ -1,5 +1,5 @@
 // src/plugins/setup_plugin.rs
-use crate::config::gene_data::SpeciesGeneData;
+use crate::config::species_gene_data::SpeciesGeneData;
 use crate::simulation::resources::gene_library::GeneLibrary;
 use bevy::asset::LoadState;
 use bevy::prelude::*;

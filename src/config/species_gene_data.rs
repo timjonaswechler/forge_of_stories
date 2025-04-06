@@ -1,5 +1,5 @@
 // src/config/gene_data.rs
-use crate::genetics::components::gene_types::AttributeGene;
+use crate::genetics::AttributeGene;
 use crate::simulation::resources::gene_library::GeneDistribution;
 use crate::visuals::components::EyeColor;
 use bevy::asset::Asset;

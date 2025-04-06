@@ -1,9 +1,15 @@
-// src/components/gene_types.rs
+// src/genetics/components/expression.rs
 use serde::Deserialize;
 use std::fmt::{self, Display};
 use std::str::FromStr;
 
-/// Repräsentiert alle Gene für Attribute
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
+pub enum GeneExpression {
+    Dominant,
+    Recessive,
+    Codominant,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
 pub enum AttributeGene {
     Strength,
@@ -28,7 +34,6 @@ pub enum AttributeGene {
     Musicality,
 }
 
-/// Repräsentiert alle Gene für visuelle Eigenschaften
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
 pub enum VisualGene {
     SkinColorR,
@@ -41,19 +46,16 @@ pub enum VisualGene {
     SkinTone,
 }
 
-/// Übergeordneter Enum für alle Gen-Typen
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
 pub enum GeneType {
     Attribute(AttributeGene),
     Visual(VisualGene),
 }
 
-/// Fehler für die String-Konvertierung
 #[derive(Debug)]
 pub struct ParseGeneError {
     message: String,
 }
-
 impl Display for ParseGeneError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Failed to parse gene: {}", self.message)

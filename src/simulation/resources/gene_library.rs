@@ -1,8 +1,8 @@
 // src/resources/gene_library.rs
-use crate::genetics::components::gene_types::{AttributeGene, GeneType, VisualGene};
-use crate::genetics::components::genetics::{
-    ChromosomeType, GeneExpression, GenePair, GeneVariant,
+use crate::genetics::{
+    AttributeGene, ChromosomeType, GeneExpression, GenePair, GeneType, GeneVariant, VisualGene,
 };
+
 use crate::visuals::components::EyeColor;
 use bevy::prelude::Color;
 use bevy::prelude::*;
