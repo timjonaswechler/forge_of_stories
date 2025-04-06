@@ -1,22 +1,78 @@
-
 (
-    species_name: "Mensch", // Zur Info
+    species_name: "Mensch",
 
-    // Vektor von RGB-Tupeln
     skin_colors: [
-        (1.000, 0.914, 0.859), (1.000, 0.878, 0.800), // ... viele Farben ...
-        (0.290, 0.149, 0.086),
+        // Konvertiert von 0-255 JS-Palette zu 0.0-1.0 sRGB für RON
+        Srgba((red: 1.0, green: 0.9137, blue: 0.8588, alpha: 1.0)),      // [255, 233, 219]
+        Srgba((red: 1.0, green: 0.8784, blue: 0.8, alpha: 1.0)),         // [255, 224, 204]
+        Srgba((red: 0.9843, green: 0.8431, blue: 0.749, alpha: 1.0)),     // [251, 215, 191]
+        Srgba((red: 0.9686, green: 0.7922, blue: 0.6706, alpha: 1.0)),    // [247, 202, 171]
+        Srgba((red: 0.9529, green: 0.7569, blue: 0.6196, alpha: 1.0)),    // [243, 193, 158]
+        Srgba((red: 0.9294, green: 0.698, blue: 0.5412, alpha: 1.0)),     // [237, 178, 138]
+        Srgba((red: 0.8902, green: 0.6196, blue: 0.4471, alpha: 1.0)),    // [227, 158, 114]
+        Srgba((red: 1.0, green: 0.8863, blue: 0.8549, alpha: 1.0)),      // [255, 226, 218]
+        Srgba((red: 1.0, green: 0.8431, blue: 0.7961, alpha: 1.0)),      // [255, 215, 203]
+        Srgba((red: 0.9843, green: 0.8235, blue: 0.7529, alpha: 1.0)),    // [251, 210, 192]
+        Srgba((red: 0.9725, green: 0.7765, blue: 0.6863, alpha: 1.0)),    // [248, 198, 175]
+        Srgba((red: 1.0, green: 0.7451, blue: 0.6196, alpha: 1.0)),      // [255, 190, 158]
+        Srgba((red: 0.949, green: 0.6706, blue: 0.5412, alpha: 1.0)),     // [242, 171, 138]
+        Srgba((red: 0.8941, green: 0.6078, blue: 0.4784, alpha: 1.0)),    // [228, 155, 122]
+        Srgba((red: 0.9569, green: 0.8353, blue: 0.7569, alpha: 1.0)),    // [244, 213, 193]
+        Srgba((red: 0.9373, green: 0.8, blue: 0.7137, alpha: 1.0)),       // [239, 204, 182]
+        Srgba((red: 0.8706, green: 0.7255, blue: 0.6235, alpha: 1.0)),    // [222, 185, 159]
+        Srgba((red: 0.8431, green: 0.6627, blue: 0.5333, alpha: 1.0)),    // [215, 169, 136]
+        Srgba((red: 0.7608, green: 0.5882, blue: 0.4745, alpha: 1.0)),    // [194, 150, 121]
+        Srgba((red: 0.6941, green: 0.502, blue: 0.3765, alpha: 1.0)),     // [177, 128,  96]
+        Srgba((red: 0.6275, green: 0.4353, blue: 0.3059, alpha: 1.0)),    // [160, 111,  78]
+        Srgba((red: 0.949, green: 0.8431, blue: 0.7686, alpha: 1.0)),     // [242, 215, 196]
+        Srgba((red: 0.9098, green: 0.7843, blue: 0.702, alpha: 1.0)),     // [232, 200, 179]
+        Srgba((red: 0.8588, green: 0.7137, blue: 0.6118, alpha: 1.0)),    // [219, 182, 156]
+        Srgba((red: 0.851, green: 0.6667, blue: 0.549, alpha: 1.0)),      // [217, 170, 140]
+        Srgba((red: 0.8353, green: 0.6078, blue: 0.4588, alpha: 1.0)),    // [213, 155, 117]
+        Srgba((red: 0.7255, green: 0.498, blue: 0.349, alpha: 1.0)),      // [185, 127,  89]
+        Srgba((red: 0.6196, green: 0.4118, blue: 0.2784, alpha: 1.0)),    // [158, 105,  71]
+        Srgba((red: 0.7176, green: 0.4588, blue: 0.3255, alpha: 1.0)),    // [183, 117,  83]
+        Srgba((red: 0.6235, green: 0.4, blue: 0.2863, alpha: 1.0)),       // [159, 102,  73]
+        Srgba((red: 0.5804, green: 0.3608, blue: 0.2549, alpha: 1.0)),    // [148,  92,  65]
+        Srgba((red: 0.5529, green: 0.3412, blue: 0.2314, alpha: 1.0)),    // [141,  87,  59]
+        Srgba((red: 0.4784, green: 0.2824, blue: 0.1843, alpha: 1.0)),    // [122,  72,  47]
+        Srgba((red: 0.4078, green: 0.2275, blue: 0.1451, alpha: 1.0)),    // [104,  58,  37]
+        Srgba((red: 0.3569, green: 0.1882, blue: 0.1137, alpha: 1.0)),    // [ 91,  48,  29]
+        Srgba((red: 0.5882, green: 0.4314, blue: 0.3294, alpha: 1.0)),    // [150, 110,  84]
+        Srgba((red: 0.5608, green: 0.3843, blue: 0.2627, alpha: 1.0)),    // [143,  98,  67]
+        Srgba((red: 0.5333, green: 0.3569, blue: 0.2353, alpha: 1.0)),    // [136,  91,  60]
+        Srgba((red: 0.4667, green: 0.2941, blue: 0.1804, alpha: 1.0)),    // [119,  75,  46]
+        Srgba((red: 0.4157, green: 0.2706, blue: 0.1686, alpha: 1.0)),    // [106,  69,  43]
+        Srgba((red: 0.3647, green: 0.2078, blue: 0.1059, alpha: 1.0)),    // [ 93,  53,  27]
+        Srgba((red: 0.3373, green: 0.1804, blue: 0.0784, alpha: 1.0)),    // [ 86,  46,  20]
+        Srgba((red: 0.8, green: 0.5882, blue: 0.4784, alpha: 1.0)),       // [204, 150, 122]
+        Srgba((red: 0.7529, green: 0.5059, blue: 0.3765, alpha: 1.0)),    // [192, 129,  96]
+        Srgba((red: 0.6745, green: 0.4431, blue: 0.3255, alpha: 1.0)),    // [172, 113,  83]
+        Srgba((red: 0.6431, green: 0.4196, blue: 0.3059, alpha: 1.0)),    // [164, 107,  78]
+        Srgba((red: 0.5843, green: 0.3647, blue: 0.2588, alpha: 1.0)),    // [149,  93,  66]
+        Srgba((red: 0.5059, green: 0.3137, blue: 0.2235, alpha: 1.0)),    // [129,  80,  57]
+        Srgba((red: 0.4392, green: 0.2745, blue: 0.1882, alpha: 1.0)),    // [112,  70,  48]
+        Srgba((red: 0.651, green: 0.4745, blue: 0.3843, alpha: 1.0)),     // [166, 121,  98]
+        Srgba((red: 0.6157, green: 0.4392, blue: 0.349, alpha: 1.0)),     // [157, 112,  89]
+        Srgba((red: 0.5765, green: 0.3922, blue: 0.3059, alpha: 1.0)),    // [147, 100,  78]
+        Srgba((red: 0.5294, green: 0.3412, blue: 0.251, alpha: 1.0)),     // [135,  87,  64]
+        Srgba((red: 0.4588, green: 0.2824, blue: 0.1922, alpha: 1.0)),    // [117,  72,  49]
+        Srgba((red: 0.4157, green: 0.2392, blue: 0.1569, alpha: 1.0)),    // [106,  61,  40]
+        Srgba((red: 0.2902, green: 0.149, blue: 0.0863, alpha: 1.0)),     // [ 74,  38,  22]
     ],
 
     hair_colors: [
-        (0.1, 0.1, 0.1), (0.3, 0.2, 0.1), (0.6, 0.4, 0.2),
-        (0.8, 0.7, 0.3), (0.6, 0.3, 0.1), (0.8, 0.1, 0.1),
+        // Beibehaltung der 0.0-1.0 Werte, aber im Srgba-Format
+        Srgba((red: 0.1, green: 0.1, blue: 0.1, alpha: 1.0)),
+        Srgba((red: 0.3, green: 0.2, blue: 0.1, alpha: 1.0)),
+        Srgba((red: 0.6, green: 0.4, blue: 0.2, alpha: 1.0)),
+        Srgba((red: 0.8, green: 0.7, blue: 0.3, alpha: 1.0)),
+        Srgba((red: 0.6, green: 0.3, blue: 0.1, alpha: 1.0)),
+        Srgba((red: 0.8, green: 0.1, blue: 0.1, alpha: 1.0)),
     ],
 
-    // Vektor von EyeColor Enums (als Strings)
     eye_colors: [ Brown, Green, Blue, Gray ],
 
-    // Map von Attribut-Enum (als String) zu Verteilung
     attribute_distributions: {
         Strength: ( mean: 0.5, std_dev: 0.1 ),
         Agility: ( mean: 0.5, std_dev: 0.1 ),

@@ -4,7 +4,6 @@ use bevy::prelude::*;
 
 use bevy_rand::prelude::{Entropy, EntropyPlugin, GlobalEntropy, WyRand};
 use rand::Rng;
-
 use std::ops::Not;
 use std::str::FromStr; // Nötig für GeneType::from_str im Debug-System
 
@@ -239,7 +238,7 @@ fn debug_entities(
         &PhysicalAttributes,
         &MentalAttributes,
         &SocialAttributes,
-        &VisualTraits,
+        &VisualTraits, // <- Query verwendet jetzt VisualTraits
         &SpeciesGenes,
     )>,
     mut ran_once: Local<bool>,
@@ -304,17 +303,32 @@ fn debug_entities(
             debug_attribute(&social.negotiation);
 
             info!("VISUELLE MERKMALE:");
+            // Konvertiere Color zurück zu sRGBA-Komponenten für die Ausgabe
+            let skin_srgba = visual.skin_color.to_srgba();
             info!(
-                "  Hautfarbe: RGB({:.3}, {:.3}, {:.3})",
-                visual.skin_color.0, visual.skin_color.1, visual.skin_color.2
+                "  Hautfarbe (sRGB): R={:.3} G={:.3} B={:.3} (A={:.3})",
+                skin_srgba.red, // <- Zugriff auf Felder der Srgba-Struktur
+                skin_srgba.green,
+                skin_srgba.blue,
+                skin_srgba.alpha // Optional Alpha ausgeben
             );
+
+            let hair_srgba = visual.hair_color.to_srgba();
             info!(
-                "  Haarfarbe: RGB({:.3}, {:.3}, {:.3})",
-                visual.hair_color.0, visual.hair_color.1, visual.hair_color.2
+                "  Haarfarbe (sRGB): R={:.3} G={:.3} B={:.3} (A={:.3})",
+                hair_srgba.red, // <- Zugriff auf Felder
+                hair_srgba.green,
+                hair_srgba.blue,
+                hair_srgba.alpha
             );
+
+            let eye_srgba = visual.eye_color.to_srgba();
             info!(
-                "  Augenfarbe: RGB({:.3}, {:.3}, {:.3})",
-                visual.eye_color.0, visual.eye_color.1, visual.eye_color.2
+                "  Augenfarbe (sRGB): R={:.3} G={:.3} B={:.3} (A={:.3})",
+                eye_srgba.red, // <- Zugriff auf Felder
+                eye_srgba.green,
+                eye_srgba.blue,
+                eye_srgba.alpha
             );
             info!("SPEZIES: {:?}", species.species);
             info!("========================================\n");

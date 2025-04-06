@@ -1,21 +1,45 @@
 (
     species_name: "Elf",
+
     skin_colors: [
-        (1.000, 0.922, 0.804), (1.000, 0.855, 0.725),
-        (0.961, 0.784, 0.569), (0.706, 0.784, 0.902),
+        // Konvertiert von 0-255 JS-Palette zu 0.0-1.0 sRGB für RON
+        Srgba((red: 1.0, green: 0.9216, blue: 0.8039, alpha: 1.0)),      // [255, 235, 205]
+        Srgba((red: 1.0, green: 0.8549, blue: 0.7255, alpha: 1.0)),      // [255, 218, 185]
+        Srgba((red: 0.9608, green: 0.7843, blue: 0.5686, alpha: 1.0)),    // [245, 200, 145]
+        Srgba((red: 0.7059, green: 0.7843, blue: 0.902, alpha: 1.0)),     // [180, 200, 230]
     ],
+
     hair_colors: [
-        (0.9, 0.9, 0.8), (0.8, 0.8, 0.6), (0.7, 0.6, 0.3),
-        (0.3, 0.2, 0.1), (0.1, 0.1, 0.1),
+        // Beibehaltung der 0.0-1.0 Werte, aber im Srgba-Format
+        Srgba((red: 0.9, green: 0.9, blue: 0.8, alpha: 1.0)),
+        Srgba((red: 0.8, green: 0.8, blue: 0.6, alpha: 1.0)),
+        Srgba((red: 0.7, green: 0.6, blue: 0.3, alpha: 1.0)),
+        Srgba((red: 0.3, green: 0.2, blue: 0.1, alpha: 1.0)),
+        Srgba((red: 0.1, green: 0.1, blue: 0.1, alpha: 1.0)),
     ],
-    eye_colors: [ Green, Blue, Gray, Brown ], // Reihenfolge geändert
+
+    eye_colors: [ Green, Blue, Gray, Brown ],
+
     attribute_distributions: {
-        Strength: ( mean: 0.35, std_dev: 0.08 ),
-        Agility: ( mean: 0.7, std_dev: 0.1 ),
-        Toughness: ( mean: 0.35, std_dev: 0.08 ),
-        Endurance: ( mean: 0.6, std_dev: 0.1 ),
-        // ... (restliche Elf-Verteilungen) ...
-        LinguisticAbility: ( mean: 0.75, std_dev: 0.1 ),
-        Musicality: ( mean: 0.8, std_dev: 0.1 ),
+        Strength: (mean: 0.35, std_dev: 0.08),
+        Agility: (mean: 0.7, std_dev: 0.1),
+        Toughness: (mean: 0.35, std_dev: 0.08),
+        Endurance: (mean: 0.6, std_dev: 0.1),
+        Recuperation: (mean: 0.6, std_dev: 0.1),
+        DiseaseResistance: (mean: 0.65, std_dev: 0.1),
+        Focus: (mean: 0.7, std_dev: 0.1),
+        Creativity: (mean: 0.65, std_dev: 0.15),
+        Willpower: (mean: 0.6, std_dev: 0.15),
+        AnalyticalAbility: (mean: 0.6, std_dev: 0.1),
+        Intuition: (mean: 0.65, std_dev: 0.15),
+        Memory: (mean: 0.7, std_dev: 0.1),
+        Patience: (mean: 0.7, std_dev: 0.1),
+        SpatialSense: (mean: 0.6, std_dev: 0.15),
+        Empathy: (mean: 0.4, std_dev: 0.15),
+        Leadership: (mean: 0.45, std_dev: 0.15),
+        SocialAwareness: (mean: 0.5, std_dev: 0.15),
+        Negotiation: (mean: 0.55, std_dev: 0.15),
+        LinguisticAbility: (mean: 0.75, std_dev: 0.1),
+        Musicality: (mean: 0.8, std_dev: 0.1),
     }
 )

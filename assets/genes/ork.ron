@@ -1,43 +1,64 @@
-// assets/genes/ork.ron
 (
     species_name: "Ork",
+
     skin_colors: [
-        (0.843, 0.878, 0.592),
-                (0.761, 0.800, 0.494),
-                (0.631, 0.659, 0.396),
-                (0.569, 0.600, 0.333),
-                (0.443, 0.471, 0.235),
-                (0.376, 0.400, 0.200),
-                (0.322, 0.341, 0.180),
-                (0.255, 0.271, 0.137),
-                (0.898, 0.863, 0.561),
-                (0.831, 0.788, 0.451),
-                (0.741, 0.694, 0.357),
-                (0.651, 0.604, 0.271),
-                (0.549, 0.506, 0.208),
-                (0.451, 0.412, 0.153),
-                (0.369, 0.337, 0.118),
-                (0.310, 0.282, 0.094),
-                (0.878, 0.780, 0.565),
-                (0.831, 0.714, 0.451),
-                (0.718, 0.596, 0.329),
-                (0.659, 0.537, 0.271),
-                (0.569, 0.463, 0.224),
-                (0.490, 0.392, 0.169),
-                (0.431, 0.341, 0.133),
-                (0.349, 0.275, 0.102),
+        // Konvertiert von 0-255 JS-Palette zu 0.0-1.0 sRGB für RON
+        Srgba((red: 0.8431, green: 0.8784, blue: 0.5922, alpha: 1.0)),    // [215, 224, 151]
+        Srgba((red: 0.7608, green: 0.8, blue: 0.4941, alpha: 1.0)),       // [194, 204, 126]
+        Srgba((red: 0.6314, green: 0.6588, blue: 0.3961, alpha: 1.0)),    // [161, 168, 101]
+        Srgba((red: 0.5686, green: 0.6, blue: 0.3333, alpha: 1.0)),       // [145, 153,  85]
+        Srgba((red: 0.4431, green: 0.4706, blue: 0.2353, alpha: 1.0)),    // [113, 120,  60]
+        Srgba((red: 0.3765, green: 0.4, blue: 0.2, alpha: 1.0)),          // [ 96, 102,  51]
+        Srgba((red: 0.3216, green: 0.3412, blue: 0.1804, alpha: 1.0)),    // [ 82,  87,  46]
+        Srgba((red: 0.2549, green: 0.2706, blue: 0.1373, alpha: 1.0)),    // [ 65,  69,  35]
+        Srgba((red: 0.898, green: 0.8627, blue: 0.5608, alpha: 1.0)),     // [229, 220, 143]
+        Srgba((red: 0.8314, green: 0.7882, blue: 0.451, alpha: 1.0)),     // [212, 201, 115]
+        Srgba((red: 0.7412, green: 0.6941, blue: 0.3569, alpha: 1.0)),    // [189, 177,  91]
+        Srgba((red: 0.651, green: 0.6039, blue: 0.2706, alpha: 1.0)),     // [166, 154,  69]
+        Srgba((red: 0.549, green: 0.5059, blue: 0.2078, alpha: 1.0)),     // [140, 129,  53]
+        Srgba((red: 0.451, green: 0.4118, blue: 0.1529, alpha: 1.0)),     // [115, 105,  39]
+        Srgba((red: 0.3686, green: 0.3373, blue: 0.1176, alpha: 1.0)),    // [ 94,  86,  30]
+        Srgba((red: 0.3098, green: 0.2824, blue: 0.0941, alpha: 1.0)),    // [ 79,  72,  24]
+        Srgba((red: 0.8784, green: 0.7804, blue: 0.5647, alpha: 1.0)),    // [224, 199, 144]
+        Srgba((red: 0.8314, green: 0.7137, blue: 0.451, alpha: 1.0)),     // [212, 182, 115]
+        Srgba((red: 0.7176, green: 0.5961, blue: 0.3294, alpha: 1.0)),    // [183, 152,  84]
+        Srgba((red: 0.6588, green: 0.5373, blue: 0.2706, alpha: 1.0)),    // [168, 137,  69]
+        Srgba((red: 0.5686, green: 0.4627, blue: 0.2235, alpha: 1.0)),    // [145, 118,  57]
+        Srgba((red: 0.4902, green: 0.3922, blue: 0.1686, alpha: 1.0)),    // [125, 100,  43]
+        Srgba((red: 0.4314, green: 0.3412, blue: 0.1333, alpha: 1.0)),    // [110,  87,  34]
+        Srgba((red: 0.349, green: 0.2745, blue: 0.102, alpha: 1.0)),      // [ 89,  70,  26]
     ],
+
     hair_colors: [
-        (0.1, 0.1, 0.1), (0.25, 0.15, 0.05), (0.4, 0.2, 0.1), (0.5, 0.3, 0.2),
+        // Beibehaltung der 0.0-1.0 Werte, aber im Srgba-Format
+        Srgba((red: 0.1, green: 0.1, blue: 0.1, alpha: 1.0)),
+        Srgba((red: 0.25, green: 0.15, blue: 0.05, alpha: 1.0)),
+        Srgba((red: 0.4, green: 0.2, blue: 0.1, alpha: 1.0)),
+        Srgba((red: 0.5, green: 0.3, blue: 0.2, alpha: 1.0)),
     ],
-    eye_colors: [ Red, Black, Yellow, Gray ], // Andere Farben
+
+    eye_colors: [ Red, Black, Yellow, Gray ],
+
     attribute_distributions: {
-        Strength: ( mean: 0.75, std_dev: 0.12 ),
-        Agility: ( mean: 0.3, std_dev: 0.1 ),
-        Toughness: ( mean: 0.8, std_dev: 0.1 ),
-        Endurance: ( mean: 0.7, std_dev: 0.1 ),
-        // ... (restliche Ork-Verteilungen) ...
-        Negotiation: ( mean: 0.2, std_dev: 0.1 ),
-        Musicality: ( mean: 0.1, std_dev: 0.05 ),
+        Strength: (mean: 0.75, std_dev: 0.12),
+        Agility: (mean: 0.3, std_dev: 0.1),
+        Toughness: (mean: 0.8, std_dev: 0.1),
+        Endurance: (mean: 0.7, std_dev: 0.1),
+        Recuperation: (mean: 0.65, std_dev: 0.1),
+        DiseaseResistance: (mean: 0.75, std_dev: 0.1),
+        Focus: (mean: 0.3, std_dev: 0.15),
+        Creativity: (mean: 0.2, std_dev: 0.1),
+        Willpower: (mean: 0.75, std_dev: 0.15),
+        AnalyticalAbility: (mean: 0.25, std_dev: 0.1),
+        Intuition: (mean: 0.4, std_dev: 0.15),
+        Memory: (mean: 0.3, std_dev: 0.1),
+        Patience: (mean: 0.25, std_dev: 0.1),
+        SpatialSense: (mean: 0.4, std_dev: 0.1),
+        Empathy: (mean: 0.2, std_dev: 0.1),
+        Leadership: (mean: 0.7, std_dev: 0.15),
+        SocialAwareness: (mean: 0.3, std_dev: 0.1),
+        LinguisticAbility: (mean: 0.3, std_dev: 0.1),
+        Negotiation: (mean: 0.2, std_dev: 0.1),
+        Musicality: (mean: 0.1, std_dev: 0.05),
     }
 )
