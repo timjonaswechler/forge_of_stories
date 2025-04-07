@@ -1,114 +1,144 @@
-use super::context::NodesContext;
-use bevy::prelude::*;
-use bevy_egui::{egui, EguiContexts, EguiPlugin}; // Import EguiPlugin and EguiContexts
-use egui::WidgetText;
-use egui_dock::{DockArea, DockState, NodeIndex, Style, TabViewer}; // Import WidgetText for TabViewer implementation
+// src/dev_tools/node_graph/plugin.rs
 
-// Resource to hold the DockState
+use bevy::prelude::*;
+use bevy_egui::{
+    egui::{self, Style as EguiStyle, WidgetText},
+    EguiContexts, EguiPlugin,
+}; // Style als EguiStyle importieren
+use egui_dock::{DockArea, DockState, NodeIndex, Style, TabViewer}; // Style von egui_dock behalten
+
+use super::context::NodesContext;
+use super::resources::GraphUIData;
+use super::systems::graph_data_provider_system;
+
+// === NEU: Struct Definition für MyTabViewer ===
+/// Hilfsstruktur, die die notwendigen Daten für das Rendern der Tabs hält.
+/// Die Lebenszeit `'a` stellt sicher, dass die Referenzen auf die Bevy-Ressourcen
+/// gültig bleiben, solange der TabViewer existiert (innerhalb des `graph_ui_system`).
+struct MyTabViewer<'a> {
+    nodes_context: &'a mut NodesContext,
+    graph_data: &'a GraphUIData,
+    // Hier könnten weitere Bevy-Ressourcen oder Queries übergeben werden,
+    // die für das Rendern der Tabs benötigt werden.
+    // world: &'a World, // Vorsicht mit World-Zugriff hier
+}
+
 #[derive(Resource, Deref, DerefMut)]
 struct MyDockState(DockState<MyWindowType>);
 
-// Enum defining the types of windows/tabs we can have
-#[derive(Debug, Clone, PartialEq, Eq)] // Added Clone, PartialEq, Eq for DockState requirements
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum MyWindowType {
     GraphEditor,
     DetailsView,
 }
 
-// The TabViewer implementation
-struct MyTabViewer<'a, 'b> {
-    nodes_context: &'a mut NodesContext,
-    world_cell: &'b mut World, // Use World directly for potential entity inspection
-}
-
-// --- Implement TabViewer for MyTabViewer ---
-impl<'a, 'b> TabViewer for MyTabViewer<'a, 'b> {
-    // --- ADDED: Define the Tab type ---
+// === Implementierung für das definierte Struct ===
+impl<'a> TabViewer for MyTabViewer<'a> {
     type Tab = MyWindowType;
 
-    // --- ADDED: Implement the title function ---
     fn title(&mut self, tab: &mut Self::Tab) -> WidgetText {
-        // Return a title based on the tab type
+        /* ... wie zuvor ... */
         match tab {
             MyWindowType::GraphEditor => "Graph Editor".into(),
             MyWindowType::DetailsView => "Details".into(),
         }
     }
 
-    // --- Keep the ui function as it was ---
     fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {
+        /* ... wie zuvor ... */
         match tab {
             MyWindowType::GraphEditor => {
-                // Pass empty vectors for now, as we don't have real node/link data yet
-                self.nodes_context.show(Vec::new(), Vec::new(), ui);
-                // Optional: Add a label if show doesn't fill space or for testing
-                // ui.label("Graph Editor Contents");
+                // Das Feld 'nodes_context' ist jetzt ein &mut NodesContext
+                self.nodes_context.show(
+                    self.graph_data.nodes.clone(), // Clone bleibt vorerst
+                    self.graph_data.links.clone(), // Clone bleibt vorerst
+                    ui,
+                );
             }
             MyWindowType::DetailsView => {
+                /* ... wie zuvor ... */
                 ui.label("Details View Placeholder");
-                // TODO: Add logic to show details based on selection in NodesContext
-                // You might need to access `self.world_cell` here to query components
-                // let selected_nodes = self.nodes_context.get_selected_nodes();
-                // if let Some(node_id) = selected_nodes.first() {
-                //    // Query world_cell for data related to node_id (needs Entity mapping)
-                // }
+                if let Some(sel_id) = self.nodes_context.get_selected_nodes().first() {
+                    if let Some(vis_node) = self.graph_data.nodes.iter().find(|n| n.id == *sel_id) {
+                        if let Some(entity) = vis_node.entity {
+                            ui.label(format!("Selected Entity: {:?}", entity));
+                        } else {
+                            ui.label("Selected VisNode missing Entity.");
+                        }
+                    } else {
+                        ui.label("Selected Node ID not in data.");
+                    }
+                } else {
+                    ui.label("No node selected.");
+                }
             }
         }
     }
-}
-// --- End of TabViewer Implementation ---
 
-// The main plugin for the Node Graph UI
+    // Optional: Methoden wie `force_closeable`, `add_popup` etc.
+}
+
 pub struct NodeGraphPlugin;
 
 impl Plugin for NodeGraphPlugin {
     fn build(&self, app: &mut App) {
-        // Ensure EguiPlugin is added (might be added elsewhere, but good practice)
+        /* ... wie zuvor ... */
         if !app.is_plugin_added::<EguiPlugin>() {
             app.add_plugins(EguiPlugin);
-            info!("EguiPlugin added by NodeGraphPlugin");
         }
 
-        // Initialize the DockState with a default layout
         let mut initial_dock_state = DockState::new(vec![MyWindowType::GraphEditor]);
         let surface = initial_dock_state.main_surface_mut();
-        // Split the main area, putting DetailsView on the right (taking 25% of space)
-        surface.split_right(
-            NodeIndex::root(),
-            0.75, // Fraction for the left (GraphEditor) pane
-            vec![MyWindowType::DetailsView],
+        let [_left, _right] =
+            surface.split_right(NodeIndex::root(), 0.75, vec![MyWindowType::DetailsView]);
+
+        app.insert_resource(MyDockState(initial_dock_state));
+        app.init_resource::<NodesContext>(); // Initialisiere NodesContext Ressource
+        app.init_resource::<GraphUIData>();
+        app.add_systems(
+            Update,
+            (
+                graph_data_provider_system.before(graph_ui_system),
+                graph_ui_system,
+            ),
         );
 
-        app.insert_resource(MyDockState(initial_dock_state)); // Add the DockState resource
-        app.init_resource::<NodesContext>(); // Add the NodesContext resource
-
-        // Add the UI system to the update schedule
-        app.add_systems(Update, graph_ui_system);
-
-        info!("NodeGraphPlugin loaded and configured.");
+        info!("NodeGraphPlugin loaded and configured."); // Using Bevy's info! macro
     }
 }
 
-// Modified graph_ui_system to use proper Bevy system parameters
 fn graph_ui_system(
     mut egui_contexts: EguiContexts,
-    mut nodes_context: ResMut<NodesContext>,
     mut dock_state: ResMut<MyDockState>,
+    mut nodes_context: ResMut<NodesContext>, // Wird an MyTabViewer übergeben
+    graph_data: Res<GraphUIData>,            // Wird an MyTabViewer übergeben
+                                             // Optional: world: &World für Details View
 ) {
-    // Get the mutable egui context, usually for the primary window
     let ctx = egui_contexts.ctx_mut();
+    let egui_style = ctx.style().clone(); // Egui Style
 
-    // Clone the style to use it for the dock area
-    let egui_style = ctx.style().clone();
-
-    // Create the TabViewer instance with access to resources
+    // === KORRIGIERT: Instanziiere das definierte Struct ===
+    // Erstelle den TabViewer mit Referenzen auf die benötigten Ressourcen
     let mut tab_viewer = MyTabViewer {
-        nodes_context: &mut *nodes_context,
-        world_cell: &mut World::new(), // Temporary empty world as a placeholder
+        nodes_context: &mut nodes_context, // Mutable Referenz
+        graph_data: &graph_data,           // Immutable Referenz
+                                           // world: world, // Falls benötigt
     };
 
-    // Show the DockArea, passing the egui context and the tab viewer
-    DockArea::new(&mut dock_state.0)
-        .style(Style::from_egui(&egui_style))
-        .show(ctx, &mut tab_viewer);
+    // Nutze den DockState Stil oder einen eigenen. Hier wird `egui_dock::Style` verwendet
+    let dock_style = Style::from_egui(&egui_style); // Style für die DockArea selbst
+
+    DockArea::new(&mut dock_state.0) // DerefMut für inneres DockState
+        .style(dock_style) // Übergib den DockArea-Style
+        .show(ctx, &mut tab_viewer); // Übergib den TabViewer
+
+    // Die tab_viewer_closure wird nicht mehr benötigt
+    /*
+    let mut tab_viewer_closure = |ui: &mut egui::Ui, tab: &mut MyWindowType| {
+       match tab {
+           MyWindowType::GraphEditor => { /* ... alter Code ... */ }
+           MyWindowType::DetailsView => { /* ... alter Code ... */ }
+       }
+    };
+    */
 }
