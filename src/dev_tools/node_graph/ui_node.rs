@@ -1,10 +1,9 @@
 use super::ui_pin::PinSpec;
 use bevy_egui::egui;
-use bevy_inspector_egui::bevy_egui;
+// Entferne: use bevy_inspector_egui::bevy_egui; falls nicht genutzt
 use derivative::Derivative;
 
 #[derive(Default, Debug, Clone)]
-/// The Style of a Node. If feilds are None then the Context style is used
 pub struct NodeArgs {
     pub background: Option<egui::Color32>,
     pub background_hovered: Option<egui::Color32>,
@@ -38,12 +37,15 @@ pub struct NodeDataLayoutStyle {
 
 #[derive(Derivative, Default)]
 #[derivative(Debug)]
+// === KORRIGIERT: Clone hinzugefügt ===
+#[derive(Clone)]
+// ==================================
 pub struct NodeSpec {
     pub(crate) id: usize,
     pub(crate) name: String,
     pub(crate) subtitle: String,
     pub(crate) origin: egui::Pos2,
-    pub(crate) attributes: Vec<PinSpec>,
+    pub(crate) attributes: Vec<PinSpec>, // Dies sollte PinSpec sein
     pub(crate) args: NodeArgs,
     pub(crate) time: Option<f32>,
     pub(crate) duration: Option<f32>,
@@ -72,6 +74,7 @@ pub struct NodeState {
     #[derivative(Debug = "ignore")]
     pub outline_shape: Option<egui::layers::ShapeIdx>,
 }
+
 impl NodeState {
     #[inline]
     pub fn get_node_title_rect(&self) -> egui::Rect {
@@ -88,6 +91,8 @@ impl NodeState {
 #[derive(Derivative)]
 #[derivative(Debug)]
 pub struct Node {
+    // Spezifikation bleibt immutable nachdem sie gesetzt wurde
     pub spec: NodeSpec,
+    // Zustand ändert sich (Größe, interne Rects etc.)
     pub state: NodeState,
 }
