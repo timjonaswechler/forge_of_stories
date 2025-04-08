@@ -1,15 +1,16 @@
 //src/dev_ui/simulation_graph.rs
 
-use bevy::color::palettes::basic::*;
-use bevy::prelude::*;
-
 use crate::genetics::components::SpeciesGenes;
-
 use crate::ui_components::node_graph::{
-    context::{GraphChange, NodesContext, PinType},
+    context::{GraphChange, NodesContext, PinType}, // PinType importieren
     resources::GraphUIData,
-    VisLink, VisNode,
+    ui_data::{generate_pin_id, LogicalPinInfo, PinDirection, VisLink, VisNode}, // NEUE Imports
 };
+
+use bevy::color::palettes::css::*;
+use bevy::prelude::*;
+use bevy::utils::HashMap;
+use std::hash::{Hash, Hasher};
 
 // === Wichtig: Diese Konstanten müssen mit denen in context.rs übereinstimmen! ===
 const PIN_ID_MULTIPLIER: usize = 10;
@@ -17,64 +18,107 @@ const INPUT_PIN_OFFSET: usize = 0;
 const OUTPUT_PIN_OFFSET: usize = 1;
 
 pub fn provide_simulation_graph_data(
-    entity_query: Query<(Entity, &SpeciesGenes)>,
+    // Query für alle Entities, die wir als Nodes darstellen wollen
+    node_entity_query: Query<(Entity, &SpeciesGenes), With<Transform>>,
+    // Query, um Parent-Beziehungen zu finden
+    parent_query: Query<(Entity, &Parent)>, // Query für Entities, die einen Parent *haben*
     mut graph_data: ResMut<GraphUIData>,
 ) {
     graph_data.nodes.clear();
-    graph_data.links.clear(); // Auch Links für jeden Frame neu berechnen
+    graph_data.links.clear();
 
     let mut current_x = 50.0;
-    const X_SPACING: f32 = 200.0;
+    const X_SPACING: f32 = 250.0;
     const Y_POS: f32 = 100.0;
 
-    // Sammle die erstellten VisNodes temporär, um darauf zugreifen zu können
+    // Temporäre Speicherung der Nodes und Mapping für schnellen Zugriff
     let mut temp_nodes: Vec<VisNode> = Vec::new();
+    let mut entity_to_node_id_map: HashMap<Entity, usize> = HashMap::new();
 
-    for (entity, species) in entity_query.iter() {
-        let node_id = entity.index() as usize;
+    // --- Schritt 1: VisNodes erstellen und Mapping aufbauen ---
+    for (entity, species) in node_entity_query.iter() {
+        let node_id = entity.index() as usize; // Temporäre ID
+        entity_to_node_id_map.insert(entity, node_id); // Füge zur Map hinzu
+
+        // Erstelle die logischen Pins für diesen Node-Typ (Testweise Hardcoded)
+        let mut logical_pins = Vec::new();
+        logical_pins.push(LogicalPinInfo {
+            identifier: "parent_out".to_string(),
+            display_name: "Parent".to_string(),
+            relation_type: "Family".to_string(),
+            direction: PinDirection::Output,
+        });
+        logical_pins.push(LogicalPinInfo {
+            identifier: "child_in".to_string(),
+            display_name: "Child".to_string(),
+            relation_type: "Family".to_string(),
+            direction: PinDirection::Input,
+        });
+        logical_pins.push(LogicalPinInfo {
+            identifier: "friend_bi".to_string(),
+            display_name: "Friend".to_string(),
+            relation_type: "Friendship".to_string(),
+            direction: PinDirection::InOut,
+        });
+
         let node = VisNode {
             id: node_id,
             entity: Some(entity),
             name: species.species.join(", "),
             position: Vec2::new(current_x, Y_POS),
-            color: Color::from(GRAY), // Standard Bevy Color verwenden
+            color: Color::from(GRAY),
+            logical_pins,
         };
-        temp_nodes.push(node); // Zum temporären Vektor hinzufügen
+        temp_nodes.push(node);
         current_x += X_SPACING;
     }
 
-    // *** NEUER TEIL: Link hinzufügen (TESTWEISE) ***
-    // Erstelle einen Link vom Output des ersten Nodes zum Input des zweiten Nodes
-    if temp_nodes.len() >= 2 {
-        let node0 = &temp_nodes[0];
-        let node1 = &temp_nodes[1];
+    // --- Schritt 2: VisLinks für Parent/Child-Beziehungen erstellen ---
+    // Iteriere über alle Entities, die eine Parent-Komponente haben
+    for (child_entity, parent_component) in parent_query.iter() {
+        let parent_entity = parent_component.get(); // Die Entity des Parents holen
 
-        // IDs basierend auf der Logik in context.rs generieren
-        let start_pin_id = node0.id.wrapping_mul(PIN_ID_MULTIPLIER) + OUTPUT_PIN_OFFSET;
-        let end_pin_id = node1.id.wrapping_mul(PIN_ID_MULTIPLIER) + INPUT_PIN_OFFSET;
+        // Prüfe, ob *beide* (Parent und Child) in unserer Node-Map sind
+        if let (Some(&parent_node_id), Some(&child_node_id)) = (
+            entity_to_node_id_map.get(&parent_entity),
+            entity_to_node_id_map.get(&child_entity), // Child Entity muss auch in der Map sein
+        ) {
+            // Generiere die spezifischen Pin-IDs für die Familienbeziehung
+            let start_pin_id = generate_pin_id(parent_node_id, "parent_out");
+            let end_pin_id = generate_pin_id(child_node_id, "child_in");
 
-        // Eindeutige ID für den Link (sehr einfacher Ansatz)
-        let link_id = node0.id.wrapping_mul(1000) + node1.id; // Basis-ID
+            // Eindeutige Link-ID generieren (z.B. XOR der Pin-IDs)
+            let link_id = start_pin_id ^ end_pin_id;
 
-        let link = VisLink {
-            id: link_id,
-            start_pin_id: start_pin_id,
-            end_pin_id: end_pin_id,
-            color: Color::WHITE, // Standardfarbe für den Link
-        };
-        graph_data.links.push(link); // Füge den Link zur Ressource hinzu
+            graph_data.links.push(VisLink {
+                id: link_id,
+                start_pin_id,
+                end_pin_id,
+                color: Color::from(ORANGE_RED),
+            });
+        }
     }
-    // *** ENDE NEUER TEIL ***
 
-    // Füge die temporär gesammelten Nodes zur finalen Ressource hinzu
-    graph_data.nodes = temp_nodes;
+    // --- Schritt 3: Optionalen Test-Link für Freundschaft hinzufügen ---
+    // Greift jetzt korrekt auf temp_nodes zu, *bevor* es verschoben wird.
+    if temp_nodes.len() >= 2 {
+        let node0_id = temp_nodes[0].id;
+        let node1_id = temp_nodes[1].id;
+        // Freundschafts-Pins verbinden
+        let pin0_id = generate_pin_id(node0_id, "friend_bi");
+        let pin1_id = generate_pin_id(node1_id, "friend_bi");
+        let link_id = pin0_id ^ pin1_id; // Andere Methode für Link-ID?
 
-    // Optionales Logging
-    // bevy::log::info!(
-    //     "Updated GraphUIData: {} nodes, {} links",
-    //     graph_data.nodes.len(),
-    //     graph_data.links.len()
-    // );
+        graph_data.links.push(VisLink {
+            id: link_id,
+            start_pin_id: pin0_id,
+            end_pin_id: pin1_id,
+            color: Color::from(LIGHT_CYAN),
+        });
+    }
+
+    // --- Schritt 4: Finale Zuweisung der Nodes (nach allen Lesezugriffen) ---
+    graph_data.nodes = temp_nodes; // Verschiebe die Nodes in die Ressource
 }
 
 // *** NEUES SYSTEM ***

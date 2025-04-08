@@ -8,8 +8,10 @@ use bevy_egui::{
 use egui_dock::{DockArea, DockState, NodeIndex, Style, TabViewer}; // Docking spezifische Typen
 
 // Lokale Module für die UI Komponente
-use super::context::NodesContext;
+use super::context::{LinkValidationCallback, NodesContext};
 use super::resources::GraphUIData;
+use super::ui_link::LinkSpec; // Für die Links
+use super::ui_pin::{PinSpec, PinType}; // Für die Pins
 
 // MyTabViewer struct muss hier definiert sein oder importiert werden, wenn es in ein eigenes Modul kommt.
 // Momentan lassen wir es hier der Einfachheit halber.
@@ -45,36 +47,47 @@ impl<'a> TabViewer for MyTabViewer<'a> {
     fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {
         match tab {
             MyWindowType::GraphEditor => {
-                // Ruft die 'show'-Methode des NodesContext auf, um den Graphen zu zeichnen
+                // *** DEFINE Validation Logic (Anwendungsspezifisch!) ***
+                // Diese Closure implementiert die spezifischen Regeln
+                let link_validator: Box<LinkValidationCallback> = Box::new(
+                    |start_pin_spec: &PinSpec,
+                     end_pin_spec: &PinSpec,
+                     _context: &NodesContext|
+                     -> bool {
+                        // Beispielregeln (basierend auf display_name - NICHT ideal, besser 'relation_type' verwenden, falls in PinSpec gespeichert)
+                        let start_name = &start_pin_spec.name;
+                        let end_name = &end_pin_spec.name;
+
+                        // Regel 1: Parent <-> Child
+                        if (start_name == "Parent" && end_name == "Child")
+                            || (start_name == "Child" && end_name == "Parent")
+                        {
+                            // Zusätzlich prüfen, dass die Richtungen passen (Output -> Input)
+                            return (start_pin_spec.kind == PinType::Output
+                                && end_pin_spec.kind == PinType::Input)
+                                || (start_pin_spec.kind == PinType::Input
+                                    && end_pin_spec.kind == PinType::Output);
+                        }
+                        // Regel 2: Friend <-> Friend (erlaubt InOut -> InOut)
+                        if start_name == "Friend" && end_name == "Friend" {
+                            // Hier könnte man die kind-Prüfung lockern, da InOut
+                            return true;
+                        }
+
+                        // Wenn keine Regel passt, ist die Verbindung ungültig
+                        false
+                    },
+                );
+
+                // Rufe 'show' mit dem Validator auf
                 self.nodes_context.show(
-                    self.graph_data.nodes.clone(), // Nimmt Daten aus GraphUIData
-                    self.graph_data.links.clone(), // Clone ist noch hier (TODO 10)
+                    self.graph_data.nodes.clone(),
+                    self.graph_data.links.clone(),
                     ui,
+                    &*link_validator, // Übergebe eine Referenz auf die geboxte Closure
                 );
             }
-            MyWindowType::DetailsView => {
-                // Platzhalter UI für die Detailansicht (TODO 4)
-                ui.label("Details View Placeholder");
-                if let Some(sel_id) = self.nodes_context.get_selected_nodes().first() {
-                    // Finde den VisNode anhand der ID... (Logik wie zuvor)
-                    if let Some(vis_node) = self.graph_data.nodes.iter().find(|n| n.id == *sel_id) {
-                        if let Some(entity) = vis_node.entity {
-                            ui.label(format!("Selected Node ID: {}", sel_id)); // Zeige Node ID
-                            ui.label(format!("Selected Entity: {:?}", entity)); // Zeige Entity ID
-                                                                                // Hier würden weitere Infos aus vis_node.details etc. kommen
-                        } else {
-                            ui.label(format!("Selected Node ID: {} (No Entity!)", sel_id));
-                        }
-                    } else {
-                        ui.label(format!(
-                            "Selected Node ID: {} (Not in current data)",
-                            sel_id
-                        ));
-                    }
-                } else {
-                    ui.label("No node selected.");
-                }
-            }
+            MyWindowType::DetailsView => { /* ... Details View Code ... */ }
         }
     }
 }

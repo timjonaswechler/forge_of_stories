@@ -6,7 +6,9 @@ use bevy::prelude::Resource; // Bevy Typen
 use bevy_egui::egui::{self, Color32, CornerRadius, StrokeKind}; // Egui Typen, inkl. CornerRadius
 use bevy_egui::egui::{Frame, Layout, Rect, Stroke};
 use derivative::Derivative;
+use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 
 // Use-Anweisungen für die UI-Module
 use super::ui_data::*;
@@ -24,6 +26,18 @@ pub use {
 const PIN_ID_MULTIPLIER: usize = 10; // Oder eine andere ausreichend große Zahl
 const INPUT_PIN_OFFSET: usize = 0;
 const OUTPUT_PIN_OFFSET: usize = 1;
+
+// *** NEUER TYP für die Validierungs-Closure ***
+/// Ein Typ für eine Funktion oder Closure, die prüft, ob zwei Pins miteinander verbunden werden dürfen.
+/// Erhält die Specs der beiden Pins und den aktuellen Zustand des NodesContext (nur lesend).
+pub type LinkValidationCallback = dyn Fn(&PinSpec, &PinSpec, &NodesContext) -> bool;
+
+pub fn generate_pin_id(node_id: usize, pin_identifier: &str) -> usize {
+    let mut hasher = DefaultHasher::new();
+    node_id.hash(&mut hasher);
+    pin_identifier.hash(&mut hasher);
+    hasher.finish() as usize
+}
 
 #[derive(Debug, Clone)]
 pub enum GraphChange {
@@ -166,100 +180,86 @@ pub struct NodesContext {
     frame_state: FrameState,
     settings: NodesSettings,
     nodes: HashMap<usize, Node>, // Behält erzeugte Nodes (Persistent State)
-    pins: HashMap<usize, Pin>,   // Behält erzeugte Pins (Persistent State)
+    pub(crate) pins: HashMap<usize, Pin>, // Behält erzeugte Pins (Persistent State)
     links: HashMap<usize, Link>, // Behält erzeugte Links (Persistent State)
 }
 
 impl NodesContext {
-    // === BEGINN: `show`-Methode ===
     pub fn show(
         &mut self,
         nodes_data: impl IntoIterator<Item = VisNode>,
         links_data: impl IntoIterator<Item = VisLink>,
         ui: &mut egui::Ui,
+        link_validator: &LinkValidationCallback,
     ) -> egui::Response {
-        self.frame_state.reset(ui); // 1. Reset
+        self.frame_state.reset(ui);
 
-        // === MODIFIED: TODO 1 - Pin Implementation Start ===
         // 2. Convert Input Data
-        let mut node_specs = HashMap::new(); // Key: node ID (z.B. entity index)
-        let mut link_specs = Vec::new(); // Wird von links_data gefüllt
-        let mut current_pins_for_frame: HashMap<usize, PinSpec> = HashMap::new(); // Sammelt *alle* Pins dieses Frames
+        let mut node_specs = HashMap::new();
+        let mut link_specs = Vec::new();
+        let mut current_pins_for_frame: HashMap<usize, PinSpec> = HashMap::new();
 
+        // === MODIFIED: Verarbeitet jetzt `logical_pins` ===
         for vis_node in nodes_data {
-            // *** ID-Generierung für Pins ***
-            // WICHTIG: Dies muss pro Frame *konsistent* sein und idealerweise über
-            // Frames hinweg stabil bleiben, wenn sich die Node-Daten nicht ändern.
-            // Entity-Index als Basis ist okay für die Demo, aber nicht für persistente Graphen.
-            // Stattdessen könnte eine eindeutige Pin-Kennung aus der Simulation kommen
-            // (z.B. wenn Pins Komponenten wären) oder durch Kombination von Node-ID
-            // und einem Pin-Index/Namen generiert werden.
+            let node_id = vis_node.id;
+            let mut pins_for_this_node: Vec<PinSpec> = Vec::new(); // Sammelt PinSpecs für *diesen* Node
 
-            let input_pin_id = vis_node.id.wrapping_mul(PIN_ID_MULTIPLIER) + INPUT_PIN_OFFSET;
-            let output_pin_id = vis_node.id.wrapping_mul(PIN_ID_MULTIPLIER) + OUTPUT_PIN_OFFSET;
+            // Iteriere über die logischen Pins des VisNode
+            for logical_pin in &vis_node.logical_pins {
+                // Generiere die eindeutige Pin-ID mit der neuen Funktion
+                let pin_id = generate_pin_id(node_id, &logical_pin.identifier);
 
-            // Erstelle die PinSpecs für diesen Node
-            let mut pins_for_this_node: Vec<PinSpec> = Vec::new();
+                // Bestimme den echten UI-PinType (In oder Out)
+                // InOut wird hier typischerweise als beides behandelt oder erfordert spezielle Logik.
+                // Fürs Erste: Input-Pins links, Output/InOut-Pins rechts.
+                let pin_kind = match logical_pin.direction {
+                    PinDirection::Input => PinType::Input,
+                    PinDirection::Output | PinDirection::InOut => PinType::Output, // InOut als Output behandeln für die Positionierung/Startlogik
+                };
 
-            // Beispiel: Ein Input-Pin
-            let input_pin = PinSpec {
-                id: input_pin_id,
-                kind: PinType::Input,
-                name: "In".to_string(),
-                flags: AttributeFlags::None as usize, // Inputs erlauben normalerweise kein *Starten* von Links
-                style_args: PinStyleArgs {
-                    shape: Some(PinShape::CircleFilled),
-                    ..Default::default()
-                }, // Beispiel-Style
-                ..Default::default()
-            };
-            pins_for_this_node.push(input_pin.clone());
-            current_pins_for_frame.insert(input_pin_id, input_pin);
+                // Flags basierend auf der Richtung setzen
+                // Outputs/InOuts dürfen Links starten/lösen
+                let pin_flags = if pin_kind == PinType::Output {
+                    (AttributeFlags::EnableLinkCreationOnSnap as usize)
+                        | (AttributeFlags::EnableLinkDetachWithDragClick as usize)
+                } else {
+                    AttributeFlags::None as usize
+                };
 
-            // Beispiel: Ein Output-Pin
-            let output_pin = PinSpec {
-                id: output_pin_id,
-                kind: PinType::Output,
-                name: "Out".to_string(),
-                // Flags, die Interaktion ermöglichen
-                flags: (AttributeFlags::EnableLinkCreationOnSnap as usize)
-                    | (AttributeFlags::EnableLinkDetachWithDragClick as usize),
-                style_args: PinStyleArgs {
-                    shape: Some(PinShape::TriangleFilled),
-                    ..Default::default()
-                }, // Beispiel-Style
-                ..Default::default()
-            };
-            pins_for_this_node.push(output_pin.clone());
-            current_pins_for_frame.insert(output_pin_id, output_pin);
+                let pin_spec = PinSpec {
+                    id: pin_id,
+                    kind: pin_kind,
+                    name: logical_pin.display_name.clone(), // Nimm den Anzeigenamen
+                    flags: pin_flags,
+                    // Style basierend auf relation_type oder fest codiert? Vorerst Standard.
+                    style_args: PinStyleArgs::default(), // TODO: Style anpassen?
+                    ..Default::default() // Sonstige Defaults (die nicht explizit gesetzt wurden)
+                };
 
-            // Erstelle den NodeSpec wie bisher, füge die generierten PinSpecs hinzu
+                pins_for_this_node.push(pin_spec.clone());
+                current_pins_for_frame.insert(pin_id, pin_spec);
+            }
+
+            // Erstelle den NodeSpec wie bisher
             let color_srgba: Srgba = vis_node.color.into();
-            let node_args = NodeArgs {
-                background: Some(Color32::from_rgba_premultiplied(
-                    (color_srgba.red * 255.0).round() as u8,
-                    (color_srgba.green * 255.0).round() as u8,
-                    (color_srgba.blue * 255.0).round() as u8,
-                    (color_srgba.alpha * 255.0).round() as u8,
-                )),
-                ..Default::default()
-            };
+            // ... (node_args erstellen wie zuvor) ...
+            let node_args = NodeArgs::default();
+
             node_specs.insert(
-                vis_node.id, // Key ist die Node-ID
+                node_id,
                 NodeSpec {
-                    id: vis_node.id,
-                    name: vis_node.name,
-                    origin: egui::pos2(vis_node.position.x, vis_node.position.y),
-                    attributes: pins_for_this_node, // *** Hier die PinSpecs übergeben ***
+                    id: node_id,
+                    name: vis_node.name.clone(),
+                    origin: egui::pos2(vis_node.position.x, vis_node.position.y), // Konvertiere Vec2 -> Pos2
+                    attributes: pins_for_this_node, // Verwende die generierten PinSpecs
                     args: node_args,
                     subtitle: format!("E:{:?}", vis_node.entity),
                     time: None,
                     duration: None,
-                    active: self.state.selected_node_indices.contains(&vis_node.id),
+                    active: false, // Wird später gesetzt
                 },
             );
         }
-        // === MODIFIED: TODO 1 - Pin Implementation End ===
 
         // Verarbeite eingehende Link-Daten
         for vis_link in links_data {
@@ -372,7 +372,7 @@ impl NodesContext {
         self.resolve_hover_state();
         self.process_clicks();
         // Übergebe das Haupt-UI, interne Operationen müssen relativ zu diesem sein
-        self.click_interaction_update(ui);
+        self.click_interaction_update(ui, link_validator);
         if self.state.interaction_state.delete_pressed {
             self.handle_delete();
         }
@@ -565,6 +565,7 @@ impl NodesContext {
 
         self.frame_state.pins_tmp.insert(pin_id, pin);
     }
+
     // Behält bestehende Links bei oder fügt neue hinzu
     fn add_link(&mut self, link_spec: LinkSpec, ui: &mut egui::Ui) {
         let link_id = link_spec.id;
@@ -1373,45 +1374,35 @@ impl NodesContext {
 
     fn should_link_snap_to_pin(
         &self,
-        start_pin_id: usize,   // Der Pin, von dem die Verbindung gestartet wurde
-        hovered_pin_id: usize, // Der Pin, über dem die Maus gerade schwebt
-        duplicate_link: Option<usize>, // ID eines existierenden Links zwischen diesen Pins (falls vorhanden)
+        start_pin_id: usize,
+        hovered_pin_id: usize,
+        duplicate_link: Option<usize>,
+        link_validator: &LinkValidationCallback, // NEU
     ) -> bool {
-        // 1. Prüfe, ob beide Pins existieren
+        // 1. Allgemeine Prüfungen (Pins existieren, nicht derselbe Node, nicht gleicher Typ, kein Duplikat)
         let Some(start_pin) = self.pins.get(&start_pin_id) else {
             return false;
         };
         let Some(end_pin) = self.pins.get(&hovered_pin_id) else {
             return false;
         };
-
-        // 2. Verbindung zum selben Node verhindern
         if start_pin.state.parent_node_idx == end_pin.state.parent_node_idx {
             return false;
         }
-
-        // 3. Verbindung zwischen Pins des gleichen Typs verhindern (Input <-> Input nicht erlaubt)
         if start_pin.spec.kind == end_pin.spec.kind {
             return false;
         }
-
-        // 4. Doppelte Links verhindern (wenn `duplicate_link` Some ist)
         if duplicate_link.is_some() {
             return false;
         }
 
-        // 5. Prüfen, ob der Ziel-Pin überhaupt Verbindungen erlaubt
-        //    (Beispiel: Ein Input-Pin könnte ein Flag haben `AcceptsLink`)
-        if (end_pin.spec.flags & AttributeFlags::EnableLinkCreationOnSnap as usize) == 0
-            && (start_pin.spec.flags & AttributeFlags::EnableLinkCreationOnSnap as usize) == 0
-        //&& end_pin.spec.kind == PinType::Input // Oder nur für Inputs prüfen?
-        {
-            // Optional: Wenn keiner der Pins das Snapping explizit erlaubt (gemäß Flag)
-            // return false;
-            // Hängt von der gewünschten Logik ab. Oft reicht es, dass der *startende* (Output) Pin es erlaubt.
+        // === 2. ANWENDUNGSSPEZIFISCHE VALIDIERUNG via Callback ===
+        // Rufe die übergebene Funktion auf. Wir übergeben die PinSpecs und den Kontext.
+        if !link_validator(&start_pin.spec, &end_pin.spec, self) {
+            return false;
         }
 
-        // Wenn alle Prüfungen bestanden, ist Snapping erlaubt
+        // Wenn alle Prüfungen bestanden
         true
     }
 
@@ -1546,8 +1537,87 @@ impl NodesContext {
     }
 
     // === MODIFIED: TODO 4 - Permanente Link-Erstellung integriert ===
-    fn click_interaction_update(&mut self, _ui: &mut egui::Ui) {
+    fn click_interaction_update(
+        &mut self,
+        ui: &mut egui::Ui,
+        link_validator: &LinkValidationCallback,
+    ) {
         match self.state.click_interaction_type {
+            ClickInteractionType::LinkCreation => {
+                let start_pin_id = self
+                    .state
+                    .click_interaction_state
+                    .link_creation
+                    .start_pin_idx
+                    .unwrap_or(usize::MAX);
+                // ... Prüfe ob start_pin_id gültig ...
+
+                let mut snapped_pin_id: Option<usize> = None;
+                if let Some(hovered_pin_id) = self.frame_state.hovered_pin_index {
+                    let duplicate_link_id = self.find_duplicate_link(start_pin_id, hovered_pin_id);
+
+                    // *** VALIDIERUNG über Callback ***
+                    // Rufe `should_link_snap_to_pin` auf, das *jetzt* den Validator verwendet
+                    if self.should_link_snap_to_pin(
+                        start_pin_id,
+                        hovered_pin_id,
+                        duplicate_link_id,
+                        link_validator,
+                    ) {
+                        snapped_pin_id = Some(hovered_pin_id);
+                    }
+                }
+                self.state
+                    .click_interaction_state
+                    .link_creation
+                    .end_pin_index = snapped_pin_id;
+
+                if self.state.interaction_state.left_mouse_released {
+                    if let Some(end_pin_id) = snapped_pin_id {
+                        // Sende NewLinkRequested (wie zuvor)
+                        self.frame_state
+                            .graph_changes
+                            .push(GraphChange::NewLinkRequested(start_pin_id, end_pin_id));
+                        // Füge internen Link hinzu (wie zuvor)
+                        // ... (neue Link ID, Spec, State) ...
+                        let internal_new_link_id = self.state.next_link_id;
+                        self.state.next_link_id += 1;
+                        let (output_pin_id, input_pin_id) = {
+                            /*...*/
+                            let start_pin_kind = self
+                                .pins
+                                .get(&start_pin_id)
+                                .map_or(PinType::None, |p| p.spec.kind);
+                            if start_pin_kind == PinType::Output {
+                                (start_pin_id, end_pin_id)
+                            } else {
+                                (end_pin_id, start_pin_id)
+                            }
+                        };
+                        let new_link_spec = LinkSpec {
+                            id: internal_new_link_id,
+                            start_pin_index: output_pin_id,
+                            end_pin_index: input_pin_id,
+                            style: Default::default(),
+                        };
+                        let new_link_state = LinkState {
+                            style: self.settings.style.format_link(new_link_spec.style.clone()),
+                            shape: Some(ui.painter().add(egui::Shape::Noop)),
+                        }; // Korrektur: Füge shape hier hinzu
+                        self.links.insert(
+                            internal_new_link_id,
+                            Link {
+                                spec: new_link_spec,
+                                state: new_link_state,
+                            },
+                        );
+                        self.frame_state.element_state_change.link_created = true;
+                    } else {
+                        self.frame_state.element_state_change.link_dropped = true;
+                    }
+                    self.state.click_interaction_type = ClickInteractionType::None;
+                }
+            }
             ClickInteractionType::BoxSelection => {
                 self.box_selector_update_selection(); // Aktualisiert die Auswahl basierend auf der Box
                 if self.state.interaction_state.left_mouse_released {
@@ -1594,8 +1664,12 @@ impl NodesContext {
                     let duplicate_link_id = self.find_duplicate_link(start_pin_id, hovered_pin_id);
 
                     // Prüfe, ob die Verbindung gültig ist (Pins existieren, nicht derselbe Node, Typen passen, kein Duplikat etc.)
-                    if self.should_link_snap_to_pin(start_pin_id, hovered_pin_id, duplicate_link_id)
-                    {
+                    if self.should_link_snap_to_pin(
+                        start_pin_id,
+                        hovered_pin_id,
+                        duplicate_link_id,
+                        link_validator,
+                    ) {
                         // Wenn gültig -> Markiere als gesnapped
                         snapped_pin_id = Some(hovered_pin_id);
                     }

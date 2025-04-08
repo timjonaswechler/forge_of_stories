@@ -4,7 +4,8 @@ use bevy::prelude::*;
 // Importiere den generischen Node Graph Plugin
 use crate::ui_components::node_graph::NodeGraphPlugin;
 // Importiere die spezifischen Integrationssysteme
-use crate::dev_ui::simulation_graph::{handle_graph_changes_system, provide_simulation_graph_data};
+use crate::dev_ui::simulation_graph::handle_graph_changes_system;
+use crate::dev_ui::simulation_graph::provide_simulation_graph_data;
 // Importiere das UI System vom generischen Plugin für die Ordnung (.before/.after)
 use crate::ui_components::node_graph::plugin::graph_ui_system;
 // Optional: Importiere AppState für run_if Bedingungen
