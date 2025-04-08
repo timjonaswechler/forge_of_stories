@@ -4,7 +4,7 @@ use bevy::log;
 use bevy::math::Vec2 as BevyVec2; // Für Umwandlung
 use bevy::prelude::Resource; // Bevy Typen
 use bevy_egui::egui::{self, Color32, CornerRadius, StrokeKind}; // Egui Typen, inkl. CornerRadius
-use bevy_egui::egui::{Frame, Layout, Pos2, Rect, Sense, Stroke, Vec2, WidgetText};
+use bevy_egui::egui::{Frame, Layout, Rect, Stroke};
 use derivative::Derivative;
 use std::collections::HashMap;
 

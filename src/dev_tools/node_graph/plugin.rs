@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 use bevy_egui::{
-    egui::{self, Style as EguiStyle, WidgetText},
+    egui::{self, WidgetText},
     EguiContexts, EguiPlugin,
 }; // Style als EguiStyle importieren
 use egui_dock::{DockArea, DockState, NodeIndex, Style, TabViewer}; // Style von egui_dock behalten
