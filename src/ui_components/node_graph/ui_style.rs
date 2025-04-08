@@ -1,14 +1,13 @@
 use super::{
-    context::*,
+    // context::*, // context ist hier nicht direkt nötig, wenn format_* Methoden in Style sind
     ui_link::{LinkStyle, LinkStyleArgs},
-    ui_node::{NodeDataColorStyle, NodeDataLayoutStyle},
-    ui_pin::{PinStyle, PinType},
+    ui_node::{NodeArgs, NodeDataColorStyle, NodeDataLayoutStyle}, // NodeArgs hier importieren
+    ui_pin::{PinShape, PinStyle, PinStyleArgs, PinType}, // PinShape/StyleArgs hier importieren
 };
+use bevy_egui::egui::{self, Color32, Vec2}; // egui importieren für Pos2 etc.
 
-use bevy_egui::egui;
-use bevy_inspector_egui::bevy_egui;
+// === ENUMS (ColorStyle, StyleFlags) - Unverändert ===
 
-/// Represents different color style values used by a Context
 #[derive(Debug, Clone, Copy)]
 pub enum ColorStyle {
     NodeBackground = 0,
@@ -31,7 +30,6 @@ pub enum ColorStyle {
     Count,
 }
 
-/// Controls some style aspects
 #[derive(Debug)]
 #[allow(dead_code)]
 pub enum StyleFlags {
@@ -40,124 +38,45 @@ pub enum StyleFlags {
     GridLines = 1 << 2,
 }
 
+// === IMPL ColorStyle - Mit der umbenannten Funktion ===
+
 impl ColorStyle {
-    /// dark color style
-    pub fn colors_dark() -> [egui::Color32; ColorStyle::Count as usize] {
+    // Die Originalen können hier bleiben oder entfernt werden, falls nicht mehr gebraucht
+    // pub fn colors_dark() -> ...
+    // pub fn colors_classic() -> ...
+    // pub fn colors_light() -> ... // Das Original "Light"
+
+    /// Blender "Light" inspired color style (basierend auf der XML) - JETZT KORREKT BENANNT
+    pub fn colors_blender_light() -> [egui::Color32; ColorStyle::Count as usize] {
         let mut colors = [egui::Color32::BLACK; ColorStyle::Count as usize];
-        colors[ColorStyle::NodeBackground as usize] =
-            egui::Color32::from_rgba_unmultiplied(50, 50, 50, 255);
-        colors[ColorStyle::NodeBackgroundHovered as usize] =
-            egui::Color32::from_rgba_unmultiplied(75, 75, 75, 255);
-        colors[ColorStyle::NodeBackgroundSelected as usize] =
-            egui::Color32::from_rgba_unmultiplied(75, 75, 75, 255);
-        colors[ColorStyle::NodeOutline as usize] =
-            egui::Color32::from_rgba_unmultiplied(100, 100, 100, 255);
-        colors[ColorStyle::NodeOutlineActive as usize] =
-            egui::Color32::from_rgba_unmultiplied(100, 100, 200, 255);
-        colors[ColorStyle::TitleBar as usize] =
-            egui::Color32::from_rgba_unmultiplied(41, 74, 122, 255);
+
+        colors[ColorStyle::GridBackground as usize] = Color32::from_rgb(0x1d, 0x1d, 0x1d); // #1d1d1d
+        colors[ColorStyle::GridLine as usize] = Color32::from_rgb(0x28, 0x28, 0x28); // #282828
+        colors[ColorStyle::NodeBackground as usize] = Color32::from_rgb(0x66, 0x66, 0x66); // #666666
+        colors[ColorStyle::NodeBackgroundHovered as usize] = Color32::from_gray(0x78); // #787878 (abgeleitet)
+        colors[ColorStyle::NodeBackgroundSelected as usize] = Color32::from_rgb(0xed, 0x57, 0x00); // #ed5700
+        colors[ColorStyle::TitleBar as usize] = Color32::from_gray(0x5a); // #5a5a5a (abgeleitet)
         colors[ColorStyle::TitleBarHovered as usize] =
-            egui::Color32::from_rgba_unmultiplied(66, 150, 250, 255);
+            colors[ColorStyle::NodeBackgroundSelected as usize];
         colors[ColorStyle::TitleBarSelected as usize] =
-            egui::Color32::from_rgba_unmultiplied(66, 150, 250, 255);
-        colors[ColorStyle::Link as usize] =
-            egui::Color32::from_rgba_unmultiplied(61, 133, 224, 200);
-        colors[ColorStyle::LinkHovered as usize] =
-            egui::Color32::from_rgba_unmultiplied(66, 150, 250, 255);
+            colors[ColorStyle::NodeBackgroundSelected as usize];
+        colors[ColorStyle::NodeOutline as usize] = colors[ColorStyle::GridLine as usize]; // #282828 (abgeleitet)
+        colors[ColorStyle::NodeOutlineActive as usize] = Color32::WHITE; // #ffffff
+        colors[ColorStyle::Link as usize] = Color32::from_rgb(0x1a, 0x1a, 0x1a); //rgb(117, 117, 117)
         colors[ColorStyle::LinkSelected as usize] =
-            egui::Color32::from_rgba_unmultiplied(66, 150, 250, 255);
-        colors[ColorStyle::Pin as usize] = egui::Color32::from_rgba_unmultiplied(53, 150, 250, 180);
-        colors[ColorStyle::PinHovered as usize] =
-            egui::Color32::from_rgba_unmultiplied(53, 150, 250, 255);
-        colors[ColorStyle::BoxSelector as usize] =
-            egui::Color32::from_rgba_unmultiplied(61, 133, 224, 30);
-        colors[ColorStyle::BoxSelectorOutline as usize] =
-            egui::Color32::from_rgba_unmultiplied(61, 133, 224, 150);
-        colors[ColorStyle::GridBackground as usize] =
-            egui::Color32::from_rgba_unmultiplied(40, 40, 50, 200);
-        colors[ColorStyle::GridLine as usize] =
-            egui::Color32::from_rgba_unmultiplied(200, 200, 200, 40);
+            Color32::from_rgba_unmultiplied(0xff, 0xff, 0xff, 0xb3); // #ffffffb3
+        colors[ColorStyle::LinkHovered as usize] = colors[ColorStyle::LinkSelected as usize];
+        colors[ColorStyle::Pin as usize] = Color32::from_gray(0x96); // #969696 (abgeleitet)
+        colors[ColorStyle::PinHovered as usize] = Color32::WHITE; // (abgeleitet)
+        let selector_base = colors[ColorStyle::NodeBackgroundSelected as usize];
+        colors[ColorStyle::BoxSelector as usize] = selector_base.linear_multiply(0.15);
+        colors[ColorStyle::BoxSelectorOutline as usize] = selector_base.linear_multiply(0.5);
+
         colors
     }
+} // Ende impl ColorStyle
 
-    /// classic color style
-    #[allow(dead_code)]
-    pub fn colors_classic() -> [egui::Color32; ColorStyle::Count as usize] {
-        let mut colors = [egui::Color32::BLACK; ColorStyle::Count as usize];
-        colors[ColorStyle::NodeBackground as usize] =
-            egui::Color32::from_rgba_unmultiplied(50, 50, 50, 255);
-        colors[ColorStyle::NodeBackgroundHovered as usize] =
-            egui::Color32::from_rgba_unmultiplied(75, 75, 75, 255);
-        colors[ColorStyle::NodeBackgroundSelected as usize] =
-            egui::Color32::from_rgba_unmultiplied(75, 75, 75, 255);
-        colors[ColorStyle::NodeOutline as usize] =
-            egui::Color32::from_rgba_unmultiplied(100, 100, 100, 255);
-        colors[ColorStyle::TitleBar as usize] =
-            egui::Color32::from_rgba_unmultiplied(69, 69, 138, 255);
-        colors[ColorStyle::TitleBarHovered as usize] =
-            egui::Color32::from_rgba_unmultiplied(82, 82, 161, 255);
-        colors[ColorStyle::TitleBarSelected as usize] =
-            egui::Color32::from_rgba_unmultiplied(82, 82, 161, 255);
-        colors[ColorStyle::Link as usize] =
-            egui::Color32::from_rgba_unmultiplied(255, 255, 255, 100);
-        colors[ColorStyle::LinkHovered as usize] =
-            egui::Color32::from_rgba_unmultiplied(105, 99, 204, 153);
-        colors[ColorStyle::LinkSelected as usize] =
-            egui::Color32::from_rgba_unmultiplied(105, 99, 204, 153);
-        colors[ColorStyle::Pin as usize] = egui::Color32::from_rgba_unmultiplied(89, 102, 156, 170);
-        colors[ColorStyle::PinHovered as usize] =
-            egui::Color32::from_rgba_unmultiplied(102, 122, 179, 200);
-        colors[ColorStyle::BoxSelector as usize] =
-            egui::Color32::from_rgba_unmultiplied(82, 82, 161, 100);
-        colors[ColorStyle::BoxSelectorOutline as usize] =
-            egui::Color32::from_rgba_unmultiplied(82, 82, 161, 255);
-        colors[ColorStyle::GridBackground as usize] =
-            egui::Color32::from_rgba_unmultiplied(40, 40, 50, 200);
-        colors[ColorStyle::GridLine as usize] =
-            egui::Color32::from_rgba_unmultiplied(200, 200, 200, 40);
-        colors
-    }
-
-    /// light color style
-    #[allow(dead_code)]
-    pub fn colors_light() -> [egui::Color32; ColorStyle::Count as usize] {
-        let mut colors = [egui::Color32::BLACK; ColorStyle::Count as usize];
-        colors[ColorStyle::NodeBackground as usize] =
-            egui::Color32::from_rgba_unmultiplied(240, 240, 240, 255);
-        colors[ColorStyle::NodeBackgroundHovered as usize] =
-            egui::Color32::from_rgba_unmultiplied(240, 240, 240, 255);
-        colors[ColorStyle::NodeBackgroundSelected as usize] =
-            egui::Color32::from_rgba_unmultiplied(240, 240, 240, 255);
-        colors[ColorStyle::NodeOutline as usize] =
-            egui::Color32::from_rgba_unmultiplied(100, 100, 100, 255);
-        colors[ColorStyle::TitleBar as usize] =
-            egui::Color32::from_rgba_unmultiplied(248, 248, 248, 255);
-        colors[ColorStyle::TitleBarHovered as usize] =
-            egui::Color32::from_rgba_unmultiplied(209, 209, 209, 255);
-        colors[ColorStyle::TitleBarSelected as usize] =
-            egui::Color32::from_rgba_unmultiplied(209, 209, 209, 255);
-        colors[ColorStyle::Link as usize] =
-            egui::Color32::from_rgba_unmultiplied(66, 150, 250, 100);
-        colors[ColorStyle::LinkHovered as usize] =
-            egui::Color32::from_rgba_unmultiplied(66, 150, 250, 242);
-        colors[ColorStyle::LinkSelected as usize] =
-            egui::Color32::from_rgba_unmultiplied(66, 150, 250, 242);
-        colors[ColorStyle::Pin as usize] = egui::Color32::from_rgba_unmultiplied(66, 150, 250, 160);
-        colors[ColorStyle::PinHovered as usize] =
-            egui::Color32::from_rgba_unmultiplied(66, 150, 250, 255);
-        colors[ColorStyle::BoxSelector as usize] =
-            egui::Color32::from_rgba_unmultiplied(90, 170, 250, 30);
-        colors[ColorStyle::BoxSelectorOutline as usize] =
-            egui::Color32::from_rgba_unmultiplied(90, 170, 250, 150);
-        colors[ColorStyle::GridBackground as usize] =
-            egui::Color32::from_rgba_unmultiplied(225, 225, 225, 255);
-        colors[ColorStyle::GridLine as usize] =
-            egui::Color32::from_rgba_unmultiplied(180, 180, 180, 100);
-        colors
-    }
-}
-
-/// The style used by a context
+// === Struct Style - Unverändert ===
 #[derive(Debug)]
 pub struct Style {
     pub grid_spacing: f32,
@@ -182,31 +101,45 @@ pub struct Style {
     pub colors: [egui::Color32; ColorStyle::Count as usize],
 }
 
+// === IMPL DEFAULT FÜR Style - KORRIGIERT ===
 impl Default for Style {
     fn default() -> Self {
-        Self {
-            grid_spacing: 32.0,
-            node_corner_rounding: 4.0,
-            node_padding_horizontal: 8.0,
-            node_padding_vertical: 8.0,
-            node_border_thickness: 1.0,
-            link_thickness: 3.0,
-            link_line_segments_per_length: 0.1,
-            link_hover_distance: 10.0,
-            pin_circle_radius: 4.0,
-            pin_quad_side_length: 7.0,
-            pin_triangle_side_length: 9.5,
-            pin_line_thickness: 1.0,
-            pin_hover_radius: 10.0,
-            pin_offset: 0.0,
-            flags: StyleFlags::NodeOutline as usize | StyleFlags::GridLines as usize,
-            colors: ColorStyle::colors_dark(),
-            pin_shape: PinShape::CircleFilled,
-        }
+        // Ruft die neue Preset-Funktion auf, die *alle* Blender-Style-Werte setzt
+        Self::blender_light()
     }
 }
 
+// === IMPL Style - MIT NEUER PRESET-FUNKTION ===
 impl Style {
+    // NEUE Preset-Funktion für den gesamten Blender-Style
+    pub fn blender_light() -> Self {
+        Self {
+            // Parameter aus XML/Annahmen
+            grid_spacing: 32.0,           // Standard behalten
+            node_corner_rounding: 4.0,    // 0.4 panel_roundness * 10 (Skalierungsfaktor?)
+            node_padding_horizontal: 8.0, // Standard behalten
+            node_padding_vertical: 8.0,   // Standard behalten
+            node_border_thickness: 1.0,   // Standard behalten
+
+            link_thickness: 5.5, // Dünnere Linien wie in Blender 'wire'
+            link_line_segments_per_length: 0.1, // Standard behalten (beeinflusst Glätte)
+            link_hover_distance: 10.0, // Standard behalten
+
+            pin_shape: PinShape::CircleFilled, // Standard behalten
+            pin_circle_radius: 5.0,            // Etwas größer
+            pin_quad_side_length: 8.0,
+            pin_triangle_side_length: 10.0,
+            pin_line_thickness: 1.0,
+            pin_hover_radius: 12.0, // Größerer Hover-Bereich
+            pin_offset: 0.0,        // Standard behalten
+
+            flags: StyleFlags::NodeOutline as usize | StyleFlags::GridLines as usize, // Standard behalten
+            // Farben aus der neuen Blender-Farb-Funktion laden
+            colors: ColorStyle::colors_blender_light(),
+        }
+    }
+
+    // --- Die anderen Methoden bleiben exakt wie zuvor ---
     pub(crate) fn get_screen_space_pin_coordinates(
         &self,
         node_rect: &egui::Rect,
@@ -249,7 +182,7 @@ impl Style {
                         pin_pos,
                         [self.pin_quad_side_length / 2.0; 2].into(),
                     ),
-                    egui::CornerRadius::same(0), // Explizites Rounding
+                    egui::Rounding::ZERO, // Geändert von CornerRadius::same(0) zu egui::Rounding::ZERO
                     egui::Stroke::new(self.pin_line_thickness, pin_color),
                     egui::StrokeKind::Inside,
                 ),
@@ -261,7 +194,7 @@ impl Style {
                         pin_pos,
                         [self.pin_quad_side_length / 2.0; 2].into(),
                     ),
-                    0.0,
+                    egui::Rounding::ZERO, // Geändert von 0.0 zu egui::Rounding::ZERO
                     pin_color,
                 ),
             ),
@@ -274,11 +207,11 @@ impl Style {
                     shape,
                     egui::Shape::closed_line(
                         vec![
-                            pin_pos + (left_offset, verticacl_offset).into(),
-                            pin_pos + (right_offset, 0.0).into(),
-                            pin_pos + (left_offset, -verticacl_offset).into(),
+                            pin_pos + egui::vec2(left_offset, verticacl_offset), // Verwende vec2
+                            pin_pos + egui::vec2(right_offset, 0.0),
+                            pin_pos + egui::vec2(left_offset, -verticacl_offset),
                         ],
-                        (self.pin_line_thickness, pin_color),
+                        egui::Stroke::new(self.pin_line_thickness, pin_color), //Stroke hier erstellen
                     ),
                 )
             }
@@ -291,9 +224,9 @@ impl Style {
                     shape,
                     egui::Shape::convex_polygon(
                         vec![
-                            pin_pos + (left_offset, verticacl_offset).into(),
-                            pin_pos + (right_offset, 0.0).into(),
-                            pin_pos + (left_offset, -verticacl_offset).into(),
+                            pin_pos + egui::vec2(left_offset, verticacl_offset), // Verwende vec2
+                            pin_pos + egui::vec2(right_offset, 0.0),
+                            pin_pos + egui::vec2(left_offset, -verticacl_offset),
                         ],
                         pin_color,
                         egui::Stroke::NONE,
