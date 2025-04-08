@@ -1,46 +1,43 @@
 // src/main.rs
 use bevy::prelude::*;
 
-// Importiere direkt aus dem Crate-Root (lib.rs)
 use forge_of_stories::{
     app_setup::{AppState, CorePlugin, EventPlugin, SetupPlugin},
     attributes::plugin::AttributesPlugin,
     debug::plugin::DebugPlugin,
-    // Konstanten werden jetzt auch hier importiert, falls sie in lib.rs sind
-    // FIXED_SEED, USE_FIXED_SEED,
-    dev_tools::node_graph::NodeGraphPlugin,
-    genetics::plugin::GeneticsCorePlugin, // Füge dies hinzu, wenn du es erstellt hast
+    // --- Entfernt/Geändert ---
+    // dev_tools::node_graph::NodeGraphPlugin, // ALT
+    dev_ui::plugin::DevUIPlugin, // *** NEU ***
+    // -------------------------
+    genetics::plugin::GeneticsCorePlugin,
     simulation::plugin::SimulationPlugin,
     visuals::plugin::VisualsPlugin,
-    SimulationSystemSet, // Importiere das Set
+    SimulationSystemSet,
 };
 
 fn main() {
     App::new()
-        // Konfiguriere die System Sets für die Update-Phase
         .configure_sets(
             Update,
             (
-                // Reihenfolge der Ausführung definieren
                 SimulationSystemSet::GenotypePhenotype,
                 SimulationSystemSet::AttributeApplication,
                 SimulationSystemSet::VisualTraitApplication,
                 SimulationSystemSet::AttributeCalculation,
             )
                 .chain()
-                .run_if(in_state(AppState::Running)), // Alle laufen nur im Running State und nacheinander
+                .run_if(in_state(AppState::Running)),
         )
-        // Füge die Plugins hinzu
         .add_plugins((
-            CorePlugin,         // Basis-Setup (DefaultPlugins, Log, Window, RNG)
-            EventPlugin,        // Registriert alle Events
-            SetupPlugin,        // Lädt Assets, verwaltet AppState, init GeneLibrary
-            GeneticsCorePlugin, // Fügt genotype_to_phenotype hinzu (wenn erstellt)
-            AttributesPlugin,   // Fügt Attribut-Systeme hinzu
-            VisualsPlugin,      // Fügt Visual-Systeme und Ressourcen hinzu
-            SimulationPlugin,   // Charakter-Erstellung, laufende Systeme (Reproduktion etc.)
-            DebugPlugin,        // Debugging-Systeme (nur im Debug-Build)
-            NodeGraphPlugin,
+            CorePlugin,
+            EventPlugin,
+            SetupPlugin,
+            GeneticsCorePlugin,
+            AttributesPlugin,
+            VisualsPlugin,
+            SimulationPlugin,
+            DebugPlugin, // Konsolen-Debugging
+            DevUIPlugin, // *** Das neue Plugin für die Entwickler-UI ***
         ))
         .run();
 }

@@ -1,4 +1,4 @@
-// src/dev_tools/node_graph/resources.rs
+// src/ui_components/node_graph/resources.rs
 
 use bevy::prelude::Resource;
 // Importiere deine UI-Datenstrukturen aus dem ui_data Modul

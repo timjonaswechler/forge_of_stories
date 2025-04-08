@@ -1,4 +1,4 @@
-// src/dev_tools/node_graph/context.rs
+// src/ui_components/node_graph/context.rs
 use bevy::color::Srgba; // Direkter Import für Srgba Konvertierung
 use bevy::log;
 use bevy::math::Vec2 as BevyVec2; // Für Umwandlung
@@ -526,8 +526,8 @@ impl NodesContext {
 
         let label_screen_rect = response.rect;
         // Korrekte Berechnung des relativen Rects
-        let node_origin_screen = self.grid_space_to_screen_space(node.spec.origin); // Muss node state/spec verwenden
-        let node_layout_padding = node.state.layout_style.padding;
+        let _node_origin_screen = self.grid_space_to_screen_space(node.spec.origin); // Muss node state/spec verwenden
+        let _node_layout_padding = node.state.layout_style.padding;
 
         // Titelhöhe berücksichtigen, falls Pins unter dem Titel beginnen
         // Diese Berechnung ist komplex, vereinfacht: Annahme, Pin-Label Rect ist bereits korrekt im Node-Layout platziert.
@@ -565,14 +565,6 @@ impl NodesContext {
 
         self.frame_state.pins_tmp.insert(pin_id, pin);
     }
-    // Helfer, um das Klick-/Hover-Rechteck für einen Pin zu bekommen
-    fn get_pin_interaction_rect_screen(&self, pin: &Pin) -> egui::Rect {
-        let radius = self.settings.style.pin_hover_radius; // Verwende Hover-Radius für Interaktion
-                                                           // Position wird im `draw_pin` aktualisiert, hole die letzte bekannte Position oder berechne neu
-        let pin_pos_screen = self.get_screen_space_pin_coordinates(pin);
-        egui::Rect::from_center_size(pin_pos_screen, egui::vec2(radius * 2.0, radius * 2.0))
-    }
-
     // Behält bestehende Links bei oder fügt neue hinzu
     fn add_link(&mut self, link_spec: LinkSpec, ui: &mut egui::Ui) {
         let link_id = link_spec.id;
@@ -591,6 +583,48 @@ impl NodesContext {
         entry.state.shape = Some(ui.painter().add(egui::Shape::Noop));
     }
 
+    pub fn get_pin(&self, pin_id: usize) -> Option<&Pin> {
+        self.pins.get(&pin_id)
+    }
+    // Helfer, um das Klick-/Hover-Rechteck für einen Pin zu bekommen
+    fn get_pin_interaction_rect_screen(&self, pin: &Pin) -> egui::Rect {
+        let radius = self.settings.style.pin_hover_radius; // Verwende Hover-Radius für Interaktion
+                                                           // Position wird im `draw_pin` aktualisiert, hole die letzte bekannte Position oder berechne neu
+        let pin_pos_screen = self.get_screen_space_pin_coordinates(pin);
+        egui::Rect::from_center_size(pin_pos_screen, egui::vec2(radius * 2.0, radius * 2.0))
+    }
+    // Gibt die *aktuelle* Screen-Space-Position eines Pins zurück
+    // Wichtig, da sich die Node-Position durch Dragging ändern kann
+    fn get_screen_space_pin_coordinates(&self, pin: &Pin) -> egui::Pos2 {
+        let Some(parent_node) = self.nodes.get(&pin.state.parent_node_idx) else {
+            return pin.state.pos; // Fallback auf gespeicherte Position, falls Node weg ist
+        };
+
+        // Node Rect ist im Grid Space
+        let node_rect_grid = parent_node.state.rect;
+
+        // Pin Attribut Rect ist relativ zum Node Grid Origin
+        let attr_rect_grid_relative = pin.state.attribute_rect;
+        let attr_rect_grid_absolute =
+            attr_rect_grid_relative.translate(node_rect_grid.min.to_vec2()); // Addiere Node-Ursprung
+
+        // Wandle die Grid-Rects in Screen-Rects um
+        let node_rect_screen = egui::Rect::from_min_max(
+            self.grid_space_to_screen_space(node_rect_grid.min),
+            self.grid_space_to_screen_space(node_rect_grid.max),
+        );
+        let attr_rect_screen = egui::Rect::from_min_max(
+            self.grid_space_to_screen_space(attr_rect_grid_absolute.min),
+            self.grid_space_to_screen_space(attr_rect_grid_absolute.max),
+        );
+
+        // Verwende die Style-Methode mit den aktuellen Screen-Rects
+        self.settings.style.get_screen_space_pin_coordinates(
+            &node_rect_screen,
+            &attr_rect_screen, // Das ist das Label-Rect im Screen Space
+            pin.spec.kind,
+        )
+    }
     // --- Drawing Methods ---
     fn draw_grid(&self, _canvas_size: egui::Vec2, ui: &mut egui::Ui) {
         /* Vollständige Implementierung wie oben */
@@ -792,7 +826,7 @@ impl NodesContext {
             }
 
             let pin_ids_to_draw = node.state.pin_indices.clone();
-            drop(node); // Release immutable borrow
+            // drop(node); // Release immutable borrow
 
             for pin_id in pin_ids_to_draw {
                 self.draw_pin(pin_id, ui);
@@ -938,39 +972,6 @@ impl NodesContext {
     fn editor_space_to_screen_space(&self, v: egui::Pos2) -> egui::Pos2 {
         // Von Editor-Koordinaten (z.B. 0,0 ist oben links im Canvas, ignoriert Panning) zu Screen-Koordinaten
         v + self.frame_state.canvas_origin_screen_space()
-    }
-
-    // Gibt die *aktuelle* Screen-Space-Position eines Pins zurück
-    // Wichtig, da sich die Node-Position durch Dragging ändern kann
-    fn get_screen_space_pin_coordinates(&self, pin: &Pin) -> egui::Pos2 {
-        let Some(parent_node) = self.nodes.get(&pin.state.parent_node_idx) else {
-            return pin.state.pos; // Fallback auf gespeicherte Position, falls Node weg ist
-        };
-
-        // Node Rect ist im Grid Space
-        let node_rect_grid = parent_node.state.rect;
-
-        // Pin Attribut Rect ist relativ zum Node Grid Origin
-        let attr_rect_grid_relative = pin.state.attribute_rect;
-        let attr_rect_grid_absolute =
-            attr_rect_grid_relative.translate(node_rect_grid.min.to_vec2()); // Addiere Node-Ursprung
-
-        // Wandle die Grid-Rects in Screen-Rects um
-        let node_rect_screen = egui::Rect::from_min_max(
-            self.grid_space_to_screen_space(node_rect_grid.min),
-            self.grid_space_to_screen_space(node_rect_grid.max),
-        );
-        let attr_rect_screen = egui::Rect::from_min_max(
-            self.grid_space_to_screen_space(attr_rect_grid_absolute.min),
-            self.grid_space_to_screen_space(attr_rect_grid_absolute.max),
-        );
-
-        // Verwende die Style-Methode mit den aktuellen Screen-Rects
-        self.settings.style.get_screen_space_pin_coordinates(
-            &node_rect_screen,
-            &attr_rect_screen, // Das ist das Label-Rect im Screen Space
-            pin.spec.kind,
-        )
     }
 
     // --- Resolves (Mit eingefügtem Code) ---

@@ -1,4 +1,4 @@
-// src/dev_tools/node_graph/ui_data.rs
+// src/ui_components/node_graph/ui_data.rs
 use super::ui_pin::PinType;
 use bevy::prelude::{Color, Entity, Vec2}; // Vec2 hinzugefügt
 

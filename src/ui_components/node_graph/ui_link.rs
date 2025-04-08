@@ -147,7 +147,7 @@ impl LinkBezierData {
         }
         p_closest
     }
-    pub(crate) fn get_distance_to_cubic_bezier(&self, pos: &egui::Pos2) -> f32 {
+    pub(crate) fn _get_distance_to_cubic_bezier(&self, pos: &egui::Pos2) -> f32 {
         // ... (Implementierung unverändert) ...
         let point_on_curve = self.get_closest_point_on_cubic_bezier(pos);
         pos.distance(point_on_curve)

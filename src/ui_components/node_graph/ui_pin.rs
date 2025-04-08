@@ -56,7 +56,7 @@ pub enum AttributeFlags {
 }
 
 #[derive(Default, Debug, Clone)]
-pub(crate) struct PinStyle {
+pub struct PinStyle {
     pub background: egui::Color32,
     pub hovered: egui::Color32,
     pub shape: PinShape,
@@ -74,7 +74,7 @@ pub struct PinSpec {
 
 #[derive(Derivative, Clone)]
 #[derivative(Debug)]
-pub(crate) struct PinState {
+pub struct PinState {
     pub parent_node_idx: usize,
     pub attribute_rect: egui::Rect,
     pub pos: egui::Pos2,
@@ -98,7 +98,7 @@ impl Default for PinState {
 
 #[derive(Derivative)]
 #[derivative(Debug)]
-pub(crate) struct Pin {
+pub struct Pin {
     pub spec: PinSpec,
     pub state: PinState,
 }

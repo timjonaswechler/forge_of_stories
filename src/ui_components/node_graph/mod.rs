@@ -1,8 +1,8 @@
-// src/dev_tools/node_graph/mod.rs
+// src/ui_components/node_graph/mod.rs
 pub mod context;
 pub mod plugin;
-pub mod resources; // <<< NEU
-pub mod systems; // <<< NEU
+pub mod resources;
+pub mod systems;
 pub mod ui_data;
 pub mod ui_link;
 pub mod ui_node;
