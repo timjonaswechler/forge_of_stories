@@ -1,5 +1,5 @@
 // src/ui_components/node_graph/plugin.rs
-use bevy::log; // Für Logging konsistent verwenden
+use bevy::log;
 use bevy::prelude::*;
 use bevy_egui::{
     egui::{self, WidgetText},
@@ -102,8 +102,48 @@ impl<'a> TabViewer for MyTabViewer<'a> {
                     &*link_validator, // Übergebe eine Referenz auf die geboxte Closure
                 );
             }
+
             MyWindowType::DetailsView => {
-                ui.label("Details View Content");
+                ui.heading("Selected Node Details");
+                ui.separator();
+
+                // Greife auf die vorbereiteten Daten in GraphUIData zu
+                if let Some(details) = &self.graph_data.selected_node_details_display {
+                    ui.label(&details.title); // Zeige den vorbereiteten Titel
+                    ui.separator();
+
+                    if !details.properties.is_empty() {
+                        ui.heading("Components:");
+                        egui::Grid::new("details_grid") // Optional: Grid-Layout
+                            .num_columns(2)
+                            .spacing([40.0, 4.0])
+                            .striped(true)
+                            .show(ui, |ui| {
+                                for (name, value) in &details.properties {
+                                    ui.label(name);
+                                    ui.label(value);
+                                    ui.end_row();
+                                }
+                            });
+                    } else {
+                        ui.label("No component details found/queried.");
+                    }
+
+                    ui.separator();
+                    // Log-Button (oder andere Aktionen)
+                    if ui.button("Log Raw Entity Details").clicked() {
+                        // Entity ID extrahieren (vielleicht nicht die beste Methode)
+                        if let Some(entity_str) = details.title.split_whitespace().last() {
+                            bevy::log::info!(
+                                "Log button clicked for prepared details: {}",
+                                entity_str
+                            );
+                            // Hier könnte man komplexere Aktionen auslösen, braucht aber wieder Zugriff auf ECS
+                        }
+                    }
+                } else {
+                    ui.label("No node selected.");
+                }
             }
         }
     }

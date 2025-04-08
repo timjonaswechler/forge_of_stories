@@ -1,12 +1,11 @@
 //src/dev_ui/simulation_graph.rs
-
 use crate::genetics::components::SpeciesGenes;
 use crate::ui_components::node_graph::{
-    context::{GraphChange, NodesContext, PinType}, // PinType importieren
-    resources::GraphUIData,
-    ui_data::{generate_pin_id, LogicalPinInfo, PinDirection, VisLink, VisNode}, // NEUE Imports
+    context::{GraphChange, NodesContext, PinType},
+    resources::{DetailDisplayData, GraphUIData}, // <- HIER DetailDisplayData hinzufügen
+    ui_data::{generate_pin_id, LogicalPinInfo, PinDirection, VisLink, VisNode},
+    NodesContext as _, // Um NodeContext für den Call weiter unten zu importieren
 };
-
 use bevy::color::palettes::css::*;
 use bevy::prelude::*;
 use bevy::utils::HashMap;
@@ -19,11 +18,18 @@ const OUTPUT_PIN_OFFSET: usize = 1;
 #[derive(Component, Debug, Clone, Copy)] // Debug, Clone, Copy optional aber nützlich
 pub struct FriendWith(pub Entity);
 
+#[derive(Resource, Default, Debug, Clone)]
+pub struct SelectedNodeDetails {
+    pub selected_entity: Option<Entity>,
+    // Optional: Hier könnten wir bereits aufbereitete Daten speichern,
+    // z.B. Name, Komponentenwerte als Strings etc.
+    // pub component_details: HashMap<String, String>,
+}
+
 pub fn provide_simulation_graph_data(
-    // Query für alle Entities, die wir als Nodes darstellen wollen
     node_entity_query: Query<(Entity, &SpeciesGenes)>,
-    // Query, um Parent-Beziehungen zu finden
-    parent_query: Query<(Entity, &Parent)>, // Query für Entities, die einen Parent *haben*
+    parent_query: Query<(Entity, &Parent)>,
+    friend_query: Query<(Entity, &FriendWith)>, // Hinzugefügt
     mut graph_data: ResMut<GraphUIData>,
 ) {
     graph_data.nodes.clear();
@@ -37,31 +43,37 @@ pub fn provide_simulation_graph_data(
     let mut temp_nodes: Vec<VisNode> = Vec::new();
     let mut entity_to_node_id_map: HashMap<Entity, usize> = HashMap::new();
 
+    // --- Vorlage für logische Pins (NEU: Außerhalb der Schleife) ---
+    let standard_logical_pins = vec![
+        LogicalPinInfo {
+            identifier: "parent_out".to_string(),
+            display_name: "Parent".to_string(),
+            relation_type: "Family".to_string(),
+            direction: PinDirection::Output,
+        },
+        LogicalPinInfo {
+            identifier: "child_in".to_string(),
+            display_name: "Child".to_string(),
+            relation_type: "Family".to_string(),
+            direction: PinDirection::Input,
+        },
+        LogicalPinInfo {
+            identifier: "friend_bi".to_string(),
+            display_name: "Friend".to_string(),
+            relation_type: "Friendship".to_string(),
+            direction: PinDirection::InOut, // UI behandelt dies als Output
+        },
+    ];
+
     // --- Schritt 1: VisNodes erstellen und Mapping aufbauen ---
     for (entity, species) in node_entity_query.iter() {
         let node_id = entity.index() as usize; // Temporäre ID
         entity_to_node_id_map.insert(entity, node_id); // Füge zur Map hinzu
 
-        // Erstelle die logischen Pins für diesen Node-Typ (Testweise Hardcoded)
-        let mut logical_pins = Vec::new();
-        logical_pins.push(LogicalPinInfo {
-            identifier: "parent_out".to_string(),
-            display_name: "Parent".to_string(),
-            relation_type: "Family".to_string(),
-            direction: PinDirection::Output,
-        });
-        logical_pins.push(LogicalPinInfo {
-            identifier: "child_in".to_string(),
-            display_name: "Child".to_string(),
-            relation_type: "Family".to_string(),
-            direction: PinDirection::Input,
-        });
-        logical_pins.push(LogicalPinInfo {
-            identifier: "friend_bi".to_string(),
-            display_name: "Friend".to_string(),
-            relation_type: "Friendship".to_string(),
-            direction: PinDirection::InOut,
-        });
+        // Erstelle die logischen Pins für diesen Node-Typ
+        // durch Klonen der Vorlage (ALT: War 'let mut logical_pins = Vec::new(); ...')
+        // let mut logical_pins = Vec::new();
+        // logical_pins.push(...) // ALT
 
         let node = VisNode {
             id: node_id,
@@ -69,27 +81,23 @@ pub fn provide_simulation_graph_data(
             name: species.species.join(", "),
             position: Vec2::new(current_x, Y_POS),
             color: Color::from(GRAY),
-            logical_pins,
+            logical_pins: standard_logical_pins.clone(), // NEU: Klone die Vorlage
         };
         temp_nodes.push(node);
         current_x += X_SPACING;
     }
 
     // --- Schritt 2: VisLinks für Parent/Child-Beziehungen erstellen ---
-    // Iteriere über alle Entities, die eine Parent-Komponente haben
+    // (Dieser Block bleibt unverändert)
     for (child_entity, parent_component) in parent_query.iter() {
-        let parent_entity = parent_component.get(); // Die Entity des Parents holen
+        let parent_entity = parent_component.get();
 
-        // Prüfe, ob *beide* (Parent und Child) in unserer Node-Map sind
         if let (Some(&parent_node_id), Some(&child_node_id)) = (
             entity_to_node_id_map.get(&parent_entity),
-            entity_to_node_id_map.get(&child_entity), // Child Entity muss auch in der Map sein
+            entity_to_node_id_map.get(&child_entity),
         ) {
-            // Generiere die spezifischen Pin-IDs für die Familienbeziehung
             let start_pin_id = generate_pin_id(parent_node_id, "parent_out");
             let end_pin_id = generate_pin_id(child_node_id, "child_in");
-
-            // Eindeutige Link-ID generieren (z.B. XOR der Pin-IDs)
             let link_id = start_pin_id ^ end_pin_id;
 
             graph_data.links.push(VisLink {
@@ -101,26 +109,53 @@ pub fn provide_simulation_graph_data(
         }
     }
 
-    // --- Schritt 3: Optionalen Test-Link für Freundschaft hinzufügen ---
-    // Greift jetzt korrekt auf temp_nodes zu, *bevor* es verschoben wird.
-    if temp_nodes.len() >= 2 {
-        let node0_id = temp_nodes[0].id;
-        let node1_id = temp_nodes[1].id;
-        // Freundschafts-Pins verbinden
-        let pin0_id = generate_pin_id(node0_id, "friend_bi");
-        let pin1_id = generate_pin_id(node1_id, "friend_bi");
-        let link_id = pin0_id ^ pin1_id; // Andere Methode für Link-ID?
+    // --- Schritt 3: Optionalen Test-Link entfernen und dynamische Links hinzufügen ---
+    // (Der alte Block if temp_nodes.len() >= 2 {...} wird komplett entfernt/ersetzt)
 
-        graph_data.links.push(VisLink {
-            id: link_id,
-            start_pin_id: pin0_id,
-            end_pin_id: pin1_id,
-            color: Color::from(LIGHT_CYAN),
-        });
-    }
+    // --- NEU: VisLinks für Freundschafts-Beziehungen erstellen ---
+    for (entity1, friend_component) in friend_query.iter() {
+        let entity2 = friend_component.0; // Die Entity, mit der entity1 befreundet ist
 
-    // --- Schritt 4: Finale Zuweisung der Nodes (nach allen Lesezugriffen) ---
-    graph_data.nodes = temp_nodes; // Verschiebe die Nodes in die Ressource
+        // Verhindere doppelte Links (verarbeite nur eine Richtung der Beziehung)
+        // Wir vergleichen die Indizes, um sicherzustellen, dass wir jedes Paar nur einmal hinzufügen.
+        if entity1.index() < entity2.index() {
+            // Prüfe, ob *beide* befreundeten Entities als Nodes im Graphen vorhanden sind
+            if let (Some(&node1_id), Some(&node2_id)) = (
+                entity_to_node_id_map.get(&entity1),
+                entity_to_node_id_map.get(&entity2),
+            ) {
+                // Generiere die spezifischen Pin-IDs für die Freundschaft
+                let pin1_id = generate_pin_id(node1_id, "friend_bi");
+                let pin2_id = generate_pin_id(node2_id, "friend_bi");
+
+                // Eindeutige Link-ID generieren
+                let link_id = pin1_id ^ pin2_id;
+
+                // Erstelle den VisLink
+                graph_data.links.push(VisLink {
+                    id: link_id,
+                    start_pin_id: pin1_id, // Reihenfolge hier technisch egal, aber konsistent
+                    end_pin_id: pin2_id,
+                    color: Color::from(LIGHT_CYAN), // Freundschaftsfarbe
+                });
+                bevy::log::trace!(
+                    "Added Friendship VisLink between {:?} and {:?}",
+                    entity1,
+                    entity2
+                );
+            } else {
+                // Einer oder beide Freunde sind nicht im Graphen dargestellt
+                bevy::log::trace!(
+                    "Skipping Friendship VisLink: {:?} or {:?} not in node map.",
+                    entity1,
+                    entity2
+                );
+            }
+        }
+    } // Ende der neuen Friend-Link Schleife
+
+    // --- Schritt 4: Finale Zuweisung der Nodes (bleibt unverändert) ---
+    graph_data.nodes = temp_nodes;
 }
 
 /// Verarbeitet Änderungen, die im NodesContext während des UI-Updates gesammelt wurden.
@@ -258,28 +293,114 @@ pub fn handle_graph_changes_system(
                 }
             }
 
-            GraphChange::LinkRemoved(_link_id) => {
-                bevy::log::info!("System empfing LinkRemoved: {}", _link_id);
-                // TODO: Implementiere Logik, um die Beziehung in der Simulation zu entfernen
-            }
-            GraphChange::LinkModified {
+            GraphChange::LinkRemoved {
                 link_id,
-                new_start_pin_id,
-                new_end_pin_id,
+                start_pin_id,
+                end_pin_id,
             } => {
                 bevy::log::info!(
-                    "System empfing LinkModified: Link ID={}, New Start Pin={}, New End Pin={}",
+                    "System received LinkRemoved: UI Link ID={}, StartPin={}, EndPin={}",
                     link_id,
-                    new_start_pin_id,
-                    new_end_pin_id
+                    start_pin_id,
+                    end_pin_id
                 );
 
-                // --- Hier kommt die komplexere Logik für das Ändern einer Beziehung ---
-                // 1. Finde die Entities für die NEUEN Pins (new_start_pin_id, new_end_pin_id).
-                // Nutze find_nodes_for_pins und find_entities_for_nodes wie bei NewLinkRequested.
-                // Annahme: new_start ist Output, new_end ist Input.
+                // --- Implementierung für LinkRemoved ---
+
+                // 1. Finde Nodes und Entities für die (ehemals) verbundenen Pins
+                // WICHTIG: Die Pins existieren möglicherweise nicht mehr im context, wenn der Node
+                // gleichzeitig gelöscht wurde. Wir versuchen trotzdem, die Nodes/Entities zu finden,
+                // falls nur der Link gelöscht wurde.
+                // Wir brauchen auch die PinSpecs, um den relation_type zu kennen.
+                // Wenn die Pins nicht mehr da sind, können wir nichts tun.
+
+                if let (Some(start_pin), Some(end_pin)) =
+                    (context.get_pin(start_pin_id), context.get_pin(end_pin_id))
+                {
+                    let start_node_id = start_pin.state.parent_node_idx;
+                    let end_node_id = end_pin.state.parent_node_idx;
+
+                    let maybe_entities =
+                        find_entities_for_nodes(&graph_data, start_node_id, end_node_id);
+
+                    if let Some((start_entity, end_entity)) = maybe_entities {
+                        bevy::log::info!(
+                            "Found Entities for LinkRemoved: Start(Output)={:?}, End(Input)={:?}",
+                            start_entity,
+                            end_entity
+                        );
+
+                        // 2. Bestimme den Typ der zu entfernenden Beziehung anhand von relation_type
+                        match start_pin.spec.relation_type.as_str() {
+                            "Family" => {
+                                // --- Logik zum Entfernen der Familienbeziehung ---
+                                // Annahme: `start_entity` war Parent, `end_entity` war Child (da start_pin Output war).
+                                // Überprüfe sicherheitshalber, ob `end_entity` tatsächlich `start_entity` als Parent *hatte*.
+                                if let Ok(parent_component) = parent_query.get(end_entity) {
+                                    if parent_component.get() == start_entity {
+                                        commands.entity(end_entity).remove_parent();
+                                        bevy::log::info!(
+                                             "COMMAND (LinkRemoved): Removed Parent({:?}) from child {:?}",
+                                             start_entity, end_entity
+                                         );
+                                    } else {
+                                        // Sollte nicht passieren, wenn der Graph konsistent ist
+                                        bevy::log::warn!("LinkRemoved(Family): Child {:?} had a different parent {:?} than expected ({:?}). Doing nothing.", end_entity, parent_component.get(), start_entity);
+                                    }
+                                } else {
+                                    bevy::log::warn!("LinkRemoved(Family): Child {:?} had no Parent component to remove.", end_entity);
+                                }
+                            } // Ende "Family"
+
+                            "Friendship" => {
+                                // --- Logik zum Entfernen der Freundschaft ---
+                                bevy::log::debug!(
+                                    "Attempting to remove Friendship between {:?} and {:?}",
+                                    start_entity,
+                                    end_entity
+                                );
+                                // Entferne die Komponenten von *beiden* Entities
+                                commands.entity(start_entity).remove::<FriendWith>(); // Annahme: FriendWith(end_entity) war hier
+                                commands.entity(end_entity).remove::<FriendWith>(); // Annahme: FriendWith(start_entity) war hier
+                                bevy::log::info!(
+                                     "COMMAND (LinkRemoved): Removed Friendship components between {:?} and {:?}",
+                                     start_entity, end_entity
+                                 );
+                            } // Ende "Friendship"
+
+                            // Füge hier weitere `match`-Arme für andere relation_types hinzu
+                            _ => {
+                                bevy::log::warn!(
+                                    "Unhandled relation type '{}' encountered in handle_graph_changes_system for LinkRemoved.",
+                                    start_pin.spec.relation_type
+                                );
+                            } // Ende _ (Default)
+                        } // Ende match relation_type
+                    } else {
+                        bevy::log::warn!("LinkRemoved: Could not find entities for node IDs {} and {}. Maybe nodes were removed simultaneously?", start_node_id, end_node_id);
+                    }
+                } else {
+                    // Wichtigster Fall: Einer oder beide Pins/Nodes wurden gleichzeitig gelöscht.
+                    // In diesem Fall müssen wir nichts extra für den Link tun, das Löschen des Nodes (oder der Beziehung durch Parent-Update) kümmert sich darum.
+                    bevy::log::debug!("LinkRemoved: Could not find one or both pins (IDs {} and {}). Assuming relation was removed implicitly by node removal or other means.", start_pin_id, end_pin_id);
+                }
+            } // Ende LinkRemoved
+
+            GraphChange::LinkModified {
+                link_id,          // Diese UI-ID ist für uns schwer direkt nutzbar
+                new_start_pin_id, // ID des neuen Start-Pins (Output)
+                new_end_pin_id,   // ID des neuen End-Pins (Input)
+            } => {
+                bevy::log::info!(
+                    "System received LinkModified: (UI Link ID {}), New Start Pin={}, New End Pin={}",
+                    link_id, new_start_pin_id, new_end_pin_id
+                );
+
+                // 1. Finde die Entities für die NEUEN Pins
                 let maybe_nodes = find_nodes_for_pins(&context, new_start_pin_id, new_end_pin_id);
                 if let Some((new_source_node_id, new_target_node_id)) = maybe_nodes {
+                    // new_source ist der Node mit dem Output-Pin, new_target der mit dem Input-Pin
+
                     let maybe_entities = find_entities_for_nodes(
                         &graph_data,
                         new_source_node_id,
@@ -287,78 +408,158 @@ pub fn handle_graph_changes_system(
                     );
                     if let Some((new_source_entity, new_target_entity)) = maybe_entities {
                         bevy::log::info!(
-                            "LinkModified: Found new entities: Source={:?}, Target={:?}",
-                            new_source_entity,
-                            new_target_entity
+                            "LinkModified: Found new entities: Source(Output)={:?}, Target(Input)={:?}",
+                            new_source_entity, new_target_entity
                         );
 
-                        // 2. Finde heraus, welche Beziehung der alten `link_id` entsprach UND
-                        //    welche Entities *ursprünglich* verbunden waren.
-                        // SCHWIERIG: Die UI `link_id` ist temporär und hat keine direkte Entsprechung in Bevy.
-                        // MÖGLICHE ANSÄTZE:
-                        //    a) GraphUIData könnte ein Mapping `ui_link_id -> (start_entity, end_entity, relation_type)` enthalten. (Aufwändig zu pflegen)
-                        //    b) Wir könnten versuchen, aus den neuen Entities/Pins rückzuschließen, welche Beziehung geändert wurde.
-                        //       Z.B. wenn der neue Link ein "Parent"-"Child"-Link ist, muss das `new_target_entity` vorher
-                        //       entweder keinen Parent gehabt haben oder einen anderen.
-                        //    c) Im Event `LinkModified` die alten Pin-IDs/Entity-IDs mitschicken? (Änderung in context.rs nötig)
-
-                        // TODO: Implementiere das Finden der alten Beziehung und der alten Entities.
-
-                        // 3. Entferne die ALTE Beziehung in der Simulation.
-                        // Z.B. wenn es ein Parent-Link war:
-                        // `commands.entity(alte_child_entity).remove_parent();`
-                        // TODO: Implementiere das Entfernen der alten Beziehung.
-
-                        // 4. Füge die NEUE Beziehung hinzu, basierend auf den NEUEN Pins.
-                        // Nutze die Logik von `NewLinkRequested`: Prüfe die neuen Pin-Namen/Typen.
+                        // 2. Hole die Specs der NEUEN Pins, um relation_type etc. zu bestimmen
                         let start_pin = context
                             .get_pin(new_start_pin_id)
-                            .expect("New start pin should exist");
-                        let end_pin = context
+                            .expect("New start pin should exist for LinkModified");
+                        let end_pin = context // wird aktuell nur für Debug/Warnung gebraucht
                             .get_pin(new_end_pin_id)
-                            .expect("New end pin should exist");
+                            .expect("New end pin should exist for LinkModified");
 
-                        if start_pin.spec.name == "Parent" && end_pin.spec.name == "Child" {
-                            // Setze NEUEN Parent für new_target_entity
-                            if new_source_entity == new_target_entity {
-                                /* warn */
-                                continue;
-                            }
-                            if let Ok(existing_parent) = parent_query.get(new_target_entity) { /* warn: überschreibt */
-                            }
-                            commands
-                                .entity(new_target_entity)
-                                .set_parent(new_source_entity);
-                            bevy::log::info!(
-                                "COMMAND (LinkModified): Set Parent({:?}) for child {:?}",
-                                new_source_entity,
-                                new_target_entity
-                            );
-                        } else if start_pin.spec.name == "Friend" && end_pin.spec.name == "Friend" {
-                            add_friendship(&mut commands, new_source_entity, new_target_entity);
-                        } else {
-                            bevy::log::warn!(
-                                "Unhandled pin combination for LinkModified: '{}' <-> '{}'",
-                                start_pin.spec.name,
-                                end_pin.spec.name
-                            );
-                        }
-                        // TODO: Stelle sicher, dass die alte Beziehung korrekt entfernt wurde!
+                        // PinType des *ursprünglich* geklickten Start-Pins der *neuen* Verbindung.
+                        // Wichtig, um die tatsächlichen Rollen (Parent/Child) zu bestimmen.
+                        let new_start_pin_kind = start_pin.spec.kind;
+
+                        // 3. Entscheide basierend auf relation_type der *neuen* Verbindung
+                        match start_pin.spec.relation_type.as_str() {
+                            "Family" => {
+                                // --- Logik für Änderung einer Familienbeziehung ---
+
+                                // Bestimme die tatsächlichen Parent/Child Entities der *neuen* Verbindung
+                                let (actual_parent_entity, actual_child_entity) =
+                                    if new_start_pin_kind == PinType::Output {
+                                        (new_source_entity, new_target_entity)
+                                    } else {
+                                        (new_target_entity, new_source_entity)
+                                    };
+
+                                bevy::log::debug!(
+                                    "Family link modified: New Parent={:?}, New Child={:?}",
+                                    actual_parent_entity,
+                                    actual_child_entity
+                                );
+
+                                // Validierung gegen Selbst-Parenting
+                                if actual_parent_entity == actual_child_entity {
+                                    bevy::log::warn!("Attempted to modify link to parent entity {:?} to itself. Skipping.", actual_child_entity);
+                                    continue;
+                                }
+
+                                // Prüfung, ob die *neue* Child-Entity schon einen (anderen) Parent hat.
+                                // Bevy's set_parent wird diesen automatisch entfernen.
+                                if let Ok(existing_parent) = parent_query.get(actual_child_entity) {
+                                    // Wir müssen die alte Beziehung nicht manuell entfernen, aber wir loggen den Overwrite.
+                                    if existing_parent.get() != actual_parent_entity {
+                                        // Nur warnen, wenn es ein *anderer* Parent ist
+                                        bevy::log::warn!("Child entity {:?} already had parent {:?}. Overwriting with new parent {:?}.", actual_child_entity, existing_parent.get(), actual_parent_entity);
+                                    } else {
+                                        bevy::log::debug!("Child entity {:?} already had parent {:?}, reconnecting same link.", actual_child_entity, existing_parent.get());
+                                    }
+                                }
+
+                                // Führe den Bevy Command aus -> `set_parent` räumt alte Parent-Beziehung auf.
+                                commands
+                                    .entity(actual_child_entity)
+                                    .set_parent(actual_parent_entity);
+                                bevy::log::info!(
+                                    "COMMAND (LinkModified): Set Parent({:?}) for child {:?}",
+                                    actual_parent_entity,
+                                    actual_child_entity
+                                );
+                            } // Ende "Family"
+
+                            "Friendship" => {
+                                // --- Logik für Änderung einer Freundschaft ---
+                                // HINWEIS: Hier entfernen wir die ALTE Freundschaft NICHT, da wir
+                                // die ursprünglichen Entities nicht direkt aus dem Event kennen.
+                                bevy::log::warn!("Handling LinkModified for Friendship: Cannot determine and remove the OLD friendship based on UI link ID {}. Adding the new friendship only. This might lead to dangling FriendWith components if the old friend is not manually removed elsewhere.", link_id);
+
+                                bevy::log::debug!(
+                                    "Friendship link modified: New connection between {:?} and {:?}",
+                                    new_source_entity,
+                                    new_target_entity
+                                );
+
+                                // Füge einfach die neue Freundschaft hinzu.
+                                add_friendship(&mut commands, new_source_entity, new_target_entity);
+                                // Das println! ist im Helper
+                            } // Ende "Friendship"
+
+                            // Füge hier weitere `match`-Arme für andere relation_types hinzu
+                            _ => {
+                                bevy::log::warn!(
+                                    "Unhandled relation type '{}' encountered in handle_graph_changes_system for LinkModified.",
+                                    start_pin.spec.relation_type
+                                );
+                            } // Ende _ (Default)
+                        } // Ende match relation_type
                     } else {
-                        bevy::log::warn!("LinkModified: Could not find entities for new pins.");
+                        bevy::log::warn!(
+                            "LinkModified: Could not find entities for new node IDs {} and {}.",
+                            new_source_node_id,
+                            new_target_node_id
+                        );
+                        continue;
                     }
                 } else {
-                    bevy::log::warn!("LinkModified: Could not find nodes for new pins.");
+                    bevy::log::warn!(
+                        "LinkModified: Could not find nodes for new pin IDs {} and {}.",
+                        new_start_pin_id,
+                        new_end_pin_id
+                    );
+                    continue;
                 }
-            }
+            } // Ende LinkModified
+
             GraphChange::NodeMoved(_node_id, _new_pos) => {
                 // Normalerweise nicht simulationsrelevant, aber nützlich für Speichern/Laden von Layouts
                 // bevy::log::trace!("System empfing NodeMoved: Node {} nach {:?}", node_id, new_pos);
                 // TODO: Layout speichern, falls gewünscht
             }
-            GraphChange::NodeRemoved(_node_id) => {
-                bevy::log::info!("System empfing NodeRemoved: {}", _node_id);
-                // TODO: Eventuell muss die Entity hier despawned werden? Oder die Entität bleibt bestehen?
+            GraphChange::NodeRemoved(node_id) => {
+                bevy::log::info!("System received NodeRemoved: Node UI ID={}", node_id);
+
+                // --- Implementierung für NodeRemoved ---
+
+                // 1. Finde die Entity, die zu dieser UI-Node-ID gehört.
+                // Wir durchsuchen die GraphUIData, die den Zustand *vor* dem Löschen im Context widerspiegelt.
+                let maybe_entity = graph_data
+                    .nodes
+                    .iter()
+                    .find(|n| n.id == node_id)
+                    .and_then(|n| n.entity);
+
+                if let Some(entity_to_despawn) = maybe_entity {
+                    bevy::log::info!(
+                        "Found Entity for NodeRemoved: {:?}. Despawning...",
+                        entity_to_despawn
+                    );
+
+                    // 2. Despawne die Entity rekursiv.
+                    //    `despawn_recursive` entfernt auch alle Kinder dieser Entity.
+                    //    Wenn die Beziehungen (Parent/Child, FriendWith) korrekt implementiert sind,
+                    //    sollten Komponenten wie FriendWith auf nicht mehr existierende Entities zeigen,
+                    //    was (hoffentlich) kein Problem darstellt, aber evtl. später aufgeräumt werden muss.
+                    //    Bevy entfernt auch automatisch die Parent-Beziehung zu Kindern, wenn der Parent despawned wird.
+                    commands.entity(entity_to_despawn).despawn_recursive();
+
+                    // Log, dass der Befehl abgesetzt wurde
+                    bevy::log::info!(
+                        "COMMAND (NodeRemoved): Despawn Recursive for entity {:?}",
+                        entity_to_despawn
+                    );
+                } else {
+                    // Dies könnte passieren, wenn die GraphUIData aus irgendeinem Grund nicht synchron ist
+                    // oder der Node bereits auf andere Weise entfernt wurde.
+                    bevy::log::warn!(
+                        "NodeRemoved: Could not find entity matching UI Node ID {}. Unable to despawn.",
+                        node_id
+                    );
+                }
             }
             // GraphChange::LinkCreated(start_pin_id, end_pin_id) -> Wird nicht mehr verwendet, stattdessen NewLinkRequested
             _ => {} // Andere Changes ignorieren (falls es noch welche gibt)
@@ -369,6 +570,83 @@ pub fn handle_graph_changes_system(
     // context.frame_state.graph_changes.clear(); // NICHT hier machen!
 }
 
+pub fn update_selected_node_details(
+    nodes_context: Res<NodesContext>,
+    mut graph_data: ResMut<GraphUIData>,
+    query_name: Query<&Name>,
+    query_genes: Query<&SpeciesGenes>,
+    query_parent: Query<&Parent>,
+    query_friend: Query<&FriendWith>,
+) {
+    let selected_nodes = nodes_context.get_selected_nodes();
+
+    if selected_nodes.len() == 1 {
+        let selected_node_id = selected_nodes[0];
+        let maybe_entity = graph_data
+            .nodes
+            .iter()
+            .find(|n| n.id == selected_node_id)
+            .and_then(|n| n.entity);
+
+        if let Some(entity) = maybe_entity {
+            // Prüfen, ob sich Auswahl geändert hat oder Details noch nicht gesetzt sind
+            let should_update = nodes_context.is_node_just_selected()
+                || graph_data.selected_node_details_display.is_none()
+                || graph_data
+                    .selected_node_details_display
+                    .as_ref()
+                    .map_or(false, |d| d.title != format!("Entity: {:?}", entity)); // Grober Check
+
+            if should_update {
+                // Bereite die Daten für die Anzeige vor
+                let mut display_data = DetailDisplayData {
+                    title: format!("Entity: {:?}", entity),
+                    properties: Vec::new(),
+                };
+
+                // Komponenten abfragen und zur Liste hinzufügen
+                if let Ok(name) = query_name.get(entity) {
+                    display_data
+                        .properties
+                        .push(("Name".to_string(), name.to_string()));
+                }
+                if let Ok(genes) = query_genes.get(entity) {
+                    display_data
+                        .properties
+                        .push(("Genes".to_string(), format!("{:?}", genes.species)));
+                }
+                if let Ok(parent) = query_parent.get(entity) {
+                    display_data
+                        .properties
+                        .push(("Parent".to_string(), format!("{:?}", parent.get())));
+                }
+                if let Ok(friend) = query_friend.get(entity) {
+                    display_data
+                        .properties
+                        .push(("Friend".to_string(), format!("{:?}", friend.0)));
+                }
+                // ... Weitere Komponenten ...
+
+                graph_data.selected_node_details_display = Some(display_data);
+                bevy::log::debug!("Updated detail display data for {:?}", entity);
+            }
+        } else {
+            // Entity nicht gefunden (oder nicht im Graphen) -> Details löschen
+            if graph_data.selected_node_details_display.is_some() {
+                graph_data.selected_node_details_display = None;
+                bevy::log::debug!(
+                    "Cleared detail display data: Entity for selected node not found."
+                );
+            }
+        }
+    } else {
+        // Keine oder mehrere Nodes ausgewählt -> Details löschen
+        if graph_data.selected_node_details_display.is_some() {
+            graph_data.selected_node_details_display = None;
+            bevy::log::debug!("Cleared detail display data: Selection count != 1.");
+        }
+    }
+}
 // --- Hilfsfunktionen (könnten auch in context.rs oder einem Helfermodul sein) ---
 
 /// Findet die Node-IDs, zu denen die Pins gehören.

@@ -41,8 +41,12 @@ pub fn generate_pin_id(node_id: usize, pin_identifier: &str) -> usize {
 
 #[derive(Debug, Clone)]
 pub enum GraphChange {
-    LinkCreated(usize, usize),  // Start Pin ID, End Pin ID
-    LinkRemoved(usize),         // Link ID
+    LinkCreated(usize, usize), // Start Pin ID, End Pin ID
+    LinkRemoved {
+        link_id: usize,
+        start_pin_id: usize, // Der Pin, der Output war
+        end_pin_id: usize,   // Der Pin, der Input war
+    },
     NodeMoved(usize, BevyVec2), // Node ID, Grid Space Position
     NodeRemoved(usize),         // Node ID
     LinkModified {
@@ -1855,58 +1859,84 @@ impl NodesContext {
     }
 
     fn handle_delete(&mut self) {
-        let mut links_to_remove: Vec<usize> = self.state.selected_link_indices.drain(..).collect();
-        let nodes_to_remove: Vec<usize> = self.state.selected_node_indices.drain(..).collect();
-        let mut pins_to_remove = Vec::new();
+        let mut links_to_remove_ids: Vec<usize> =
+            self.state.selected_link_indices.drain(..).collect();
+        let nodes_to_remove_ids: Vec<usize> = self.state.selected_node_indices.drain(..).collect();
+        let mut pins_to_remove_ids = Vec::new();
 
         // 1. Finde alle Pins der zu löschenden Nodes
-        for node_id in &nodes_to_remove {
+        for node_id in &nodes_to_remove_ids {
             if let Some(node) = self.nodes.get(node_id) {
-                pins_to_remove.extend(node.state.pin_indices.iter().copied());
+                pins_to_remove_ids.extend(node.state.pin_indices.iter().copied());
             }
         }
 
         // 2. Finde alle Links, die mit den zu löschenden Pins verbunden sind
-        for (link_id, link) in self.links.iter() {
-            if pins_to_remove.contains(&link.spec.start_pin_index)
-                || pins_to_remove.contains(&link.spec.end_pin_index)
-            {
-                if !links_to_remove.contains(link_id) {
-                    links_to_remove.push(*link_id); // Füge implizit zu löschende Links hinzu
+        // Wir müssen die Links hier nicht vorab finden, da wir sie direkt beim Iterieren entfernen können.
+        // Allerdings brauchen wir eine Kopie der Link-IDs, falls wir die von zu löschenden Nodes auch entfernen wollen.
+        let mut implicitly_removed_links = Vec::new();
+        if !nodes_to_remove_ids.is_empty() {
+            // Nur suchen, wenn Nodes entfernt werden
+            for (link_id, link) in self.links.iter() {
+                if pins_to_remove_ids.contains(&link.spec.start_pin_index)
+                    || pins_to_remove_ids.contains(&link.spec.end_pin_index)
+                {
+                    if !links_to_remove_ids.contains(link_id) {
+                        // Verhindere Duplikate
+                        implicitly_removed_links.push(*link_id);
+                    }
                 }
             }
+            links_to_remove_ids.extend(implicitly_removed_links);
+            links_to_remove_ids.sort_unstable();
+            links_to_remove_ids.dedup();
         }
-        links_to_remove.sort_unstable();
-        links_to_remove.dedup(); // Sicherstellen, dass IDs unique sind
 
-        // 3. Entferne die Links aus dem internen State und sammle Events
-        for link_id in &links_to_remove {
-            if self.links.remove(link_id).is_some() {
+        // 3. Entferne die Links (ausgewählte + implizite) aus dem internen State und sammle Events
+        for link_id in &links_to_remove_ids {
+            // WICHTIG: Erst den Link holen, DANN entfernen!
+            if let Some(removed_link) = self.links.remove(link_id) {
+                // Sende das NEUE Event mit den Pin IDs
                 self.frame_state
                     .graph_changes
-                    .push(GraphChange::LinkRemoved(*link_id));
+                    .push(GraphChange::LinkRemoved {
+                        link_id: *link_id,
+                        start_pin_id: removed_link.spec.start_pin_index, // Pin IDs aus dem entfernten Link holen
+                        end_pin_id: removed_link.spec.end_pin_index,
+                    });
+                bevy::log::debug!("Sent LinkRemoved event for link UI ID {}", *link_id);
+            } else {
+                bevy::log::warn!(
+                    "Attempted to remove link UI ID {} but it was not found.",
+                    *link_id
+                );
             }
         }
 
         // 4. Entferne die Nodes aus dem internen State und sammle Events
-        for node_id in nodes_to_remove {
+        for node_id in nodes_to_remove_ids {
+            // Iteriere über die zuvor gesammelten IDs
             if self.nodes.remove(&node_id).is_some() {
                 self.frame_state
                     .graph_changes
                     .push(GraphChange::NodeRemoved(node_id));
                 // Entferne Node auch aus der Tiefenordnung
                 self.state.node_depth_order.retain(|id| *id != node_id);
+
+                // Entferne zugehörige Pins (sicherer, die IDs vorher zu sammeln)
+                // `pins_to_remove_ids` enthält bereits die Pins aller gelöschten Nodes.
             }
         }
 
-        // 5. Entferne die Pins aus dem internen State
-        for pin_id in pins_to_remove {
+        // 5. Entferne die Pins der gelöschten Nodes aus dem internen State
+        for pin_id in pins_to_remove_ids {
+            // Verwende die gesammelten IDs
             self.pins.remove(&pin_id);
         }
 
-        // 6. Selektionen leeren (sollte schon durch .drain() passiert sein, aber zur Sicherheit)
-        self.state.selected_link_indices.clear();
-        self.state.selected_node_indices.clear();
+        // 6. Selektionen leeren (passiert durch .drain() oben)
+        // self.state.selected_link_indices.clear();
+        // self.state.selected_node_indices.clear();
     }
 
     fn final_draw(&mut self, ui_draw: &mut egui::Ui) {
