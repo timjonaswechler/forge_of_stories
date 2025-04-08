@@ -7,58 +7,71 @@ use crate::genetics::components::SpeciesGenes;
 
 // Importiere die UI-Datenstrukturen und die Ressource
 use super::resources::GraphUIData;
-use super::ui_data::VisNode;
+use super::ui_data::{VisLink, VisNode};
 // use super::ui_data::VisLink; // Für später
 
-/// Dieses System liest Simulationsdaten (Entitäten mit bestimmten Komponenten)
-/// und bereitet sie für die Anzeige im Node Graph vor, indem es die `GraphUIData`
-/// Ressource füllt.
-///
-/// Es muss *vor* dem `graph_ui_system` laufen.
+// === Wichtig: Diese Konstanten müssen mit denen in context.rs übereinstimmen! ===
+const PIN_ID_MULTIPLIER: usize = 10;
+const INPUT_PIN_OFFSET: usize = 0;
+const OUTPUT_PIN_OFFSET: usize = 1;
+
 pub fn graph_data_provider_system(
-    // Query für alle Entitäten, die im Graphen dargestellt werden sollen.
-    // Beispiel: Alle Entitäten mit SpeciesGenes. Füge weitere Komponenten hinzu,
-    // falls sie für Name, Position oder Links benötigt werden (z.B. Transform).
     entity_query: Query<(Entity, &SpeciesGenes)>,
-    // Mutable Zugriff auf die Ressource, die wir füllen wollen.
     mut graph_data: ResMut<GraphUIData>,
 ) {
-    // Lösche die Daten vom letzten Frame
     graph_data.nodes.clear();
-    graph_data.links.clear(); // Vorerst auch Links löschen
+    graph_data.links.clear(); // Auch Links für jeden Frame neu berechnen
 
-    let mut current_x = 50.0; // Startposition für einfaches Layout
+    let mut current_x = 50.0;
     const X_SPACING: f32 = 200.0;
     const Y_POS: f32 = 100.0;
 
-    // Iteriere über die gefundenen Entitäten
+    // Sammle die erstellten VisNodes temporär, um darauf zugreifen zu können
+    let mut temp_nodes: Vec<VisNode> = Vec::new();
+
     for (entity, species) in entity_query.iter() {
-        // Erstelle ein VisNode-Objekt für jede Entität
+        let node_id = entity.index() as usize;
         let node = VisNode {
-            // Verwende den Index der Entity als eindeutige ID für die UI
-            // ACHTUNG: Entity Indizes sind nicht garantiert stabil über Sessions hinweg!
-            // Für persistente Layouts etc. bräuchte man eine stabilere ID.
-            id: entity.index() as usize,
-            // Speichere die tatsächliche Bevy Entity ID, wichtig für Detailansicht etc.
-            entity: Some(entity), // Setze es in ein Some()
-            // Erzeuge einen Namen (z.B. aus Spezies)
-            name: species.species.join(", "), // Fügt Speziesnamen zusammen
-            // Beispiel-Position: Verteile die Nodes horizontal
-            position: Vec2::new(current_x, Y_POS), // Verwende Bevy Vec2
-            // Standardfarbe (kann später angepasst werden)
-            color: Color::from(GRAY),
+            id: node_id,
+            entity: Some(entity),
+            name: species.species.join(", "),
+            position: Vec2::new(current_x, Y_POS),
+            color: Color::from(GRAY), // Standard Bevy Color verwenden
         };
-
-        // Füge den Node zu den Daten hinzu
-        graph_data.nodes.push(node);
-
-        current_x += X_SPACING; // Gehe zur nächsten Position
-
-        // TODO: Hier später Logik hinzufügen, um VisLink-Daten zu erzeugen.
-        // Beispiele:
-        // - Eltern-Kind-Beziehungen (braucht `Query<&Parent>`)
-        // - Interaktions-Partner
-        // - Genealogie (wer stammt von wem ab?)
+        temp_nodes.push(node); // Zum temporären Vektor hinzufügen
+        current_x += X_SPACING;
     }
-    // info!("Updated GraphUIData: {} nodes", graph_data.nodes.len()); // Optionales Logging
+
+    // *** NEUER TEIL: Link hinzufügen (TESTWEISE) ***
+    // Erstelle einen Link vom Output des ersten Nodes zum Input des zweiten Nodes
+    if temp_nodes.len() >= 2 {
+        let node0 = &temp_nodes[0];
+        let node1 = &temp_nodes[1];
+
+        // IDs basierend auf der Logik in context.rs generieren
+        let start_pin_id = node0.id.wrapping_mul(PIN_ID_MULTIPLIER) + OUTPUT_PIN_OFFSET;
+        let end_pin_id = node1.id.wrapping_mul(PIN_ID_MULTIPLIER) + INPUT_PIN_OFFSET;
+
+        // Eindeutige ID für den Link (sehr einfacher Ansatz)
+        let link_id = node0.id.wrapping_mul(1000) + node1.id; // Basis-ID
+
+        let link = VisLink {
+            id: link_id,
+            start_pin_id: start_pin_id,
+            end_pin_id: end_pin_id,
+            color: Color::WHITE, // Standardfarbe für den Link
+        };
+        graph_data.links.push(link); // Füge den Link zur Ressource hinzu
+    }
+    // *** ENDE NEUER TEIL ***
+
+    // Füge die temporär gesammelten Nodes zur finalen Ressource hinzu
+    graph_data.nodes = temp_nodes;
+
+    // Optionales Logging
+    // bevy::log::info!(
+    //     "Updated GraphUIData: {} nodes, {} links",
+    //     graph_data.nodes.len(),
+    //     graph_data.links.len()
+    // );
 }
