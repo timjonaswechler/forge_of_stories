@@ -70,6 +70,7 @@ pub struct PinSpec {
     pub name: String,
     pub style_args: PinStyleArgs,
     pub flags: usize,
+    pub relation_type: String,
 }
 
 #[derive(Derivative, Clone)]

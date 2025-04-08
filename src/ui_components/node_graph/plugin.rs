@@ -54,32 +54,47 @@ impl<'a> TabViewer for MyTabViewer<'a> {
                      end_pin_spec: &PinSpec,
                      _context: &NodesContext|
                      -> bool {
-                        // Beispielregeln (basierend auf display_name - NICHT ideal, besser 'relation_type' verwenden, falls in PinSpec gespeichert)
-                        let start_name = &start_pin_spec.name;
-                        let end_name = &end_pin_spec.name;
+                        // --- VALIDATION LOGIC basierend auf relation_type und kind ---
 
-                        // Regel 1: Parent <-> Child
-                        if (start_name == "Parent" && end_name == "Child")
-                            || (start_name == "Child" && end_name == "Parent")
-                        {
-                            // Zusätzlich prüfen, dass die Richtungen passen (Output -> Input)
-                            return (start_pin_spec.kind == PinType::Output
-                                && end_pin_spec.kind == PinType::Input)
-                                || (start_pin_spec.kind == PinType::Input
-                                    && end_pin_spec.kind == PinType::Output);
-                        }
-                        // Regel 2: Friend <-> Friend (erlaubt InOut -> InOut)
-                        if start_name == "Friend" && end_name == "Friend" {
-                            // Hier könnte man die kind-Prüfung lockern, da InOut
-                            return true;
+                        // 1. Grundregel: Die Beziehungstypen müssen übereinstimmen.
+                        if start_pin_spec.relation_type != end_pin_spec.relation_type {
+                            // Optional: Log, warum die Validierung fehlschlägt
+                            // bevy::log::trace!("Validation Fail: Mismatched relation types '{}' vs '{}'", start_pin_spec.relation_type, end_pin_spec.relation_type);
+                            return false;
                         }
 
-                        // Wenn keine Regel passt, ist die Verbindung ungültig
-                        false
+                        // 2. Richtungen (PinType/kind) müssen kompatibel sein.
+                        let valid_direction = match (start_pin_spec.kind, end_pin_spec.kind) {
+                            // Standard: Output verbindet sich mit Input
+                            (PinType::Output, PinType::Input) => true,
+                            (PinType::Input, PinType::Output) => true,
+
+                            // Sonderfall: Erlaube Output <-> Output *nur* für "Friendship"
+                            // (Da wir InOut visuell als Output behandeln)
+                            (PinType::Output, PinType::Output) => {
+                                if start_pin_spec.relation_type == "Friendship" {
+                                    true // Erlaube Freundschaft zwischen zwei "Output" (InOut) Pins
+                                } else {
+                                    false // Verbiete Output <-> Output für andere Typen (z.B. Family)
+                                }
+                            }
+
+                            // Alle anderen Kombinationen (Input<->Input, None->...) sind ungültig
+                            _ => false,
+                        };
+
+                        if !valid_direction {
+                            // Optional: Log
+                            // bevy::log::trace!("Validation Fail: Incompatible PinTypes {:?} -> {:?}", start_pin_spec.kind, end_pin_spec.kind);
+                            return false;
+                        }
+
+                        // Wenn alle Prüfungen für diesen Validator bestanden haben
+                        true // Die Verbindung ist gemäß diesen Regeln erlaubt
                     },
                 );
 
-                // Rufe 'show' mit dem Validator auf
+                // Rufe 'show' mit dem aktualisierten Validator auf
                 self.nodes_context.show(
                     self.graph_data.nodes.clone(),
                     self.graph_data.links.clone(),
@@ -87,7 +102,9 @@ impl<'a> TabViewer for MyTabViewer<'a> {
                     &*link_validator, // Übergebe eine Referenz auf die geboxte Closure
                 );
             }
-            MyWindowType::DetailsView => { /* ... Details View Code ... */ }
+            MyWindowType::DetailsView => {
+                ui.label("Details View Content");
+            }
         }
     }
 }

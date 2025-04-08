@@ -234,11 +234,12 @@ impl NodesContext {
                 let pin_spec = PinSpec {
                     id: pin_id,
                     kind: pin_kind,
-                    name: logical_pin.display_name.clone(), // Nimm den Anzeigenamen
+                    name: logical_pin.display_name.clone(), // Anzeigename
+                    relation_type: logical_pin.relation_type.clone(), // <-- NEUE ZEILE: Beziehungstyp kopieren
                     flags: pin_flags,
                     // Style basierend auf relation_type oder fest codiert? Vorerst Standard.
                     style_args: PinStyleArgs::default(), // TODO: Style anpassen?
-                    ..Default::default() // Sonstige Defaults (die nicht explizit gesetzt wurden)
+                    ..Default::default()                 // Sonstige Defaults
                 };
 
                 pins_for_this_node.push(pin_spec.clone());
@@ -365,7 +366,6 @@ impl NodesContext {
         // 6. Interaction Processing
         let hover_pos = canvas_interact_response.hover_pos();
         ui.ctx().input(|io| {
-            // Verwende das Haupt-UI ctx
             self.state.interaction_state = self.state.interaction_state.update(
                 io,
                 hover_pos,
@@ -376,29 +376,25 @@ impl NodesContext {
         });
         self.resolve_hover_state();
         self.process_clicks();
-        // Übergebe das Haupt-UI, interne Operationen müssen relativ zu diesem sein
-        self.click_interaction_update(ui, link_validator);
+        self.click_interaction_update(ui, link_validator); // Wichtig: ui übergeben
         if self.state.interaction_state.delete_pressed {
             self.handle_delete();
         }
 
         // === MODIFIED: Zeichnen jetzt am Ende und im Haupt-UI ===
         // `final_draw` fügt Shapes zum Painter des übergebenen UI hinzu
-        self.final_draw(ui); // Übergib Haupt-UI
-
-        self.collect_events(); // Sammelt Änderungen
+        self.final_draw(ui); // Wichtig: ui übergeben
+        self.collect_events();
 
         // 7. Draw Canvas Outline (Verwende den `painter`, der auf `canvas_rect` geclippt ist)
         let outline_stroke = Stroke::new(1.0, Color32::WHITE);
         painter.rect_stroke(
             canvas_rect,
-            CornerRadius::ZERO, // Verwende umbenanntes CornerRadius
+            egui::epaint::CornerRadius::ZERO,
             outline_stroke,
-            StrokeKind::Outside, // StrokeKind hinzugefügt (Outside, Inside oder Centered)
+            egui::StrokeKind::Outside,
         );
-
-        // 8. Return Response (von der Canvas-Interaktion)
-        canvas_interact_response // Gibt die Response des Haupt-Canvas zurück
+        canvas_interact_response
     }
 
     // --- Add Node ---
@@ -1391,7 +1387,7 @@ impl NodesContext {
         duplicate_link: Option<usize>,
         link_validator: &LinkValidationCallback, // NEU
     ) -> bool {
-        // 1. Allgemeine Prüfungen (Pins existieren, nicht derselbe Node, nicht gleicher Typ, kein Duplikat)
+        // 1. Allgemeine Prüfungen (Pins existieren, nicht derselbe Node, kein Duplikat)
         let Some(start_pin) = self.pins.get(&start_pin_id) else {
             return false;
         };
@@ -1401,12 +1397,10 @@ impl NodesContext {
         if start_pin.state.parent_node_idx == end_pin.state.parent_node_idx {
             return false;
         }
-        if start_pin.spec.kind == end_pin.spec.kind {
-            return false;
-        }
         if duplicate_link.is_some() {
             return false;
         }
+        // PinType Gleichheit wird jetzt im Callback geprüft, da InOut<->InOut erlaubt sein soll
 
         // === 2. ANWENDUNGSSPEZIFISCHE VALIDIERUNG via Callback ===
         // Rufe die übergebene Funktion auf. Wir übergeben die PinSpecs und den Kontext.
