@@ -45,6 +45,11 @@ pub enum GraphChange {
     LinkRemoved(usize),         // Link ID
     NodeMoved(usize, BevyVec2), // Node ID, Grid Space Position
     NodeRemoved(usize),         // Node ID
+    LinkModified {
+        link_id: usize,
+        new_start_pin_id: usize,
+        new_end_pin_id: usize,
+    }, // NEU
     // === NEU: Event für Link Erstellung durch User-Aktion ===
     NewLinkRequested(usize, usize), // Start Pin ID, End Pin ID
 }
@@ -241,7 +246,7 @@ impl NodesContext {
             }
 
             // Erstelle den NodeSpec wie bisher
-            let color_srgba: Srgba = vis_node.color.into();
+            let _color_srgba: Srgba = vis_node.color.into();
             // ... (node_args erstellen wie zuvor) ...
             let node_args = NodeArgs::default();
 
@@ -1214,13 +1219,16 @@ impl NodesContext {
                     || (pin.spec.flags & AttributeFlags::EnableLinkCreationOnSnap as usize != 0)
                 {
                     // Beispiel für Flag-Nutzung
-                    self.state.click_interaction_type = ClickInteractionType::LinkCreation;
+                    // Initialisiere den LinkCreation State korrekt
                     self.state.click_interaction_state.link_creation =
                         ClickInteractionStateLinkCreation {
                             start_pin_idx: Some(pin_id),
-                            end_pin_index: None, // Kein End-Pin beim Start
+                            end_pin_index: None,     // Kein End-Pin beim Start
+                            modifying_link_id: None, // Es wird kein Link modifiziert, also None
                             link_creation_type: LinkCreationType::Standard,
                         };
+                    // Setze Interaction Type erst, wenn State korrekt ist
+                    self.state.click_interaction_type = ClickInteractionType::LinkCreation;
                     self.frame_state.element_state_change.link_started = true;
                 } else {
                     bevy::log::trace!(
@@ -1291,34 +1299,38 @@ impl NodesContext {
     // Startet Link-Erstellung vom *anderen* Pin, nachdem der Original-Link entfernt wurde
     fn begin_link_detach(&mut self, link_id: usize, detach_pin_idx: usize) {
         if self.state.click_interaction_type == ClickInteractionType::None {
-            if let Some(removed_link) = self.links.remove(&link_id) {
-                self.frame_state.deleted_link_idx = Some(link_id);
-                self.frame_state
-                    .graph_changes
-                    .push(GraphChange::LinkRemoved(link_id));
+            // Nur lesen, nicht entfernen!
+            if let Some(link_to_detach) = self.links.get(&link_id) {
+                // self.frame_state.deleted_link_idx = Some(link_id); // Nicht mehr nötig/gewünscht
+                // Sende kein LinkRemoved Event beim einfachen Detachen
+                // self.frame_state.graph_changes.push(GraphChange::LinkRemoved(link_id)); // Vorerst rausgenommen
 
-                let other_pin_id = if removed_link.spec.start_pin_index == detach_pin_idx {
-                    removed_link.spec.end_pin_index
+                // Finde den Pin, der verbunden bleibt
+                let other_pin_id = if link_to_detach.spec.start_pin_index == detach_pin_idx {
+                    link_to_detach.spec.end_pin_index
                 } else {
-                    removed_link.spec.start_pin_index
+                    link_to_detach.spec.start_pin_index
                 };
 
-                // === KORREKTUR unused variable ===
-                // Prüfen ob der andere Pin existiert, ohne ihn zu binden
+                // Prüfen ob der andere Pin existiert
                 if self.pins.contains_key(&other_pin_id) {
-                    self.state.click_interaction_type = ClickInteractionType::LinkCreation;
+                    // Initialisiere den LinkCreation State mit dem modifizierten Link
                     self.state.click_interaction_state.link_creation =
                         ClickInteractionStateLinkCreation {
-                            start_pin_idx: Some(other_pin_id), // Store as Option
-                            end_pin_index: None,
+                            start_pin_idx: Some(other_pin_id), // Der Pin, der verbunden bleibt, ist der neue Start
+                            end_pin_index: None, // Kein Endpunkt beim Start des Ziehens
+                            modifying_link_id: Some(link_id), // Merke, welcher Link modifiziert wird
                             link_creation_type: LinkCreationType::FromDetach,
                         };
-                    self.frame_state.element_state_change.link_started = true;
+                    // Setze den Interaction Type erst, wenn State korrekt initialisiert ist
+                    self.state.click_interaction_type = ClickInteractionType::LinkCreation;
+                    self.frame_state.element_state_change.link_started = true; // Signalisiert Start des Ziehens
                 } else {
                     log::warn!(
                         "Link detach: Anderer Pin ({:?}) nicht gefunden.",
                         other_pin_id
                     );
+                    // Interaktion wird nicht gestartet, da der andere Pin fehlt
                 }
             } else {
                 log::warn!("Link detach: Link {:?} nicht gefunden.", link_id);
@@ -1544,6 +1556,12 @@ impl NodesContext {
     ) {
         match self.state.click_interaction_type {
             ClickInteractionType::LinkCreation => {
+                // Hole ID des ggf. modifizierten Links
+                let modifying_link_id = self
+                    .state
+                    .click_interaction_state
+                    .link_creation
+                    .modifying_link_id;
                 let start_pin_id = self
                     .state
                     .click_interaction_state
@@ -1574,50 +1592,124 @@ impl NodesContext {
 
                 if self.state.interaction_state.left_mouse_released {
                     if let Some(end_pin_id) = snapped_pin_id {
-                        // Sende NewLinkRequested (wie zuvor)
-                        self.frame_state
-                            .graph_changes
-                            .push(GraphChange::NewLinkRequested(start_pin_id, end_pin_id));
-                        // Füge internen Link hinzu (wie zuvor)
-                        // ... (neue Link ID, Spec, State) ...
-                        let internal_new_link_id = self.state.next_link_id;
-                        self.state.next_link_id += 1;
+                        // --- Erfolgreich an Pin gesnapped ---
+
+                        // Bestimme korrekte finale Pin-Rollen (Output -> Input)
                         let (output_pin_id, input_pin_id) = {
-                            /*...*/
+                            // Hole die Pin-Typen der beteiligten Pins
                             let start_pin_kind = self
                                 .pins
                                 .get(&start_pin_id)
                                 .map_or(PinType::None, |p| p.spec.kind);
-                            if start_pin_kind == PinType::Output {
+                            // end_pin_id ist hier im Scope gültig!
+                            let end_pin_kind = self
+                                .pins
+                                .get(&end_pin_id)
+                                .map_or(PinType::None, |p| p.spec.kind);
+
+                            // Gehe davon aus, dass der Validator sichergestellt hat, dass einer Input und einer Output ist.
+                            // Falls der Start-Pin ein Output ist ODER der End-Pin ein Input ist, ist die Reihenfolge start -> end korrekt.
+                            if start_pin_kind == PinType::Output || end_pin_kind == PinType::Input {
                                 (start_pin_id, end_pin_id)
                             } else {
+                                // Andernfalls war der Start-Pin der Input, also drehe die Reihenfolge.
                                 (end_pin_id, start_pin_id)
                             }
                         };
-                        let new_link_spec = LinkSpec {
-                            id: internal_new_link_id,
-                            start_pin_index: output_pin_id,
-                            end_pin_index: input_pin_id,
-                            style: Default::default(),
-                        };
-                        let new_link_state = LinkState {
-                            style: self.settings.style.format_link(new_link_spec.style.clone()),
-                            shape: Some(ui.painter().add(egui::Shape::Noop)),
-                        }; // Korrektur: Füge shape hier hinzu
-                        self.links.insert(
-                            internal_new_link_id,
-                            Link {
-                                spec: new_link_spec,
-                                state: new_link_state,
-                            },
-                        );
+
+                        // Prüfe, ob wir gerade einen bestehenden Link modifiziert haben
+                        if let Some(original_link_id) = modifying_link_id {
+                            // --- Fall 1: Link wurde modifiziert (Detach & Re-Connect) ---
+                            // Hole den Link mutbar, um ihn zu ändern
+                            if let Some(link_mut) = self.links.get_mut(&original_link_id) {
+                                // Aktualisiere die Pin-Indizes im Spec des *bestehenden* Links
+                                link_mut.spec.start_pin_index = output_pin_id;
+                                link_mut.spec.end_pin_index = input_pin_id;
+                                // Optional: Style aktualisieren, falls er sich ändern könnte (z.B. durch Pin-Typ)
+                                link_mut.state.style =
+                                    self.settings.style.format_link(link_mut.spec.style.clone());
+
+                                // Sende das *neue* Modifiziert-Event an die Außenwelt
+                                self.frame_state
+                                    .graph_changes
+                                    .push(GraphChange::LinkModified {
+                                        link_id: original_link_id,       // Die ID des Original-Links
+                                        new_start_pin_id: output_pin_id, // Der neue Start-Pin
+                                        new_end_pin_id: input_pin_id,    // Der neue End-Pin
+                                    });
+                                bevy::log::info!(
+                                    "GraphChange::LinkModified sent for link: {}",
+                                    original_link_id
+                                );
+                            } else {
+                                bevy::log::error!("LinkModification failed: Could not find link with ID {} to modify.", original_link_id);
+                            }
+                        } else {
+                            // --- Fall 2: Brandneuer Link wurde erstellt ---
+                            // Generiere eine *neue interne* ID für diesen Link (nicht persistent!)
+                            let internal_new_link_id = self.state.next_link_id;
+                            self.state.next_link_id += 1; // Inkrementiere den Zähler für die nächste ID
+
+                            // Erstelle die Spezifikation für den neuen Link
+                            let new_link_spec = LinkSpec {
+                                id: internal_new_link_id,       // Die neue interne ID
+                                start_pin_index: output_pin_id, // Korrekt zugeordneter Start-Pin (Output)
+                                end_pin_index: input_pin_id, // Korrekt zugeordneter End-Pin (Input)
+                                style: Default::default(),   // Standard-Style verwenden
+                            };
+                            // Erstelle den Zustand für den neuen Link
+                            let new_link_state = LinkState {
+                                // Formatiere den Standard-Style
+                                style: self.settings.style.format_link(new_link_spec.style.clone()),
+                                // Wichtig: Initialisiere den Shape-Index, damit er gezeichnet werden kann
+                                shape: Some(ui.painter().add(egui::Shape::Noop)),
+                            };
+                            // Füge den neuen Link zum internen Zustand des Context hinzu
+                            self.links.insert(
+                                internal_new_link_id,
+                                Link {
+                                    spec: new_link_spec,
+                                    state: new_link_state,
+                                },
+                            );
+
+                            // Sende das *bisherige* Erstellt-Event (NewLinkRequested) an die Außenwelt
+                            self.frame_state
+                                .graph_changes
+                                .push(GraphChange::NewLinkRequested(output_pin_id, input_pin_id)); // Wichtig: Pins in korrekter Output->Input Reihenfolge senden
+                            bevy::log::info!(
+                                "GraphChange::NewLinkRequested sent for pins: {} -> {}",
+                                output_pin_id,
+                                input_pin_id
+                            );
+                        }
+                        // Setze Flag, dass ein Link (visuell) erstellt/verbunden wurde
                         self.frame_state.element_state_change.link_created = true;
                     } else {
+                        // --- Ins Leere gedropped ---
+                        // Wenn ein Link modifiziert wurde (modifying_link_id war Some), passiert hier nichts dauerhaftes.
+                        // Der Link wurde nie aus self.links entfernt und wird im nächsten Frame einfach wieder normal gezeichnet.
+                        // Wenn ein neuer Link erstellt wurde (modifying_link_id war None), wird er ebenfalls nicht hinzugefügt.
+                        // Setze nur das Flag für die Außenwelt (falls benötigt)
                         self.frame_state.element_state_change.link_dropped = true;
                     }
+
+                    // Interaktion beenden, egal ob erfolgreich oder nicht
                     self.state.click_interaction_type = ClickInteractionType::None;
+                    // Wichtig: Auch den spezifischen Zustand der LinkCreation-Interaktion zurücksetzen!
+                    // Dies löscht modifying_link_id, start_pin_idx etc. für die nächste Interaktion.
+                    self.state.click_interaction_state.link_creation = Default::default();
+                } else {
+                    // --- Ins Leere gedropped ---
+                    // Wenn ein Link modifiziert wurde (modifying_link_id war Some), passiert hier nichts dauerhaftes.
+                    // Der Link wurde nie aus self.links entfernt und wird im nächsten Frame einfach wieder normal gezeichnet.
+                    // Wenn ein neuer Link erstellt wurde (modifying_link_id war None), wird er ebenfalls nicht hinzugefügt.
+                    // Setze nur das Flag für die Außenwelt (falls benötigt)
+                    self.frame_state.element_state_change.link_dropped = true;
+                    // log::warn!("Link detach: Link {:?} nicht gefunden.", link_id); // <-- DIESE ZEILE LÖSCHEN
                 }
             }
+
             ClickInteractionType::BoxSelection => {
                 self.box_selector_update_selection(); // Aktualisiert die Auswahl basierend auf der Box
                 if self.state.interaction_state.left_mouse_released {
@@ -1828,6 +1920,26 @@ impl NodesContext {
         // Hole Link IDs bevor iteriert wird, da draw_link &mut self nimmt
         let link_ids: Vec<usize> = self.links.keys().copied().collect();
         for link_id in link_ids {
+            // *** NEUE PRÜFUNG: Zeichne den Link nicht, wenn er gerade modifiziert wird ***
+            // `maybe_modifying_link_id` muss hier ggf. neu geholt werden, falls es im Scope nicht verfügbar ist:
+            let maybe_modifying_link_id =
+                if self.state.click_interaction_type == ClickInteractionType::LinkCreation {
+                    self.state
+                        .click_interaction_state
+                        .link_creation
+                        .modifying_link_id
+                } else {
+                    None
+                };
+
+            if self.state.click_interaction_type == ClickInteractionType::LinkCreation
+                && maybe_modifying_link_id == Some(link_id)
+            {
+                // Wenn wir gerade dabei sind, *diesen spezifischen* Link zu modifizieren, überspringe das Zeichnen.
+                // Die temporäre Linie von StartPin zur Maus wird stattdessen in `draw_temporary_elements` gezeichnet.
+                continue; // Gehe zum nächsten Link in der Schleife
+            }
+
             self.draw_link(link_id, ui_draw);
         }
 
@@ -1845,24 +1957,21 @@ impl NodesContext {
 
     // === MODIFIED: TODO 4 - Event Sammlung angepasst ===
     fn collect_events(&mut self) {
-        // `GraphChange` Events für NodeMoved, LinkRemoved, NodeRemoved
-        // werden bereits in `translate_selected_nodes` und `handle_delete` hinzugefügt.
 
-        // Hier geht es darum, interne `ElementStateChange`-Flags in `GraphChange`-Events
-        // umzuwandeln, falls nötig.
-        // `LinkCreated` wird jetzt in `click_interaction_update` direkt als `NewLinkRequested` gesendet.
+        // === KORREKTUR: LinkRemoved wird jetzt nur noch via handle_delete gesendet ===
+        // Das `frame_state.deleted_link_idx` wurde früher für das temporäre Entfernen beim Detach verwendet,
+        // was wir jetzt durch das Speichern von `modifying_link_id` und Überspringen im Draw ersetzen.
+        /*
+        if self.frame_state.deleted_link_idx.is_some() {
+            // Dieses Flag wird nicht mehr gesetzt. LinkRemoved kommt aus handle_delete.
+        }*/
 
         // Beispiel: Wenn man noch spezifische Events für "dropped" etc. bräuchte:
         /*
          if self.frame_state.element_state_change.link_dropped {
              // Eventuell ein GraphChange::LinkDropped(start_pin_id) senden?
         }
-        if self.frame_state.deleted_link_idx.is_some() {
-             // Wurde bereits in handle_delete/begin_link_detach als LinkRemoved hinzugefügt
-        }
         */
-        // Reset der Frame-State-Änderungsflags (am Ende von `reset`?)
-        // self.frame_state.element_state_change.reset(); // Schon in reset()
     }
 
     // --- Getter Methods ---
@@ -2076,6 +2185,7 @@ enum LinkCreationType {
 struct ClickInteractionStateLinkCreation {
     start_pin_idx: Option<usize>, // Option, falls Detach fehlschlägt
     end_pin_index: Option<usize>,
+    modifying_link_id: Option<usize>, // NEU: ID des Links, der modifiziert wird
     #[derivative(Default(value = "LinkCreationType::default()"))]
     link_creation_type: LinkCreationType,
 }

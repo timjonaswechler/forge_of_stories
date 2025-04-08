@@ -10,7 +10,7 @@ use egui_dock::{DockArea, DockState, NodeIndex, Style, TabViewer}; // Docking sp
 // Lokale Module für die UI Komponente
 use super::context::{LinkValidationCallback, NodesContext};
 use super::resources::GraphUIData;
-use super::ui_link::LinkSpec; // Für die Links
+
 use super::ui_pin::{PinSpec, PinType}; // Für die Pins
 
 // MyTabViewer struct muss hier definiert sein oder importiert werden, wenn es in ein eigenes Modul kommt.
