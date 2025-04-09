@@ -31,12 +31,19 @@ impl Plugin for DevUIPlugin {
         app.add_systems(
             Update,
             (
-                provide_simulation_graph_data.before(graph_ui_system),
+                // Richtige Reihenfolge (versimplifiziert):
+                // (graph_ui_system läuft implizit, als erstes in dieser Kette betrachtet)
+
+                // 1. Reagiere auf UI-Events und ändere die Simulation
                 handle_graph_changes_system.after(graph_ui_system),
-                // update_selected_node_details // ALT
-                update_selected_node_details // NEU (oder alter Name, aber mit neuer Logik)
+                // 2. Aktualisiere Detaildaten basierend auf neuer Auswahl/Zustand
+                update_selected_node_details // Immer noch mit altem Namen? Wenn ja, hier anpassen
                     .after(handle_graph_changes_system),
-            ),
+                // 3. Sammle Daten aus der (jetzt geänderten) Simulation für den nächsten Frame
+                provide_simulation_graph_data.after(update_selected_node_details), // Nach den Detail-Updates, falls die auch schreiben
+                                                                                   // ALT: .before(graph_ui_system), // DIESE ZEILE ENTFERNEN/AUSKOMMENTIEREN
+            ), // Entferne .chain() wenn du es nicht explizit für andere Sets brauchst
+               // .chain(),
         );
     }
 }

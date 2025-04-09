@@ -27,81 +27,81 @@ pub fn debug_entities(
     if *app_state != AppState::Running {
         return;
     }
-    if !*ran_once {
-        info!(
-            "=== DETAILLIERTE ENTITY-INFORMATIONEN (State: {:?}) ===",
-            app_state.get()
-        );
-        for (entity, genotype, phenotype, physical, mental, social, visual, species) in query.iter()
-        {
-            info!("Entity: {:?}", entity);
-            info!("----------------------------------------");
-            info!("GENOTYP: {} Gene", genotype.gene_pairs.len());
-            info!("PHÄNOTYP:");
-            for (chrom_type, attributes) in &phenotype.attribute_groups {
-                info!("  Chromosomentyp: {:?}", chrom_type);
-                for (attr_id_str, gene_value) in attributes {
-                    let gene_type_str = GeneType::from_str(attr_id_str).map_or_else(
-                        |_| format!("Unbekannt: '{}'", attr_id_str),
-                        |gt| format!("{:?}", gt),
-                    );
-                    info!(
-                        "    {:<30}: Pheno-Wert: {:<6.3} (Expression: {:?})",
-                        gene_type_str,
-                        gene_value.value(),
-                        gene_value.expression()
-                    );
-                }
-            }
-            info!("PHYSISCHE ATTRIBUTE:");
-            debug_attribute(&physical.strength);
-            debug_attribute(&physical.agility);
-            debug_attribute(&physical.toughness);
-            debug_attribute(&physical.endurance);
-            debug_attribute(&physical.recuperation);
-            debug_attribute(&physical.disease_resistance);
+    // if !*ran_once {
+    //     info!(
+    //         "=== DETAILLIERTE ENTITY-INFORMATIONEN (State: {:?}) ===",
+    //         app_state.get()
+    //     );
+    //     for (entity, genotype, phenotype, physical, mental, social, visual, species) in query.iter()
+    //     {
+    //         info!("Entity: {:?}", entity);
+    //         info!("----------------------------------------");
+    //         info!("GENOTYP: {} Gene", genotype.gene_pairs.len());
+    //         info!("PHÄNOTYP:");
+    //         for (chrom_type, attributes) in &phenotype.attribute_groups {
+    //             info!("  Chromosomentyp: {:?}", chrom_type);
+    //             for (attr_id_str, gene_value) in attributes {
+    //                 let gene_type_str = GeneType::from_str(attr_id_str).map_or_else(
+    //                     |_| format!("Unbekannt: '{}'", attr_id_str),
+    //                     |gt| format!("{:?}", gt),
+    //                 );
+    //                 info!(
+    //                     "    {:<30}: Pheno-Wert: {:<6.3} (Expression: {:?})",
+    //                     gene_type_str,
+    //                     gene_value.value(),
+    //                     gene_value.expression()
+    //                 );
+    //             }
+    //         }
+    //         info!("PHYSISCHE ATTRIBUTE:");
+    //         debug_attribute(&physical.strength);
+    //         debug_attribute(&physical.agility);
+    //         debug_attribute(&physical.toughness);
+    //         debug_attribute(&physical.endurance);
+    //         debug_attribute(&physical.recuperation);
+    //         debug_attribute(&physical.disease_resistance);
 
-            info!("MENTALE ATTRIBUTE:");
-            debug_attribute(&mental.analytical_ability);
-            debug_attribute(&mental.focus);
-            debug_attribute(&mental.willpower);
-            debug_attribute(&mental.creativity);
-            debug_attribute(&mental.intuition);
-            debug_attribute(&mental.patience);
-            debug_attribute(&mental.memory);
-            debug_attribute(&mental.spatial_sense);
+    //         info!("MENTALE ATTRIBUTE:");
+    //         debug_attribute(&mental.analytical_ability);
+    //         debug_attribute(&mental.focus);
+    //         debug_attribute(&mental.willpower);
+    //         debug_attribute(&mental.creativity);
+    //         debug_attribute(&mental.intuition);
+    //         debug_attribute(&mental.patience);
+    //         debug_attribute(&mental.memory);
+    //         debug_attribute(&mental.spatial_sense);
 
-            info!("SOZIALE ATTRIBUTE:");
-            debug_attribute(&social.empathy);
-            debug_attribute(&social.social_awareness);
-            debug_attribute(&social.linguistic_ability);
-            debug_attribute(&social.musicality);
-            debug_attribute(&social.leadership);
-            debug_attribute(&social.negotiation);
+    //         info!("SOZIALE ATTRIBUTE:");
+    //         debug_attribute(&social.empathy);
+    //         debug_attribute(&social.social_awareness);
+    //         debug_attribute(&social.linguistic_ability);
+    //         debug_attribute(&social.musicality);
+    //         debug_attribute(&social.leadership);
+    //         debug_attribute(&social.negotiation);
 
-            info!("VISUELLE MERKMALE:");
-            let skin_srgba = visual.skin_color.to_srgba();
-            info!(
-                "  Hautfarbe (sRGB): R={:.3} G={:.3} B={:.3} (A={:.3})",
-                skin_srgba.red, skin_srgba.green, skin_srgba.blue, skin_srgba.alpha
-            );
+    //         info!("VISUELLE MERKMALE:");
+    //         let skin_srgba = visual.skin_color.to_srgba();
+    //         info!(
+    //             "  Hautfarbe (sRGB): R={:.3} G={:.3} B={:.3} (A={:.3})",
+    //             skin_srgba.red, skin_srgba.green, skin_srgba.blue, skin_srgba.alpha
+    //         );
 
-            let hair_srgba = visual.hair_color.to_srgba();
-            info!(
-                "  Haarfarbe (sRGB): R={:.3} G={:.3} B={:.3} (A={:.3})",
-                hair_srgba.red, hair_srgba.green, hair_srgba.blue, hair_srgba.alpha
-            );
+    //         let hair_srgba = visual.hair_color.to_srgba();
+    //         info!(
+    //             "  Haarfarbe (sRGB): R={:.3} G={:.3} B={:.3} (A={:.3})",
+    //             hair_srgba.red, hair_srgba.green, hair_srgba.blue, hair_srgba.alpha
+    //         );
 
-            let eye_srgba = visual.eye_color.to_srgba();
-            info!(
-                "  Augenfarbe (sRGB): R={:.3} G={:.3} B={:.3} (A={:.3})",
-                eye_srgba.red, eye_srgba.green, eye_srgba.blue, eye_srgba.alpha
-            );
-            info!("SPEZIES: {:?}", species.species);
-            info!("========================================\n");
-        }
-        *ran_once = true;
-    }
+    //         let eye_srgba = visual.eye_color.to_srgba();
+    //         info!(
+    //             "  Augenfarbe (sRGB): R={:.3} G={:.3} B={:.3} (A={:.3})",
+    //             eye_srgba.red, eye_srgba.green, eye_srgba.blue, eye_srgba.alpha
+    //         );
+    //         info!("SPEZIES: {:?}", species.species);
+    //         info!("========================================\n");
+    //     }
+    //     *ran_once = true;
+    // }
 }
 
 fn debug_attribute(attribute: &Attribute) {

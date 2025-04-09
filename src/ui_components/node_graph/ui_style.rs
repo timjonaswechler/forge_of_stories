@@ -50,27 +50,40 @@ impl ColorStyle {
     pub fn colors_blender_light() -> [egui::Color32; ColorStyle::Count as usize] {
         let mut colors = [egui::Color32::BLACK; ColorStyle::Count as usize];
 
-        colors[ColorStyle::GridBackground as usize] = Color32::from_rgb(0x1d, 0x1d, 0x1d); // #1d1d1d
-        colors[ColorStyle::GridLine as usize] = Color32::from_rgb(0x28, 0x28, 0x28); // #282828
-        colors[ColorStyle::NodeBackground as usize] = Color32::from_rgb(0x66, 0x66, 0x66); // #666666
-        colors[ColorStyle::NodeBackgroundHovered as usize] = Color32::from_gray(0x78); // #787878 (abgeleitet)
-        colors[ColorStyle::NodeBackgroundSelected as usize] = Color32::from_rgb(0xed, 0x57, 0x00); // #ed5700
-        colors[ColorStyle::TitleBar as usize] = Color32::from_gray(0x5a); // #5a5a5a (abgeleitet)
-        colors[ColorStyle::TitleBarHovered as usize] =
-            colors[ColorStyle::NodeBackgroundSelected as usize];
-        colors[ColorStyle::TitleBarSelected as usize] =
-            colors[ColorStyle::NodeBackgroundSelected as usize];
-        colors[ColorStyle::NodeOutline as usize] = colors[ColorStyle::GridLine as usize]; // #282828 (abgeleitet)
-        colors[ColorStyle::NodeOutlineActive as usize] = Color32::WHITE; // #ffffff
-        colors[ColorStyle::Link as usize] = Color32::from_rgb(0x1a, 0x1a, 0x1a); //rgb(117, 117, 117)
+        // Hintergrund und Grid
+        colors[ColorStyle::GridBackground as usize] = Color32::from_rgb(0x1d, 0x1d, 0x1d); // Dunkelgrau
+        colors[ColorStyle::GridLine as usize] = Color32::from_rgb(0x28, 0x28, 0x28); // Grid-Linien
+
+        // Node Farben
+        colors[ColorStyle::NodeBackground as usize] = Color32::from_rgb(0x66, 0x66, 0x66); // Node BG
+        colors[ColorStyle::NodeBackgroundHovered as usize] = Color32::from_rgb(0x78, 0x78, 0x78);
+        colors[ColorStyle::NodeBackgroundSelected as usize] = Color32::from_rgb(0xed, 0x57, 0x00); // Orange
+
+        // Titelleiste
+        colors[ColorStyle::TitleBar as usize] = Color32::from_rgb(0x5a, 0x5a, 0x5a); // Etwas dunkler
+        colors[ColorStyle::TitleBarHovered as usize] = Color32::from_rgb(0xed, 0x57, 0x00);
+        colors[ColorStyle::TitleBarSelected as usize] = Color32::from_rgb(0xed, 0x57, 0x00);
+
+        // Rahmen
+        colors[ColorStyle::NodeOutline as usize] = Color32::from_rgb(0x28, 0x28, 0x28); // Dunkler Rahmen
+        colors[ColorStyle::NodeOutlineActive as usize] = Color32::from_rgb(0xff, 0xff, 0xff);
+
+        // Links/Verbindungen
+        colors[ColorStyle::Link as usize] = Color32::from_rgb(0x1a, 0x1a, 0x1a); // Link normal
         colors[ColorStyle::LinkSelected as usize] =
-            Color32::from_rgba_unmultiplied(0xff, 0xff, 0xff, 0xb3); // #ffffffb3
-        colors[ColorStyle::LinkHovered as usize] = colors[ColorStyle::LinkSelected as usize];
-        colors[ColorStyle::Pin as usize] = Color32::from_gray(0x96); // #969696 (abgeleitet)
-        colors[ColorStyle::PinHovered as usize] = Color32::WHITE; // (abgeleitet)
-        let selector_base = colors[ColorStyle::NodeBackgroundSelected as usize];
-        colors[ColorStyle::BoxSelector as usize] = selector_base.linear_multiply(0.15);
-        colors[ColorStyle::BoxSelectorOutline as usize] = selector_base.linear_multiply(0.5);
+            Color32::from_rgba_unmultiplied(0xff, 0xff, 0xff, 0xb3);
+        colors[ColorStyle::LinkHovered as usize] =
+            Color32::from_rgba_unmultiplied(0xff, 0xff, 0xff, 0xb3);
+
+        // Pins
+        colors[ColorStyle::Pin as usize] = Color32::from_rgb(0x96, 0x96, 0x96); // Standard
+        colors[ColorStyle::PinHovered as usize] = Color32::from_rgb(0xff, 0xff, 0xff); // Weiß beim Hover
+
+        // Box Selection
+        colors[ColorStyle::BoxSelector as usize] =
+            Color32::from_rgba_unmultiplied(0xed, 0x57, 0x00, 0x15);
+        colors[ColorStyle::BoxSelectorOutline as usize] =
+            Color32::from_rgba_unmultiplied(0xed, 0x57, 0x00, 0x50);
 
         colors
     }
@@ -115,23 +128,27 @@ impl Style {
     pub fn blender_light() -> Self {
         Self {
             // Parameter aus XML/Annahmen
-            grid_spacing: 32.0,           // Standard behalten
-            node_corner_rounding: 4.0,    // 0.4 panel_roundness * 10 (Skalierungsfaktor?)
-            node_padding_horizontal: 8.0, // Standard behalten
-            node_padding_vertical: 8.0,   // Standard behalten
-            node_border_thickness: 1.0,   // Standard behalten
+            // Grid-Einstellungen
+            grid_spacing: 32.0,
+            // Node-Layout
+            node_corner_rounding: 4.0, // Reduziert für Blender-Look
+            node_padding_horizontal: 8.0,
+            node_padding_vertical: 8.0,
+            node_border_thickness: 1.0, // Dünnerer Rahmen wie in Blender
 
-            link_thickness: 5.5, // Dünnere Linien wie in Blender 'wire'
-            link_line_segments_per_length: 0.1, // Standard behalten (beeinflusst Glätte)
-            link_hover_distance: 10.0, // Standard behalten
+            // Link-Appearance
+            link_thickness: 2.0, // Etwas dünner für Blender-Look
+            link_line_segments_per_length: 0.1,
+            link_hover_distance: 6.0,
 
-            pin_shape: PinShape::CircleFilled, // Standard behalten
-            pin_circle_radius: 5.0,            // Etwas größer
+            // Pin-Einstellungen beibehalten aber anpassen
+            pin_shape: PinShape::CircleFilled,
+            pin_circle_radius: 4.0, // Etwas kleiner
             pin_quad_side_length: 8.0,
             pin_triangle_side_length: 10.0,
             pin_line_thickness: 1.0,
-            pin_hover_radius: 12.0, // Größerer Hover-Bereich
-            pin_offset: 0.0,        // Standard behalten
+            pin_hover_radius: 10.0,
+            pin_offset: 0.0,
 
             flags: StyleFlags::NodeOutline as usize | StyleFlags::GridLines as usize, // Standard behalten
             // Farben aus der neuen Blender-Farb-Funktion laden
@@ -182,7 +199,7 @@ impl Style {
                         pin_pos,
                         [self.pin_quad_side_length / 2.0; 2].into(),
                     ),
-                    egui::Rounding::ZERO, // Geändert von CornerRadius::same(0) zu egui::Rounding::ZERO
+                    egui::CornerRadius::ZERO, // Geändert von CornerRadius::same(0) zu egui::Rounding::ZERO
                     egui::Stroke::new(self.pin_line_thickness, pin_color),
                     egui::StrokeKind::Inside,
                 ),
@@ -194,7 +211,7 @@ impl Style {
                         pin_pos,
                         [self.pin_quad_side_length / 2.0; 2].into(),
                     ),
-                    egui::Rounding::ZERO, // Geändert von 0.0 zu egui::Rounding::ZERO
+                    egui::CornerRadius::ZERO, // Geändert von 0.0 zu egui::Rounding::ZERO
                     pin_color,
                 ),
             ),

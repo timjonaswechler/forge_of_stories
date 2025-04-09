@@ -43,19 +43,21 @@ pub fn generate_pin_id(node_id: usize, pin_identifier: &str) -> usize {
 pub enum GraphChange {
     LinkCreated(usize, usize), // Start Pin ID, End Pin ID
     LinkRemoved {
-        link_id: usize,
-        start_pin_id: usize, // Der Pin, der Output war
-        end_pin_id: usize,   // Der Pin, der Input war
+        start_pin_id: usize,
+        end_pin_id: usize,
     },
-    NodeMoved(usize, BevyVec2), // Node ID, Grid Space Position
-    NodeRemoved(usize),         // Node ID
     LinkModified {
-        link_id: usize,
-        new_start_pin_id: usize,
-        new_end_pin_id: usize,
-    }, // NEU
+        // NEU: Nur die neuen Pin IDs reichen
+        new_start_pin_id: usize, // Neuer Output Pin
+        new_end_pin_id: usize,   // Neuer Input Pin
+        // TODO Evtl. sinnvoll: Die *alten* Pin-IDs mitschicken, um Aufräumen (Friendship) zu ermöglichen?
+        old_start_pin_id: usize,
+        old_end_pin_id: usize,
+    },
     // === NEU: Event für Link Erstellung durch User-Aktion ===
     NewLinkRequested(usize, usize), // Start Pin ID, End Pin ID
+    NodeMoved(usize, BevyVec2),     // Node ID, Grid Space Position
+    NodeRemoved(usize),             // Node ID
 }
 
 #[derive(Derivative)]
@@ -84,10 +86,6 @@ pub struct PersistentState {
     #[derivative(Default(value = "ClickInteractionType::None"))]
     click_interaction_type: ClickInteractionType,
     click_interaction_state: ClickInteractionState,
-    // === NEU: Einfacher Zähler für interne Link IDs ===
-    // HINWEIS: Nicht persistent über Neustarts! Nur für die Session.
-    // Eine bessere Lösung bräuchte ein Asset oder eine dedizierte Ressource.
-    next_link_id: usize,
 }
 
 #[derive(Derivative)]
@@ -1299,32 +1297,36 @@ impl NodesContext {
     // Startet Link-Erstellung vom *anderen* Pin, nachdem der Original-Link entfernt wurde
     fn begin_link_detach(&mut self, link_id: usize, detach_pin_idx: usize) {
         if self.state.click_interaction_type == ClickInteractionType::None {
-            // Nur lesen, nicht entfernen!
             if let Some(link_to_detach) = self.links.get(&link_id) {
-                // self.frame_state.deleted_link_idx = Some(link_id); // Nicht mehr nötig/gewünscht
-                // Sende kein LinkRemoved Event beim einfachen Detachen
-                // self.frame_state.graph_changes.push(GraphChange::LinkRemoved(link_id)); // Vorerst rausgenommen
+                // Nur lesen
+                // DEBUG LOGGING
+                bevy::log::info!(
+                    "[DEBUG begin_link_detach] Detaching Link UI ID: {}",
+                    link_id
+                );
 
-                // Finde den Pin, der verbunden bleibt
                 let other_pin_id = if link_to_detach.spec.start_pin_index == detach_pin_idx {
                     link_to_detach.spec.end_pin_index
                 } else {
                     link_to_detach.spec.start_pin_index
                 };
 
-                // Prüfen ob der andere Pin existiert
                 if self.pins.contains_key(&other_pin_id) {
-                    // Initialisiere den LinkCreation State mit dem modifizierten Link
+                    let modifying_id = Some(link_id); // Hole die ID vor dem Verschieben
                     self.state.click_interaction_state.link_creation =
                         ClickInteractionStateLinkCreation {
-                            start_pin_idx: Some(other_pin_id), // Der Pin, der verbunden bleibt, ist der neue Start
-                            end_pin_index: None, // Kein Endpunkt beim Start des Ziehens
-                            modifying_link_id: Some(link_id), // Merke, welcher Link modifiziert wird
+                            start_pin_idx: Some(other_pin_id),
+                            end_pin_index: None,
+                            modifying_link_id: modifying_id, // Setze die ID
                             link_creation_type: LinkCreationType::FromDetach,
                         };
-                    // Setze den Interaction Type erst, wenn State korrekt initialisiert ist
                     self.state.click_interaction_type = ClickInteractionType::LinkCreation;
-                    self.frame_state.element_state_change.link_started = true; // Signalisiert Start des Ziehens
+                    self.frame_state.element_state_change.link_started = true;
+
+                    // DEBUG LOGGING
+                    bevy::log::info!("[DEBUG begin_link_detach] Set modifying_link_id: {:?}, InteractionType: {:?}",
+                        self.state.click_interaction_state.link_creation.modifying_link_id,
+                        self.state.click_interaction_type);
                 } else {
                     log::warn!(
                         "Link detach: Anderer Pin ({:?}) nicht gefunden.",
@@ -1618,78 +1620,98 @@ impl NodesContext {
                         // Prüfe, ob wir gerade einen bestehenden Link modifiziert haben
                         if let Some(original_link_id) = modifying_link_id {
                             // --- Fall 1: Link wurde modifiziert (Detach & Re-Connect) ---
-                            // Hole den Link mutbar, um ihn zu ändern
-                            if let Some(link_mut) = self.links.get_mut(&original_link_id) {
-                                // Aktualisiere die Pin-Indizes im Spec des *bestehenden* Links
-                                link_mut.spec.start_pin_index = output_pin_id;
-                                link_mut.spec.end_pin_index = input_pin_id;
-                                // Optional: Style aktualisieren, falls er sich ändern könnte (z.B. durch Pin-Typ)
-                                link_mut.state.style =
-                                    self.settings.style.format_link(link_mut.spec.style.clone());
 
-                                // Sende das *neue* Modifiziert-Event an die Außenwelt
+                            // --- NEUE LOGIK: Holen der alten Pins ---
+                            // Entferne temporär, um an die Spec zu kommen
+                            if let Some(removed_link_data) = self.links.remove(&original_link_id) {
+                                let old_start_pin = removed_link_data.spec.start_pin_index;
+                                let old_end_pin = removed_link_data.spec.end_pin_index;
+
+                                // Sende das Event mit ALLEN Pin-Infos
                                 self.frame_state
                                     .graph_changes
                                     .push(GraphChange::LinkModified {
-                                        link_id: original_link_id,       // Die ID des Original-Links
-                                        new_start_pin_id: output_pin_id, // Der neue Start-Pin
-                                        new_end_pin_id: input_pin_id,    // Der neue End-Pin
+                                        new_start_pin_id: output_pin_id,
+                                        new_end_pin_id: input_pin_id,
+                                        old_start_pin_id: old_start_pin, // Alte Pins hinzufügen
+                                        old_end_pin_id: old_end_pin,
                                     });
                                 bevy::log::info!(
-                                    "GraphChange::LinkModified sent for link: {}",
-                                    original_link_id
+                                    "GraphChange::LinkModified sent. Old Pins: {}->{}, New Pins: {} -> {}",
+                                    old_start_pin, old_end_pin, output_pin_id, input_pin_id
                                 );
+
+                                // Den Link brauchen wir nicht wieder einzufügen,
+                                // da er im nächsten Frame vom Provider sowieso
+                                // neu erstellt wird (oder auch nicht, wenn die Beziehung weg ist).
+                                // Das `remove` hier genügt.
                             } else {
-                                bevy::log::error!("LinkModification failed: Could not find link with ID {} to modify.", original_link_id);
+                                // Fallback, falls Link schon weg war
+                                bevy::log::error!("LinkModification failed: Could not find link with old UI ID {} to remove and get old pins.", original_link_id);
+                                // Sende Event nur mit neuen Pins (wie vorher)
+                                self.frame_state
+                                    .graph_changes
+                                    .push(GraphChange::LinkModified {
+                                        new_start_pin_id: output_pin_id,
+                                        new_end_pin_id: input_pin_id,
+                                        old_start_pin_id: usize::MAX, // Platzhalter
+                                        old_end_pin_id: usize::MAX,   // Platzhalter
+                                    });
                             }
+                            // ---------------------------------------
                         } else {
                             // --- Fall 2: Brandneuer Link wurde erstellt ---
-                            // Generiere eine *neue interne* ID für diesen Link (nicht persistent!)
-                            let internal_new_link_id = self.state.next_link_id;
-                            self.state.next_link_id += 1; // Inkrementiere den Zähler für die nächste ID
+                            // BERECHNE ID mit XOR der Pin IDs
+                            let new_link_id = output_pin_id ^ input_pin_id;
 
                             // Erstelle die Spezifikation für den neuen Link
                             let new_link_spec = LinkSpec {
-                                id: internal_new_link_id,       // Die neue interne ID
-                                start_pin_index: output_pin_id, // Korrekt zugeordneter Start-Pin (Output)
-                                end_pin_index: input_pin_id, // Korrekt zugeordneter End-Pin (Input)
-                                style: Default::default(),   // Standard-Style verwenden
+                                id: new_link_id, // XOR ID verwenden
+                                start_pin_index: output_pin_id,
+                                end_pin_index: input_pin_id,
+                                style: Default::default(),
                             };
                             // Erstelle den Zustand für den neuen Link
                             let new_link_state = LinkState {
-                                // Formatiere den Standard-Style
                                 style: self.settings.style.format_link(new_link_spec.style.clone()),
-                                // Wichtig: Initialisiere den Shape-Index, damit er gezeichnet werden kann
                                 shape: Some(ui.painter().add(egui::Shape::Noop)),
                             };
-                            // Füge den neuen Link zum internen Zustand des Context hinzu
-                            self.links.insert(
-                                internal_new_link_id,
+                            // Füge den neuen Link zum internen Zustand hinzu
+                            if let Some(_existing_link) = self.links.insert(
+                                new_link_id,
                                 Link {
                                     spec: new_link_spec,
                                     state: new_link_state,
                                 },
-                            );
+                            ) {
+                                bevy::log::warn!("Overwrote existing link with same XOR ID {} during new link creation!", new_link_id);
+                            }
 
-                            // Sende das *bisherige* Erstellt-Event (NewLinkRequested) an die Außenwelt
+                            // Sende das Erstellt-Event
                             self.frame_state
                                 .graph_changes
-                                .push(GraphChange::NewLinkRequested(output_pin_id, input_pin_id)); // Wichtig: Pins in korrekter Output->Input Reihenfolge senden
+                                .push(GraphChange::NewLinkRequested(output_pin_id, input_pin_id));
                             bevy::log::info!(
                                 "GraphChange::NewLinkRequested sent for pins: {} -> {}",
                                 output_pin_id,
                                 input_pin_id
                             );
-                        }
-                        // Setze Flag, dass ein Link (visuell) erstellt/verbunden wurde
+                        } // Ende else (Neuer Link)
                         self.frame_state.element_state_change.link_created = true;
                     } else {
                         // --- Ins Leere gedropped ---
-                        // Wenn ein Link modifiziert wurde (modifying_link_id war Some), passiert hier nichts dauerhaftes.
-                        // Der Link wurde nie aus self.links entfernt und wird im nächsten Frame einfach wieder normal gezeichnet.
-                        // Wenn ein neuer Link erstellt wurde (modifying_link_id war None), wird er ebenfalls nicht hinzugefügt.
-                        // Setze nur das Flag für die Außenwelt (falls benötigt)
+                        // Prüfe, ob wir im Modify-Modus waren
+                        let was_modifying = modifying_link_id.is_some(); // Hole den Wert *bevor* er zurückgesetzt wird
+
                         self.frame_state.element_state_change.link_dropped = true;
+
+                        // --- NEUES DEBUG LOG ---
+                        bevy::log::info!(
+                             "[DEBUG Drop] Link dropped. Was modifying: {}, Modifying ID before reset: {:?}",
+                             was_modifying,
+                             modifying_link_id
+                         );
+                        // --------------------
                     }
 
                     // Interaktion beenden, egal ob erfolgreich oder nicht
@@ -1697,6 +1719,11 @@ impl NodesContext {
                     // Wichtig: Auch den spezifischen Zustand der LinkCreation-Interaktion zurücksetzen!
                     // Dies löscht modifying_link_id, start_pin_idx etc. für die nächste Interaktion.
                     self.state.click_interaction_state.link_creation = Default::default();
+                    // --- NEUES DEBUG LOG ---
+                    bevy::log::info!("[DEBUG Drop/Connect End] Resetting state. New InteractionType: {:?}, New modifying_link_id: {:?}",
+                    self.state.click_interaction_type,
+                    self.state.click_interaction_state.link_creation.modifying_link_id);
+                // Sollte None sein
                 } else {
                     // --- Ins Leere gedropped ---
                     // Wenn ein Link modifiziert wurde (modifying_link_id war Some), passiert hier nichts dauerhaftes.
@@ -1733,111 +1760,7 @@ impl NodesContext {
                     self.state.click_interaction_type = ClickInteractionType::None;
                 }
             }
-            ClickInteractionType::LinkCreation => {
-                // Aktuellen Start-Pin holen (sollte existieren)
-                let start_pin_id = self
-                    .state
-                    .click_interaction_state
-                    .link_creation
-                    .start_pin_idx
-                    .unwrap_or(usize::MAX); // Fehlerbehandlung?
-                if self.pins.get(&start_pin_id).is_none() {
-                    bevy::log::error!("Link Creation: Start pin {} missing!", start_pin_id);
-                    self.state.click_interaction_type = ClickInteractionType::None;
-                    return;
-                };
 
-                // Prüfen, ob über einem gültigen Pin gesnapped wird
-                let mut snapped_pin_id: Option<usize> = None; // Reset
-                if let Some(hovered_pin_id) = self.frame_state.hovered_pin_index {
-                    // Prüfe, ob ein Link zwischen diesen Pins bereits existiert
-                    let duplicate_link_id = self.find_duplicate_link(start_pin_id, hovered_pin_id);
-
-                    // Prüfe, ob die Verbindung gültig ist (Pins existieren, nicht derselbe Node, Typen passen, kein Duplikat etc.)
-                    if self.should_link_snap_to_pin(
-                        start_pin_id,
-                        hovered_pin_id,
-                        duplicate_link_id,
-                        link_validator,
-                    ) {
-                        // Wenn gültig -> Markiere als gesnapped
-                        snapped_pin_id = Some(hovered_pin_id);
-                    }
-                }
-
-                // Update den Endpunkt für die temporäre Visualisierung
-                self.state
-                    .click_interaction_state
-                    .link_creation
-                    .end_pin_index = snapped_pin_id;
-
-                // --- Logik beim Loslassen der Maustaste ---
-                if self.state.interaction_state.left_mouse_released {
-                    if let Some(end_pin_id) = snapped_pin_id {
-                        // *** Erfolgreich verbunden! ***
-
-                        // 1. Erzeuge Event/Änderung für die Außenwelt (System, das Links tatsächlich erstellt)
-                        //   Das Event sollte die Pin-IDs enthalten.
-                        self.frame_state
-                            .graph_changes
-                            .push(GraphChange::NewLinkRequested(start_pin_id, end_pin_id));
-                        bevy::log::info!(
-                            "GraphChange::NewLinkRequested sent for pins: {} -> {}",
-                            start_pin_id,
-                            end_pin_id
-                        );
-
-                        // 2. Optional: Füge den Link direkt zum *internen* Zustand hinzu, damit er sofort angezeigt wird.
-                        //    Braucht eine neue interne ID. Diese ist NICHT die persistente ID!
-                        let internal_new_link_id = self.state.next_link_id;
-                        self.state.next_link_id += 1; // Inkrementiere Zähler
-
-                        // Bestimme korrekte Start/End Pin basierend auf Typ
-                        let (output_pin_id, input_pin_id) = {
-                            let start_pin_kind = self
-                                .pins
-                                .get(&start_pin_id)
-                                .map_or(PinType::None, |p| p.spec.kind);
-                            if start_pin_kind == PinType::Output {
-                                (start_pin_id, end_pin_id)
-                            } else {
-                                (end_pin_id, start_pin_id) // Drehe um, wenn von Input gestartet wurde (z.B. nach Detach)
-                            }
-                        };
-
-                        let new_link_spec = LinkSpec {
-                            id: internal_new_link_id,        // Temporäre interne ID
-                            start_pin_index: output_pin_id,  // Immer Output Pin als Start speichern
-                            end_pin_index: input_pin_id,     // Immer Input Pin als Ende speichern
-                            style: LinkStyleArgs::default(), // Standard-Style
-                        };
-
-                        let new_link_state = LinkState {
-                            style: self.settings.style.format_link(new_link_spec.style.clone()),
-                            // Shape Index muss neu geholt werden, da add_link nicht direkt hier aufgerufen wird
-                            // Shape wird dann in final_draw gezeichnet
-                            shape: None, // Wird in final_draw oder beim nächsten show() gesetzt? -> Besser: direkt hier versuchen
-                        };
-
-                        // Füge zur internen Map hinzu
-                        self.links.insert(
-                            internal_new_link_id,
-                            Link {
-                                spec: new_link_spec,
-                                state: new_link_state, // Style ist hier formatiert
-                            },
-                        );
-
-                        // Markiere, dass ein Link *visuell* erstellt wurde (für interne Logik)
-                        self.frame_state.element_state_change.link_created = true;
-                    } else {
-                        // Nicht über gültigem Pin losgelassen
-                        self.frame_state.element_state_change.link_dropped = true;
-                    }
-                    // Link-Erstellung beenden (egal ob erfolgreich oder nicht)
-                    self.state.click_interaction_type = ClickInteractionType::None;
-                }
-            }
             ClickInteractionType::Panning => {
                 // Nur wenn die Alt-Taste gehalten und gezogen wird
                 if self.state.interaction_state.alt_mouse_dragging {
@@ -1900,11 +1823,14 @@ impl NodesContext {
                 self.frame_state
                     .graph_changes
                     .push(GraphChange::LinkRemoved {
-                        link_id: *link_id,
                         start_pin_id: removed_link.spec.start_pin_index, // Pin IDs aus dem entfernten Link holen
                         end_pin_id: removed_link.spec.end_pin_index,
                     });
-                bevy::log::debug!("Sent LinkRemoved event for link UI ID {}", *link_id);
+                bevy::log::debug!(
+                    "Sent LinkRemoved event for link with pins {} -> {}",
+                    removed_link.spec.start_pin_index,
+                    removed_link.spec.end_pin_index
+                );
             } else {
                 bevy::log::warn!(
                     "Attempted to remove link UI ID {} but it was not found.",
@@ -1939,44 +1865,57 @@ impl NodesContext {
         // self.state.selected_node_indices.clear();
     }
 
+    // src/ui_components/node_graph/context.rs -> fn final_draw
+
     fn final_draw(&mut self, ui_draw: &mut egui::Ui) {
         // === 1. Links zeichnen (unter den Nodes) ===
-        // Hole Link IDs bevor iteriert wird, da draw_link &mut self nimmt
-        let link_ids: Vec<usize> = self.links.keys().copied().collect();
+        let link_ids: Vec<usize> = self.links.keys().copied().collect(); // Beinhaltet jetzt nur noch XOR IDs
+
+        let interaction_type = self.state.click_interaction_type;
+        let modifying_id_opt = if interaction_type == ClickInteractionType::LinkCreation {
+            self.state
+                .click_interaction_state
+                .link_creation
+                .modifying_link_id
+        } else {
+            None
+        };
+
+        bevy::log::trace!(
+            "[DEBUG final_draw - START] Interaction: {:?}, ModifyingXOR_ID: {:?}",
+            interaction_type,
+            modifying_id_opt
+        );
+
         for link_id in link_ids {
-            // *** NEUE PRÜFUNG: Zeichne den Link nicht, wenn er gerade modifiziert wird ***
-            // `maybe_modifying_link_id` muss hier ggf. neu geholt werden, falls es im Scope nicht verfügbar ist:
-            let maybe_modifying_link_id =
-                if self.state.click_interaction_type == ClickInteractionType::LinkCreation {
-                    self.state
-                        .click_interaction_state
-                        .link_creation
-                        .modifying_link_id
-                } else {
-                    None
-                };
+            let is_being_modified = modifying_id_opt == Some(link_id);
 
-            if self.state.click_interaction_type == ClickInteractionType::LinkCreation
-                && maybe_modifying_link_id == Some(link_id)
-            {
-                // Wenn wir gerade dabei sind, *diesen spezifischen* Link zu modifizieren, überspringe das Zeichnen.
-                // Die temporäre Linie von StartPin zur Maus wird stattdessen in `draw_temporary_elements` gezeichnet.
-                continue; // Gehe zum nächsten Link in der Schleife
+            // Log in Schleife mit DEBUG
+            bevy::log::debug!(
+                "[DEBUG final_draw - LOOP] Checking link_id (XOR): {}, IsModified: {}",
+                link_id,
+                is_being_modified
+            );
+
+            if is_being_modified {
+                // Log beim Überspringen mit DEBUG
+                bevy::log::debug!(
+                    "[DEBUG final_draw] Skipping draw for modified link_id: {}",
+                    link_id
+                );
+                continue;
             }
-
             self.draw_link(link_id, ui_draw);
         }
 
-        // === 2. Nodes zeichnen (gemäß Tiefenordnung) ===
-        // Hole Node IDs aus der Tiefenordnung, da draw_node &mut self nimmt
+        // === 2. Nodes zeichnen ...
         let node_order = self.state.node_depth_order.clone();
         for node_id in node_order.iter() {
-            // `draw_node` kümmert sich intern um das Zeichnen der Pins dieses Nodes
             self.draw_node(*node_id, ui_draw);
         }
 
-        // === 3. Temporäre Elemente zeichnen (über allem anderen) ===
-        self.draw_temporary_elements(ui_draw); // Nimmt &self
+        // === 3. Temporäre Elemente zeichnen ...
+        self.draw_temporary_elements(ui_draw);
     }
 
     // === MODIFIED: TODO 4 - Event Sammlung angepasst ===
