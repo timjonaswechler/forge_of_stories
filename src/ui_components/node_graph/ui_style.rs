@@ -4,7 +4,7 @@ use super::{
     ui_node::{NodeArgs, NodeDataColorStyle, NodeDataLayoutStyle}, // NodeArgs hier importieren
     ui_pin::{PinShape, PinStyle, PinStyleArgs, PinType}, // PinShape/StyleArgs hier importieren
 };
-use bevy_egui::egui::{self, Color32, Vec2}; // egui importieren für Pos2 etc.
+use bevy_egui::egui::{self, Color32}; // egui importieren für Pos2 etc.
 
 // === ENUMS (ColorStyle, StyleFlags) - Unverändert ===
 

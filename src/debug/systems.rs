@@ -3,10 +3,9 @@ use crate::attributes::components::{
     Attribute, MentalAttributes, PhysicalAttributes, SocialAttributes,
 };
 
-use crate::genetics::{GeneType, Genotype, Phenotype, SpeciesGenes};
+use crate::genetics::{Genotype, Phenotype, SpeciesGenes};
 use crate::visuals::components::VisualTraits;
 use bevy::prelude::*;
-use std::str::FromStr;
 
 pub fn debug_entities(
     query: Query<(
@@ -19,7 +18,7 @@ pub fn debug_entities(
         &VisualTraits,
         &SpeciesGenes,
     )>,
-    mut ran_once: Local<bool>,
+    ran_once: Local<bool>,
     app_state: Res<State<AppState>>,
 ) {
     // Die Prüfung auf AppState::Running ist hier redundant wegen .run_if(),

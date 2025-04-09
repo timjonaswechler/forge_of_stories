@@ -3,8 +3,7 @@ use crate::genetics::components::SpeciesGenes;
 use crate::ui_components::node_graph::{
     context::{GraphChange, NodesContext, PinType},
     resources::{DetailDisplayData, GraphUIData}, // <- HIER DetailDisplayData hinzufügen
-    ui_data::{generate_pin_id, LogicalPinInfo, PinDirection, VisLink, VisNode},
-    NodesContext as _, // Um NodeContext für den Call weiter unten zu importieren
+    ui_data::{generate_pin_id, LogicalPinInfo, PinDirection, VisLink, VisNode}, // Um NodeContext für den Call weiter unten zu importieren
 };
 use bevy::color::palettes::css::*;
 use bevy::prelude::*;

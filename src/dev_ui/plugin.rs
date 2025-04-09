@@ -2,7 +2,6 @@
 use bevy::prelude::*;
 
 // src/dev_ui/plugin.rs
-use bevy::prelude::*;
 
 // Importiere den generischen Node Graph Plugin
 use crate::ui_components::node_graph::NodeGraphPlugin;
