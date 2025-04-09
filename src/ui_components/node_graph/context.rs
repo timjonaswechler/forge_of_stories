@@ -1299,11 +1299,6 @@ impl NodesContext {
         if self.state.click_interaction_type == ClickInteractionType::None {
             if let Some(link_to_detach) = self.links.get(&link_id) {
                 // Nur lesen
-                // DEBUG LOGGING
-                bevy::log::info!(
-                    "[DEBUG begin_link_detach] Detaching Link UI ID: {}",
-                    link_id
-                );
 
                 let other_pin_id = if link_to_detach.spec.start_pin_index == detach_pin_idx {
                     link_to_detach.spec.end_pin_index
@@ -1322,11 +1317,6 @@ impl NodesContext {
                         };
                     self.state.click_interaction_type = ClickInteractionType::LinkCreation;
                     self.frame_state.element_state_change.link_started = true;
-
-                    // DEBUG LOGGING
-                    bevy::log::info!("[DEBUG begin_link_detach] Set modifying_link_id: {:?}, InteractionType: {:?}",
-                        self.state.click_interaction_state.link_creation.modifying_link_id,
-                        self.state.click_interaction_type);
                 } else {
                     log::warn!(
                         "Link detach: Anderer Pin ({:?}) nicht gefunden.",
@@ -1704,14 +1694,6 @@ impl NodesContext {
                         let was_modifying = modifying_link_id.is_some(); // Hole den Wert *bevor* er zurückgesetzt wird
 
                         self.frame_state.element_state_change.link_dropped = true;
-
-                        // --- NEUES DEBUG LOG ---
-                        bevy::log::info!(
-                             "[DEBUG Drop] Link dropped. Was modifying: {}, Modifying ID before reset: {:?}",
-                             was_modifying,
-                             modifying_link_id
-                         );
-                        // --------------------
                     }
 
                     // Interaktion beenden, egal ob erfolgreich oder nicht
@@ -1719,10 +1701,7 @@ impl NodesContext {
                     // Wichtig: Auch den spezifischen Zustand der LinkCreation-Interaktion zurücksetzen!
                     // Dies löscht modifying_link_id, start_pin_idx etc. für die nächste Interaktion.
                     self.state.click_interaction_state.link_creation = Default::default();
-                    // --- NEUES DEBUG LOG ---
-                    bevy::log::info!("[DEBUG Drop/Connect End] Resetting state. New InteractionType: {:?}, New modifying_link_id: {:?}",
-                    self.state.click_interaction_type,
-                    self.state.click_interaction_state.link_creation.modifying_link_id);
+
                 // Sollte None sein
                 } else {
                     // --- Ins Leere gedropped ---
@@ -1881,28 +1860,10 @@ impl NodesContext {
             None
         };
 
-        bevy::log::trace!(
-            "[DEBUG final_draw - START] Interaction: {:?}, ModifyingXOR_ID: {:?}",
-            interaction_type,
-            modifying_id_opt
-        );
-
         for link_id in link_ids {
             let is_being_modified = modifying_id_opt == Some(link_id);
 
-            // Log in Schleife mit DEBUG
-            bevy::log::debug!(
-                "[DEBUG final_draw - LOOP] Checking link_id (XOR): {}, IsModified: {}",
-                link_id,
-                is_being_modified
-            );
-
             if is_being_modified {
-                // Log beim Überspringen mit DEBUG
-                bevy::log::debug!(
-                    "[DEBUG final_draw] Skipping draw for modified link_id: {}",
-                    link_id
-                );
                 continue;
             }
             self.draw_link(link_id, ui_draw);
