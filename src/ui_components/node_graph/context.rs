@@ -1,4 +1,5 @@
 // src/ui_components/node_graph/context.rs
+use bevy::color::palettes::css::*;
 use bevy::color::Srgba; // Direkter Import für Srgba Konvertierung
 use bevy::log;
 use bevy::math::Vec2 as BevyVec2; // Für Umwandlung
@@ -201,6 +202,17 @@ impl NodesContext {
         let mut link_specs = Vec::new();
         let mut current_pins_for_frame: HashMap<usize, PinSpec> = HashMap::new();
 
+        // === NEU: Farbmapping für Relationstypen ===
+        // Dieses Mapping könnte auch aus Style geladen werden, aber für's Erste hier.
+        let get_color_for_relation = |relation_type: &str| -> Color32 {
+            match relation_type {
+                "Family" => Color32::ORANGE,
+                "Friendship" => Color32::GREEN,
+                _ => Color32::GRAY, // Default/Fallback
+            }
+        };
+        // =========================================
+
         // === MODIFIED: Verarbeitet jetzt `logical_pins` ===
         for vis_node in nodes_data {
             let node_id = vis_node.id;
@@ -227,6 +239,7 @@ impl NodesContext {
                 } else {
                     AttributeFlags::None as usize
                 };
+                let pin_base_color = get_color_for_relation(&logical_pin.relation_type);
 
                 let pin_spec = PinSpec {
                     id: pin_id,
@@ -235,8 +248,11 @@ impl NodesContext {
                     relation_type: logical_pin.relation_type.clone(), // <-- NEUE ZEILE: Beziehungstyp kopieren
                     flags: pin_flags,
                     // Style basierend auf relation_type oder fest codiert? Vorerst Standard.
-                    style_args: PinStyleArgs::default(), // TODO: Style anpassen?
-                    ..Default::default()                 // Sonstige Defaults
+                    style_args: PinStyleArgs {
+                        background: Some(pin_base_color), // Setze die ermittelte Farbe
+                        ..Default::default()              // Hover etc. erstmal default lassen
+                    },
+                    ..Default::default() // Sonstige Defaults
                 };
 
                 pins_for_this_node.push(pin_spec.clone());
@@ -270,15 +286,19 @@ impl NodesContext {
             if current_pins_for_frame.contains_key(&vis_link.start_pin_id)
                 && current_pins_for_frame.contains_key(&vis_link.end_pin_id)
             {
-                let color_srgba: Srgba = vis_link.color.into();
+                let link_base_color = if let Some(start_pin_spec) =
+                    current_pins_for_frame.get(&vis_link.start_pin_id)
+                {
+                    get_color_for_relation(&start_pin_spec.relation_type)
+                } else {
+                    Color32::DARK_GRAY // Fallback, sollte nicht passieren
+                };
                 let link_style = LinkStyleArgs {
-                    base: Some(Color32::from_rgba_premultiplied(
-                        (color_srgba.red * 255.0).round() as u8,
-                        (color_srgba.green * 255.0).round() as u8,
-                        (color_srgba.blue * 255.0).round() as u8,
-                        (color_srgba.alpha * 255.0).round() as u8,
-                    )),
-                    ..Default::default()
+                    // --- NEU: Farbe für Link setzen ---
+                    base: Some(link_base_color),
+                    // --- ALT: Farbe direkt aus VisLink ---
+                    // base: Some(Color32::from_rgba_premultiplied(/*...*/)),
+                    ..Default::default() // Hover/Selected etc. erstmal default
                 };
                 link_specs.push(LinkSpec {
                     id: vis_link.id,
