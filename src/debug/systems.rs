@@ -8,7 +8,7 @@ use crate::visuals::components::VisualTraits;
 use bevy::prelude::*;
 
 pub fn debug_entities(
-    query: Query<(
+    _query: Query<(
         Entity,
         &Genotype,
         &Phenotype,
@@ -18,7 +18,7 @@ pub fn debug_entities(
         &VisualTraits,
         &SpeciesGenes,
     )>,
-    ran_once: Local<bool>,
+    _ran_once: Local<bool>,
     app_state: Res<State<AppState>>,
 ) {
     // Die Prüfung auf AppState::Running ist hier redundant wegen .run_if(),
@@ -103,7 +103,7 @@ pub fn debug_entities(
     // }
 }
 
-fn debug_attribute(attribute: &Attribute) {
+fn _debug_attribute(attribute: &Attribute) {
     info!(
         "  {:<20} ({:<20}): Base: {:<7.1}, Current: {:<7.1}, Effective: {:<7.1} (Max: {:.0}, Rust: {:?})",
         attribute.name,

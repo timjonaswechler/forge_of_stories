@@ -9,11 +9,6 @@ use bevy::color::palettes::css::*;
 use bevy::prelude::*;
 use bevy::utils::HashMap;
 
-// === Wichtig: Diese Konstanten müssen mit denen in context.rs übereinstimmen! ===
-const PIN_ID_MULTIPLIER: usize = 10;
-const INPUT_PIN_OFFSET: usize = 0;
-const OUTPUT_PIN_OFFSET: usize = 1;
-
 #[derive(Component, Debug, Clone, Copy)] // Debug, Clone, Copy optional aber nützlich
 pub struct FriendWith(pub Entity);
 
@@ -408,7 +403,7 @@ pub fn handle_graph_changes_system(
                 );
 
                 // === Schritt A: ALTE Beziehung entfernen (falls möglich) ===
-                let mut old_relation_removed = false;
+
                 // Versuche, die Entities der ALTEN Beziehung zu finden
                 if let Some((old_source_node, old_target_node)) =
                     find_nodes_for_pins(&context, old_start_pin_id, old_end_pin_id)
@@ -425,7 +420,6 @@ pub fn handle_graph_changes_system(
                                         if parent_comp.get() == old_source_entity {
                                             commands.entity(old_target_entity).remove_parent();
                                             bevy::log::info!("COMMAND (LinkModified-Cleanup): Removed OLD Parent({:?}) from child {:?}", old_source_entity, old_target_entity);
-                                            old_relation_removed = true;
                                         } else {
                                             bevy::log::warn!("LinkModified-Cleanup(Family): Old child {:?} had different parent {:?} than expected {:?}.", old_target_entity, parent_comp.get(), old_source_entity);
                                         }
@@ -437,7 +431,7 @@ pub fn handle_graph_changes_system(
                                     bevy::log::debug!("LinkModified-Cleanup(Friendship): Removing OLD Friendship between {:?} and {:?}", old_source_entity, old_target_entity);
                                     commands.entity(old_source_entity).remove::<FriendWith>();
                                     commands.entity(old_target_entity).remove::<FriendWith>();
-                                    old_relation_removed = true;
+
                                     bevy::log::info!("COMMAND (LinkModified-Cleanup): Removed OLD Friendship components between {:?} and {:?}", old_source_entity, old_target_entity);
                                 }
                                 _ => {

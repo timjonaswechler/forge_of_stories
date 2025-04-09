@@ -4,9 +4,9 @@ use super::{
     ui_node::{NodeArgs, NodeDataColorStyle, NodeDataLayoutStyle}, // NodeArgs hier importieren
     ui_pin::{PinShape, PinStyle, PinStyleArgs, PinType}, // PinShape/StyleArgs hier importieren
 };
+use bevy::log::*;
 use bevy_egui::egui::{self, Color32}; // egui importieren für Pos2 etc.
-
-// === ENUMS (ColorStyle, StyleFlags) - Unverändert ===
+                                      // === ENUMS (ColorStyle, StyleFlags) - Unverändert ===
 
 #[derive(Debug, Clone, Copy)]
 pub enum ColorStyle {
@@ -137,7 +137,7 @@ impl Style {
             node_border_thickness: 1.0, // Dünnerer Rahmen wie in Blender
 
             // Link-Appearance
-            link_thickness: 2.0, // Etwas dünner für Blender-Look
+            link_thickness: 3.0, // Etwas dünner für Blender-Look
             link_line_segments_per_length: 0.1,
             link_hover_distance: 6.0,
 
@@ -172,83 +172,83 @@ impl Style {
 
     pub(crate) fn draw_pin_shape(
         &self,
-        pin_pos: egui::Pos2,
-        pin_shape: PinShape,
-        pin_color: egui::Color32,
-        shape: egui::layers::ShapeIdx,
-        ui: &mut egui::Ui,
+        pin_pos: egui::Pos2,               // Die Position des Pin-Mittelpunkts
+        pin_shape: PinShape, // Welche Form (jetzt nur noch Circle/CircleFilled relevant)
+        pin_color: egui::Color32, // Die (Füll-)Farbe des Pins
+        shape_idx: egui::layers::ShapeIdx, // Der Index zum Setzen des Shapes im Painter
+        ui: &mut egui::Ui,   // Das UI zum Holen des Painters
     ) {
         let painter = ui.painter();
+        // Definiere den Outline Stroke (1 Pixel breit, schwarz)
+        let outline_stroke = egui::Stroke::new(1.0, Color32::BLACK);
+
+        // Da wir nur Kreise wollen, unterscheiden wir nur, ob gefüllt oder nicht.
+        // Wir verwenden die `shape` Eigenschaft des PinStyle, die in `format_pin`
+        // entweder auf den per `PinStyleArgs` gesetzten Wert oder den Default (CircleFilled) gesetzt wird.
         match pin_shape {
-            PinShape::Circle => painter.set(
-                shape,
-                egui::Shape::circle_stroke(
-                    pin_pos,
-                    self.pin_circle_radius,
-                    (self.pin_line_thickness, pin_color),
-                ),
-            ),
-            PinShape::CircleFilled => painter.set(
-                shape,
-                egui::Shape::circle_filled(pin_pos, self.pin_circle_radius, pin_color),
-            ),
-            PinShape::Quad => painter.set(
-                shape,
-                egui::Shape::rect_stroke(
-                    egui::Rect::from_center_size(
-                        pin_pos,
-                        [self.pin_quad_side_length / 2.0; 2].into(),
-                    ),
-                    egui::CornerRadius::ZERO, // Geändert von CornerRadius::same(0) zu egui::Rounding::ZERO
-                    egui::Stroke::new(self.pin_line_thickness, pin_color),
-                    egui::StrokeKind::Inside,
-                ),
-            ),
-            PinShape::QuadFilled => painter.set(
-                shape,
-                egui::Shape::rect_filled(
-                    egui::Rect::from_center_size(
-                        pin_pos,
-                        [self.pin_quad_side_length / 2.0; 2].into(),
-                    ),
-                    egui::CornerRadius::ZERO, // Geändert von 0.0 zu egui::Rounding::ZERO
-                    pin_color,
-                ),
-            ),
-            PinShape::Triangle => {
-                let sqrt_3 = 3f32.sqrt();
-                let left_offset = -0.166_666_7 * sqrt_3 * self.pin_triangle_side_length;
-                let right_offset = 0.333_333_3 * sqrt_3 * self.pin_triangle_side_length;
-                let verticacl_offset = 0.5 * self.pin_triangle_side_length;
+            PinShape::CircleFilled => {
+                // Zeichne einen GEFÜLLTEN Kreis mit schwarzer Outline
                 painter.set(
-                    shape,
-                    egui::Shape::closed_line(
-                        vec![
-                            pin_pos + egui::vec2(left_offset, verticacl_offset), // Verwende vec2
-                            pin_pos + egui::vec2(right_offset, 0.0),
-                            pin_pos + egui::vec2(left_offset, -verticacl_offset),
-                        ],
-                        egui::Stroke::new(self.pin_line_thickness, pin_color), //Stroke hier erstellen
-                    ),
-                )
+                    shape_idx,
+                    egui::Shape::Circle(egui::epaint::CircleShape {
+                        center: pin_pos,
+                        radius: self.pin_circle_radius, // Radius aus dem Style
+                        fill: pin_color,                // Die übergebene Pin-Farbe als Füllung
+                        stroke: outline_stroke,         // Der definierte schwarze Stroke
+                    }),
+                );
             }
-            PinShape::TriangleFilled => {
-                let sqrt_3 = 3f32.sqrt();
-                let left_offset = -0.166_666_7 * sqrt_3 * self.pin_triangle_side_length;
-                let right_offset = 0.333_333_3 * sqrt_3 * self.pin_triangle_side_length;
-                let verticacl_offset = 0.5 * self.pin_triangle_side_length;
+            PinShape::Circle => {
+                // Zeichne nur den UMRISS eines Kreises (Outline ist hier die Hauptfarbe)
+                // Verwende pin_color für den Stroke, aber füge auch eine dünne schwarze Außenlinie hinzu,
+                // damit auch ungefüllte Kreise eine konsistente Outline haben.
+                // Zeichne zuerst die schwarze Outline (etwas größer)
                 painter.set(
-                    shape,
-                    egui::Shape::convex_polygon(
-                        vec![
-                            pin_pos + egui::vec2(left_offset, verticacl_offset), // Verwende vec2
-                            pin_pos + egui::vec2(right_offset, 0.0),
-                            pin_pos + egui::vec2(left_offset, -verticacl_offset),
-                        ],
-                        pin_color,
-                        egui::Stroke::NONE,
+                    shape_idx, // Benutze denselben Index, der letzte set() gewinnt oder sie überlagern
+                    egui::Shape::Circle(egui::epaint::CircleShape {
+                        center: pin_pos,
+                        radius: self.pin_circle_radius + outline_stroke.width / 2.0, // Leicht größer für außen
+                        fill: Color32::TRANSPARENT,
+                        stroke: outline_stroke,
+                    }),
+                );
+                // Zeichne den farbigen Stroke darüber (mit Originalgröße)
+                // Braucht eigentlich einen neuen ShapeIndex oder komplexeres Zeichnen.
+                // Einfacher: Nur die farbige Linie zeichnen und auf Outline verzichten bei `Circle`.
+                /* // Alternative nur farbiger Stroke:
+                 painter.set(
+                    shape_idx,
+                    egui::Shape::circle_stroke(
+                         pin_pos,
+                         self.pin_circle_radius,
+                         egui::Stroke::new(self.pin_line_thickness, pin_color) // Standard dicke Linie
                     ),
-                )
+                );
+                 */
+                // Kompromiss: Nur den gefüllten Kreis verwenden, Circle ignorieren.
+                // Kopiere den Code von CircleFilled hierher, um sicherzustellen, dass immer
+                // etwas Sichtbares mit Outline gezeichnet wird.
+                painter.set(
+                    shape_idx,
+                    egui::Shape::Circle(egui::epaint::CircleShape {
+                        center: pin_pos,
+                        radius: self.pin_circle_radius,
+                        fill: pin_color, // Behandle Circle wie CircleFilled
+                        stroke: outline_stroke,
+                    }),
+                );
+            }
+            // Ignoriere alle anderen Shapes (Triangle, Quad etc.) komplett
+            _ => {
+                // Zeichne nichts oder einen Fallback (z.B. einen kleinen schwarzen Punkt)
+                painter.set(
+                    shape_idx,
+                    egui::Shape::circle_filled(pin_pos, 1.0, Color32::BLACK), // Mini-Punkt als Fallback
+                );
+                warn!(
+                    "Unsupported PinShape {:?} encountered in draw_pin_shape. Drawing fallback.",
+                    pin_shape
+                );
             }
         }
     }

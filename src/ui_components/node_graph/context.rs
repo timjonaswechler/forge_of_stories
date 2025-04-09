@@ -22,11 +22,6 @@ pub use {
     super::ui_pin::{AttributeFlags, PinShape, PinStyleArgs, PinType},
 };
 
-// Konstante für die Pin ID Generierung (Beispiel)
-const PIN_ID_MULTIPLIER: usize = 10; // Oder eine andere ausreichend große Zahl
-const INPUT_PIN_OFFSET: usize = 0;
-const OUTPUT_PIN_OFFSET: usize = 1;
-
 // *** NEUER TYP für die Validierungs-Closure ***
 /// Ein Typ für eine Funktion oder Closure, die prüft, ob zwei Pins miteinander verbunden werden dürfen.
 /// Erhält die Specs der beiden Pins und den aktuellen Zustand des NodesContext (nur lesend).
@@ -694,39 +689,61 @@ impl NodesContext {
 
     fn draw_link(&mut self, link_id: usize, ui: &mut egui::Ui) {
         let link_hovered = self.frame_state.hovered_link_idx == Some(link_id);
-        let link_selected = self.state.selected_link_indices.contains(&link_id);
+        let link_directly_selected = self.state.selected_link_indices.contains(&link_id);
 
-        // Lese den Link (immutable), um auf Pin-Daten zuzugreifen (immutable)
         if let Some(link) = self.links.get(&link_id) {
             if let (Some(start_pin), Some(end_pin)) = (
                 self.pins.get(&link.spec.start_pin_index),
                 self.pins.get(&link.spec.end_pin_index),
             ) {
-                // Berechne Bezier-Kurve basierend auf den (aktuellen) Pin-Positionen (Screen Space)
+                // === NEUE PRÜFUNG: Ist einer der verbundenen Nodes ausgewählt? ===
+                let start_node_id = start_pin.state.parent_node_idx;
+                let end_node_id = end_pin.state.parent_node_idx;
+                let node_is_selected = self.state.selected_node_indices.contains(&start_node_id)
+                    || self.state.selected_node_indices.contains(&end_node_id);
+                // ================================================================
+
                 let link_data = LinkBezierData::get_link_renderable(
-                    self.get_screen_space_pin_coordinates(start_pin), // Immer neu berechnen
-                    self.get_screen_space_pin_coordinates(end_pin),   // Immer neu berechnen
-                    start_pin.spec.kind,                              // Richtung wichtig für Bezier
+                    self.get_screen_space_pin_coordinates(start_pin),
+                    self.get_screen_space_pin_coordinates(end_pin),
+                    start_pin.spec.kind,
                     self.settings.style.link_line_segments_per_length,
                 );
 
-                // Wähle Farbe basierend auf Zustand
-                let color = if link_selected {
+                // === ANGEPASSTE FARBWAHL ===
+                let color = if node_is_selected || link_directly_selected {
+                    // Link hervorheben, wenn Node oder Link selbst ausgewählt ist
                     link.state.style.selected
                 } else if link_hovered {
                     link.state.style.hovered
                 } else {
                     link.state.style.base
                 };
+                // ===========================
 
-                // Zeichne die Linie mit painter.set() auf dem reservierten Shape Index
-                if let Some(shape_idx) = link.state.shape {
-                    // Muss Some sein, da in add_link gesetzt
-                    ui.painter().set(
-                        shape_idx,
-                        link_data.draw((link.state.style.thickness, color)),
-                    );
-                }
+                // --- Dicke optional anpassen ---
+                // Man könnte auch die Dicke ändern, wenn ein Node selektiert ist
+                let thickness = if node_is_selected || link_directly_selected {
+                    link.state.style.thickness * 1.2 // Mache den Link etwas dicker
+                } else {
+                    link.state.style.thickness // Normale Dicke
+                };
+                let outline_thickness_factor = 1.2; // Faktor für die Outline-Breite
+                let outline_color = Color32::GREEN;
+
+                // --------------------------------
+
+                // 1. Zeichne den breiteren Outline-Pfad zuerst
+                ui.painter().add(link_data.draw(
+                    // Erzeuge den Stroke für die Outline
+                    egui::Stroke::new(thickness * outline_thickness_factor, outline_color),
+                ));
+
+                // 2. Zeichne den schmaleren, farbigen Pfad darüber
+                ui.painter().add(link_data.draw(
+                    // Erzeuge den Stroke für den eigentlichen Link
+                    egui::Stroke::new(thickness, color),
+                ));
             } else {
                 // Link verweist auf ungültige Pins, sollte durch `retain` vorher entfernt worden sein
                 bevy::log::warn!(
@@ -741,32 +758,31 @@ impl NodesContext {
 
     fn draw_node(&mut self, node_id: usize, ui: &mut egui::Ui) {
         if let Some(node) = self.nodes.get(&node_id) {
-            let node_hovered = self.frame_state.hovered_node_index == Some(node_id);
+            // let node_hovered = self.frame_state.hovered_node_index == Some(node_id);
             let is_selected = self.state.selected_node_indices.contains(&node_id);
 
             // Farben auswählen
             let bg_col = if is_selected {
                 node.state.color_style.background_selected
-            } else if node_hovered {
-                node.state.color_style.background_hovered
             } else {
                 node.state.color_style.background
             };
+
             let title_col = if is_selected {
                 node.state.color_style.titlebar_selected
-            } else if node_hovered {
-                node.state.color_style.titlebar_hovered
             } else {
                 node.state.color_style.titlebar
             };
-            let outline_col = if node.spec.active {
+
+            let outline_col = if is_selected {
+                // SEHR HELLE Farbe für ausgewählten Node
+                Color32::WHITE // Oder z.B. eine sehr helle Variante der Akzentfarbe
+            } else if node.spec.active {
+                // Falls wir `active` später nutzen
                 self.settings.style.colors[ColorStyle::NodeOutlineActive as usize]
-            } else if is_selected {
-                node.state.color_style.background_selected
-            }
-            // Standard-Outline für selektierte
-            else {
-                node.state.color_style.outline
+            } else {
+                // Standard-Outline-Farbe (aus dem Blender Theme)
+                self.settings.style.colors[ColorStyle::NodeOutline as usize]
             };
 
             let painter = ui.painter(); // Painter vom übergebenen UI
@@ -849,11 +865,7 @@ impl NodesContext {
             if let Some(pin) = self.pins.get(&pin_idx) {
                  let screen_pos = self.get_screen_space_pin_coordinates(pin); // Position berechnen
 
-                let draw_color = if pin_hovered {
-                    pin.state.color_style.hovered
-                } else {
-                    pin.state.color_style.background
-                 };
+                 let draw_color = pin.state.color_style.background;
                  let draw_shape = pin.state.color_style.shape;
                  let shape_idx = pin.state.shape_gui.expect("Pin Shape Index nicht initialisiert"); // Sollte in add_pin gesetzt sein
                 let flags = pin.spec.flags;
@@ -986,24 +998,31 @@ impl NodesContext {
             self.frame_state.hovered_link_idx = None;
             return;
         }
-        // Reihenfolge ist wichtig: Pins > Nodes > Links
-        self.resolve_occluded_pins(); // Markiert Pins, die von Nodes verdeckt sind
-        self.resolve_hovered_pin(); // Findet den obersten, nicht verdeckten Pin unter der Maus
 
-        // Nur nach Node suchen, wenn *kein* Pin gehovert wird
+        // === Wiederherstellen: Pin Hover wieder aktivieren! ===
+        self.resolve_occluded_pins();
+        self.resolve_hovered_pin(); // hovered_pin_index wird hier wieder korrekt gesetzt!
+
+        // Node Hover deaktivieren wir aber weiterhin
         if self.frame_state.hovered_pin_index.is_none() {
-            self.resolve_hovered_node(); // Findet den obersten Node unter der Maus
+            self.resolve_hovered_node(); // Diese Zeile lassen
+                                         // Node Hover State wird hier potentiell gesetzt
         } else {
-            self.frame_state.hovered_node_index = None; // Wenn Pin hovered -> kein Node Hover
+            self.frame_state.hovered_node_index = None; // Oder hier auf None gesetzt, wenn Pin hovered
         }
+        // *** ÄNDERUNG: Setze Node Hover IMMER auf None, NACHDEM er für die Pin-Prüfung benutzt wurde ***
+        self.frame_state.hovered_node_index = None; // Node Hover hier deaktivieren
 
-        // Nur nach Link suchen, wenn *weder* Pin *noch* Node gehovert wird
+        // Link Hover (bleibt wie es war)
         if self.frame_state.hovered_pin_index.is_none()
             && self.frame_state.hovered_node_index.is_none()
         {
-            self.resolve_hovered_link(); // Findet den Link unter der Maus
+            // Node Hover ist jetzt immer None, Pin Hover aber potentiell Some!
+            // Korrektur: Link nur hovern, wenn auch Pin nicht gehovert wird.
+            self.resolve_hovered_link();
         } else {
-            self.frame_state.hovered_link_idx = None; // Wenn Pin/Node hovered -> kein Link Hover
+            // Wenn Pin ODER (theoretisch) Node hovered -> kein Link Hover
+            self.frame_state.hovered_link_idx = None;
         }
     }
 
@@ -1691,7 +1710,7 @@ impl NodesContext {
                     } else {
                         // --- Ins Leere gedropped ---
                         // Prüfe, ob wir im Modify-Modus waren
-                        let was_modifying = modifying_link_id.is_some(); // Hole den Wert *bevor* er zurückgesetzt wird
+                        let _was_modifying = modifying_link_id.is_some(); // Hole den Wert *bevor* er zurückgesetzt wird
 
                         self.frame_state.element_state_change.link_dropped = true;
                     }
