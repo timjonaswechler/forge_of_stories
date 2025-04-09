@@ -1,6 +1,5 @@
 use super::ui_pin::PinSpec;
 use bevy_egui::egui;
-// Entferne: use bevy_inspector_egui::bevy_egui; falls nicht genutzt
 use derivative::Derivative;
 
 #[derive(Default, Debug, Clone)]
@@ -35,21 +34,35 @@ pub struct NodeDataLayoutStyle {
     pub border_thickness: f32,
 }
 
-#[derive(Derivative, Default)]
+#[derive(Derivative, Clone)]
 #[derivative(Debug)]
-// === KORRIGIERT: Clone hinzugefügt ===
-#[derive(Clone)]
-// ==================================
 pub struct NodeSpec {
     pub(crate) id: usize,
     pub(crate) name: String,
     pub(crate) subtitle: String,
     pub(crate) origin: egui::Pos2,
-    pub(crate) attributes: Vec<PinSpec>, // Dies sollte PinSpec sein
-    pub(crate) args: NodeArgs,
+    pub(crate) color: egui::Color32, // <-- NEUES FELD (Bevy Color)
+    pub(crate) attributes: Vec<PinSpec>,
+    pub(crate) args: NodeArgs, // Enthält Styling-Überschreibungen
     pub(crate) time: Option<f32>,
     pub(crate) duration: Option<f32>,
     pub(crate) active: bool,
+}
+impl Default for NodeSpec {
+    fn default() -> Self {
+        Self {
+            id: Default::default(),
+            name: Default::default(),
+            subtitle: Default::default(),
+            origin: Default::default(),
+            color: egui::Color32::GRAY, // Standardfarbe für Default
+            attributes: Default::default(),
+            args: Default::default(),
+            time: Default::default(),
+            duration: Default::default(),
+            active: Default::default(),
+        }
+    }
 }
 
 #[derive(Derivative, Clone)]

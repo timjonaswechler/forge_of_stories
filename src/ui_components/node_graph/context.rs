@@ -1,5 +1,4 @@
 // src/ui_components/node_graph/context.rs
-use bevy::color::palettes::css::*;
 use bevy::color::Srgba; // Direkter Import für Srgba Konvertierung
 use bevy::log;
 use bevy::math::Vec2 as BevyVec2; // Für Umwandlung
@@ -216,23 +215,14 @@ impl NodesContext {
         // === MODIFIED: Verarbeitet jetzt `logical_pins` ===
         for vis_node in nodes_data {
             let node_id = vis_node.id;
-            let mut pins_for_this_node: Vec<PinSpec> = Vec::new(); // Sammelt PinSpecs für *diesen* Node
+            let mut pins_for_this_node: Vec<PinSpec> = Vec::new();
 
-            // Iteriere über die logischen Pins des VisNode
             for logical_pin in &vis_node.logical_pins {
-                // Generiere die eindeutige Pin-ID mit der neuen Funktion
                 let pin_id = generate_pin_id(node_id, &logical_pin.identifier);
-
-                // Bestimme den echten UI-PinType (In oder Out)
-                // InOut wird hier typischerweise als beides behandelt oder erfordert spezielle Logik.
-                // Fürs Erste: Input-Pins links, Output/InOut-Pins rechts.
                 let pin_kind = match logical_pin.direction {
                     PinDirection::Input => PinType::Input,
-                    PinDirection::Output | PinDirection::InOut => PinType::Output, // InOut als Output behandeln für die Positionierung/Startlogik
+                    PinDirection::Output | PinDirection::InOut => PinType::Output,
                 };
-
-                // Flags basierend auf der Richtung setzen
-                // Outputs/InOuts dürfen Links starten/lösen
                 let pin_flags = if pin_kind == PinType::Output {
                     (AttributeFlags::EnableLinkCreationOnSnap as usize)
                         | (AttributeFlags::EnableLinkDetachWithDragClick as usize)
@@ -244,15 +234,14 @@ impl NodesContext {
                 let pin_spec = PinSpec {
                     id: pin_id,
                     kind: pin_kind,
-                    name: logical_pin.display_name.clone(), // Anzeigename
-                    relation_type: logical_pin.relation_type.clone(), // <-- NEUE ZEILE: Beziehungstyp kopieren
+                    name: logical_pin.display_name.clone(),
+                    relation_type: logical_pin.relation_type.clone(),
                     flags: pin_flags,
-                    // Style basierend auf relation_type oder fest codiert? Vorerst Standard.
                     style_args: PinStyleArgs {
-                        background: Some(pin_base_color), // Setze die ermittelte Farbe
-                        ..Default::default()              // Hover etc. erstmal default lassen
+                        background: Some(pin_base_color),
+                        ..Default::default()
                     },
-                    ..Default::default() // Sonstige Defaults
+                    ..Default::default()
                 };
 
                 pins_for_this_node.push(pin_spec.clone());
@@ -260,18 +249,25 @@ impl NodesContext {
             }
 
             // Erstelle den NodeSpec wie bisher
-            let _color_srgba: Srgba = vis_node.color.into();
-            // ... (node_args erstellen wie zuvor) ...
             let node_args = NodeArgs::default();
+
+            // === KORREKTUR FÜR E0609: Verwende to_srgba() ===
+            let node_color_srgba = vis_node.color.to_srgba(); // Konvertiere Bevy Color zu Srgba
 
             node_specs.insert(
                 node_id,
                 NodeSpec {
                     id: node_id,
                     name: vis_node.name.clone(),
-                    origin: egui::pos2(vis_node.position.x, vis_node.position.y), // Konvertiere Vec2 -> Pos2
-                    attributes: pins_for_this_node, // Verwende die generierten PinSpecs
-                    args: node_args,
+                    origin: egui::pos2(vis_node.position.x, vis_node.position.y),
+                    color: Color32::from_rgba_premultiplied(
+                        (node_color_srgba.red * 255.0).round() as u8, // Verwende Felder von Srgba
+                        (node_color_srgba.green * 255.0).round() as u8,
+                        (node_color_srgba.blue * 255.0).round() as u8,
+                        (node_color_srgba.alpha * 255.0).round() as u8, // Achte auf alpha!
+                    ),
+                    attributes: pins_for_this_node,
+                    args: node_args, // Standard NodeArgs
                     subtitle: format!("E:{:?}", vis_node.entity),
                     time: None,
                     duration: None,
@@ -419,6 +415,25 @@ impl NodesContext {
     fn add_node(&mut self, node_spec: NodeSpec, ui: &mut egui::Ui) {
         let node_id = node_spec.id;
 
+        let mut node_args = node_spec.args.clone();
+
+        let [r, g, b, a] = node_spec.color.to_array();
+        let title_color_srgb = Srgba::new(
+            r as f32 / 255.0,
+            g as f32 / 255.0,
+            b as f32 / 255.0,
+            a as f32 / 255.0,
+        );
+        node_args.titlebar = Some(Color32::from_rgba_premultiplied(
+            (title_color_srgb.red * 255.0).round() as u8,
+            (title_color_srgb.green * 255.0).round() as u8,
+            (title_color_srgb.blue * 255.0).round() as u8,
+            (title_color_srgb.alpha * 255.0).round() as u8,
+        ));
+        // Man könnte auch Selected Titlebar anpassen, z.B. etwas heller/dunkler machen
+        // node_args.titlebar_selected = Some(...)
+        // =====================================================
+
         let mut node = Node {
             spec: node_spec.clone(),
             state: self
@@ -427,7 +442,7 @@ impl NodesContext {
                 .map_or_else(NodeState::default, |n| n.state.clone()),
         };
 
-        let (color_style, layout_style) = self.settings.style.format_node(node.spec.args.clone());
+        let (color_style, layout_style) = self.settings.style.format_node(node_args); // Hier werden die Args verwendet
         node.state.color_style = color_style;
         node.state.layout_style = layout_style;
 

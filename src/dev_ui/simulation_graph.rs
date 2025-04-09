@@ -2,12 +2,14 @@
 use crate::genetics::components::SpeciesGenes;
 use crate::ui_components::node_graph::{
     context::{GraphChange, NodesContext, PinType},
-    resources::{DetailDisplayData, GraphUIData}, // <- HIER DetailDisplayData hinzufügen
-    ui_data::{generate_pin_id, LogicalPinInfo, PinDirection, VisLink, VisNode}, // Um NodeContext für den Call weiter unten zu importieren
+    resources::{DetailDisplayData, GraphUIData},
+    ui_data::{generate_pin_id, LogicalPinInfo, PinDirection, VisLink, VisNode},
 };
-use bevy::color::palettes::css::*;
+
 use bevy::prelude::*;
 use bevy::utils::HashMap;
+// Entferne: use bevy_egui::egui::{self, Color32}; // <- Diese Zeile entfernen oder anpassen
+use bevy_egui::egui; // Nur egui behalten, wenn nur das gebraucht wird
 
 #[derive(Component, Debug, Clone, Copy)] // Debug, Clone, Copy optional aber nützlich
 pub struct FriendWith(pub Entity);
@@ -30,15 +32,24 @@ pub fn provide_simulation_graph_data(
     graph_data.links.clear();
 
     // --- NEU: Farbdefinitionen ---
-    let family_color = Color::from(ORANGE_RED);
-    let friendship_color = Color::from(LIGHT_CYAN);
+    let family_color = Color::srgb(1.0, 0.4, 0.0); // Korrigiert: srgb
+    let friendship_color = Color::srgb(0.8, 1.0, 1.0);
     // Füge hier Farben für andere relation_types hinzu
-    let default_pin_color = Color::from(GRAY); // Fallback/Standard
 
     // --- Konstantendefinitionen und Variablen (unverändert) ---
     let mut current_y = 50.0;
     const Y_SPACING: f32 = 250.0;
     const X_POS: f32 = 100.0;
+
+    let get_header_color_for_species = |species_list: &[String]| -> Color {
+        // Nehme die erste Spezies für die Farbe (oder eine Logik für Mischwesen)
+        match species_list.first().map(|s| s.as_str()) {
+            Some("Mensch") => Color::srgb(1.0, 1.0, 0.0), // Yellow
+            Some("Elf") => Color::srgb(0.565, 0.933, 0.565), // Light Green
+            Some("Ork") => Color::srgb(0.647, 0.165, 0.165), // Brown
+            _ => Color::srgb(0.5, 0.5, 0.5),              // Gray
+        }
+    };
 
     // Temporäre Speicherung der Nodes und Mapping für schnellen Zugriff
     let mut temp_nodes: Vec<VisNode> = Vec::new();
@@ -71,12 +82,15 @@ pub fn provide_simulation_graph_data(
     for (entity, species) in node_entity_query.iter() {
         let node_id = entity.index() as usize;
         entity_to_node_id_map.insert(entity, node_id);
+        // --- NEU: Header-Farbe ermitteln ---
+        let header_color = get_header_color_for_species(&species.species);
+        // ------------------------------------
         let node = VisNode {
             id: node_id,
             entity: Some(entity),
             name: species.species.join(", "),
             position: Vec2::new(X_POS, current_y),
-            color: Color::from(GRAY), // Node Grundfarbe
+            color: header_color,
             logical_pins: standard_logical_pins.clone(),
         };
         temp_nodes.push(node);
