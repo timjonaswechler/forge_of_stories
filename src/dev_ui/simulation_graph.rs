@@ -112,14 +112,9 @@ pub fn provide_simulation_graph_data(
 
     // --- Schritt 2: VisLinks für Parent/Child-Beziehungen erstellen ---
     // (Dieser Block bleibt unverändert, er nutzt die Pin-Identifier)
-    bevy::log::debug!("--- Running Parent Query ---");
+
     for (child_entity, parent_component) in parent_query.iter() {
         let parent_entity = parent_component.get();
-        bevy::log::debug!(
-            "Parent Query Found: Child={:?}, Parent={:?}",
-            child_entity,
-            parent_entity
-        );
         if let (Some(&parent_node_id), Some(&child_node_id)) = (
             entity_to_node_id_map.get(&parent_entity),
             entity_to_node_id_map.get(&child_entity),
@@ -135,12 +130,9 @@ pub fn provide_simulation_graph_data(
                 end_pin_id,
                 color: family_color,
             });
-            bevy::log::debug!(" -> Creating VisLink for Parent relation");
         } else {
-            bevy::log::debug!(" -> Skipping VisLink (Parent or Child not in node map)");
         }
     }
-    bevy::log::debug!("--- Finished Parent Query ---");
 
     // --- Schritt 3: VisLinks für Freundschafts-Beziehungen erstellen ---
     // (Dieser Block bleibt auch unverändert)
@@ -255,18 +247,8 @@ pub fn handle_graph_changes_system(
                                         (target_entity, source_entity)
                                     };
 
-                                bevy::log::debug!(
-                                    "Family link requested: Parent={:?}, Child={:?}",
-                                    actual_parent_entity,
-                                    actual_child_entity
-                                );
-
                                 // Validierung gegen Selbst-Parenting
                                 if actual_parent_entity == actual_child_entity {
-                                    bevy::log::warn!(
-                                        "Attempted to parent entity {:?} to itself. Skipping.",
-                                        actual_child_entity
-                                    );
                                     continue; // Nächste Änderung bearbeiten
                                 }
 
@@ -290,11 +272,7 @@ pub fn handle_graph_changes_system(
 
                             "Friendship" => {
                                 // --- Logik für Freundschaft ---
-                                bevy::log::debug!(
-                                    "Friendship link requested between {:?} and {:?}",
-                                    source_entity,
-                                    target_entity
-                                );
+
                                 // Verwende die Hilfsfunktion (Namen egal, da bidirektional)
                                 add_friendship(&mut commands, source_entity, target_entity);
                             } // Ende "Friendship"
@@ -386,11 +364,7 @@ pub fn handle_graph_changes_system(
 
                             "Friendship" => {
                                 // --- Logik zum Entfernen der Freundschaft ---
-                                bevy::log::debug!(
-                                    "Attempting to remove Friendship between {:?} and {:?}",
-                                    start_entity,
-                                    end_entity
-                                );
+
                                 // Entferne die Komponenten von *beiden* Entities
                                 commands.entity(start_entity).remove::<FriendWith>(); // Annahme: FriendWith(end_entity) war hier
                                 commands.entity(end_entity).remove::<FriendWith>(); // Annahme: FriendWith(start_entity) war hier
@@ -414,7 +388,7 @@ pub fn handle_graph_changes_system(
                 } else {
                     // Wichtigster Fall: Einer oder beide Pins/Nodes wurden gleichzeitig gelöscht.
                     // In diesem Fall müssen wir nichts extra für den Link tun, das Löschen des Nodes (oder der Beziehung durch Parent-Update) kümmert sich darum.
-                    bevy::log::debug!("LinkRemoved: Could not find one or both pins (IDs {} and {}). Assuming relation was removed implicitly by node removal or other means.", start_pin_id, end_pin_id);
+                    bevy::log::warn!("LinkRemoved: Could not find one or both pins (IDs {} and {}). Assuming relation was removed implicitly by node removal or other means.", start_pin_id, end_pin_id);
                 }
             } // Ende LinkRemoved
 
@@ -459,7 +433,6 @@ pub fn handle_graph_changes_system(
                                     }
                                 }
                                 "Friendship" => {
-                                    bevy::log::debug!("LinkModified-Cleanup(Friendship): Removing OLD Friendship between {:?} and {:?}", old_source_entity, old_target_entity);
                                     commands.entity(old_source_entity).remove::<FriendWith>();
                                     commands.entity(old_target_entity).remove::<FriendWith>();
 
@@ -518,12 +491,6 @@ pub fn handle_graph_changes_system(
                                         (new_target_entity, new_source_entity)
                                     };
 
-                                bevy::log::debug!(
-                        "Family link modified: Attempting New Parent={:?}, New Child={:?}",
-                        actual_parent_entity,
-                        actual_child_entity
-                    );
-
                                 // Validierung gegen Selbst-Parenting
                                 if actual_parent_entity == actual_child_entity {
                                     bevy::log::warn!("LinkModified(Family): Attempted to parent entity {:?} to itself. Action skipped.", actual_child_entity);
@@ -536,7 +503,7 @@ pub fn handle_graph_changes_system(
                                         if existing_parent.get() != actual_parent_entity {
                                             bevy::log::warn!("LinkModified(Family): Child entity {:?} already had parent {:?}. Overwriting with new parent {:?}.", actual_child_entity, existing_parent.get(), actual_parent_entity);
                                         } else {
-                                            bevy::log::debug!("LinkModified(Family): Child entity {:?} already had parent {:?}, likely reconnecting same link.", actual_child_entity, existing_parent.get());
+                                            bevy::log::info!("LinkModified(Family): Child entity {:?} already had the same parent {:?}. No action needed.", actual_child_entity, actual_parent_entity);
                                         }
                                     }
 
@@ -557,29 +524,23 @@ pub fn handle_graph_changes_system(
                                 // TODO: Die alte Freundschaft sollte hier entfernt werden. Benötigt komplexere Event-Daten (alte Entity).
                                 bevy::log::warn!("Handling LinkModified for Friendship: Cannot determine and remove the OLD friendship based only on new pin IDs. Adding the new friendship only. Old 'FriendWith' components might remain.");
 
-                                bevy::log::debug!(
-                                    "Friendship link modified: Creating new connection between {:?} and {:?}",
-                                    new_source_entity,
-                                    new_target_entity
-                                );
-
                                 // Füge die neue Freundschaft hinzu.
                                 add_friendship(&mut commands, new_source_entity, new_target_entity);
                             } // Ende "Friendship"
 
                             _ => {
                                 bevy::log::warn!(
-                        "Unhandled relation type '{}' encountered in handle_graph_changes_system for LinkModified.",
-                        start_pin.spec.relation_type
-                    );
+                                    "Unhandled relation type '{}' encountered in handle_graph_changes_system for LinkModified.",
+                                    start_pin.spec.relation_type
+                                );
                             } // Ende _ (Default)
                         } // Ende match relation_type
                     } else {
                         // Fehlerfall: Entities für Nodes nicht gefunden
                         bevy::log::error!(
-                 "LinkModified: Failed to find entities! Source Node ID {}, Target Node ID {}. Graph data might be stale or entities despawned.",
-                 new_source_node_id, new_target_node_id
-             );
+                            "LinkModified: Failed to find entities! Source Node ID {}, Target Node ID {}. Graph data might be stale or entities despawned.",
+                            new_source_node_id, new_target_node_id
+                        );
                         // Hier KEIN continue
                     }
                 } else {
@@ -706,23 +667,15 @@ pub fn update_selected_node_details(
                 // ... Weitere Komponenten ...
 
                 graph_data.selected_node_details_display = Some(display_data);
-                bevy::log::debug!("Updated detail display data for {:?}", entity);
             }
         } else {
             // Entity nicht gefunden (oder nicht im Graphen) -> Details löschen
             if graph_data.selected_node_details_display.is_some() {
                 graph_data.selected_node_details_display = None;
-                bevy::log::debug!(
-                    "Cleared detail display data: Entity for selected node not found."
-                );
             }
         }
     } else {
         // Keine oder mehrere Nodes ausgewählt -> Details löschen
-        if graph_data.selected_node_details_display.is_some() {
-            graph_data.selected_node_details_display = None;
-            bevy::log::debug!("Cleared detail display data: Selection count != 1.");
-        }
     }
 }
 // --- Hilfsfunktionen (könnten auch in context.rs oder einem Helfermodul sein) ---

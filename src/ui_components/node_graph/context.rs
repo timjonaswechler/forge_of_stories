@@ -1859,11 +1859,6 @@ impl NodesContext {
                         start_pin_id: removed_link.spec.start_pin_index, // Pin IDs aus dem entfernten Link holen
                         end_pin_id: removed_link.spec.end_pin_index,
                     });
-                bevy::log::debug!(
-                    "Sent LinkRemoved event for link with pins {} -> {}",
-                    removed_link.spec.start_pin_index,
-                    removed_link.spec.end_pin_index
-                );
             } else {
                 bevy::log::warn!(
                     "Attempted to remove link UI ID {} but it was not found.",
