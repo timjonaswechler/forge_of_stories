@@ -31,78 +31,90 @@ pub fn provide_simulation_graph_data(
     graph_data.nodes.clear();
     graph_data.links.clear();
 
-    // --- NEU: Farbdefinitionen ---
-    let family_color = Color::srgb(1.0, 0.4, 0.0); // Korrigiert: srgb
+    let family_color = Color::srgb(1.0, 0.4, 0.0);
     let friendship_color = Color::srgb(0.8, 1.0, 1.0);
-    // Füge hier Farben für andere relation_types hinzu
 
-    // --- Konstantendefinitionen und Variablen (unverändert) ---
     let mut current_y = 50.0;
     const Y_SPACING: f32 = 250.0;
     const X_POS: f32 = 100.0;
 
     let get_header_color_for_species = |species_list: &[String]| -> Color {
-        // Nehme die erste Spezies für die Farbe (oder eine Logik für Mischwesen)
         match species_list.first().map(|s| s.as_str()) {
-            Some("Mensch") => Color::srgb(1.0, 1.0, 0.0), // Yellow
-            Some("Elf") => Color::srgb(0.565, 0.933, 0.565), // Light Green
-            Some("Ork") => Color::srgb(0.647, 0.165, 0.165), // Brown
-            _ => Color::srgb(0.5, 0.5, 0.5),              // Gray
+            Some("Mensch") => Color::srgb(1.0, 1.0, 0.0),
+            Some("Elf") => Color::srgb(0.565, 0.933, 0.565),
+            Some("Ork") => Color::srgb(0.647, 0.165, 0.165),
+            _ => Color::srgb(0.5, 0.5, 0.5),
         }
     };
 
-    // Temporäre Speicherung der Nodes und Mapping für schnellen Zugriff
     let mut temp_nodes: Vec<VisNode> = Vec::new();
     let mut entity_to_node_id_map: HashMap<Entity, usize> = HashMap::new();
 
-    // --- Angepasste Vorlage für logische Pins ---
-    // Identifier kann einfacher sein, relation_type ist wichtig
-    let standard_logical_pins = vec![
-        LogicalPinInfo {
-            identifier: "family_out".to_string(), // Einfacherer Identifier
-            display_name: "Parent".to_string(),   // Angezeigter Name
-            relation_type: "Family".to_string(),  // Wichtig für Logik/Farbe
-            direction: PinDirection::Output,
-        },
-        LogicalPinInfo {
-            identifier: "family_in".to_string(), // Einfacherer Identifier
-            display_name: "Child".to_string(),
-            relation_type: "Family".to_string(),
-            direction: PinDirection::Input,
-        },
-        LogicalPinInfo {
-            identifier: "friend_bi".to_string(),
-            display_name: "Friend".to_string(),
-            relation_type: "Friendship".to_string(),
-            direction: PinDirection::InOut,
-        },
-    ];
+    // --- VORLAGEN für Logische Pins (könnten auch Konstanten sein) ---
+    //     Diese werden jetzt *innerhalb* der Schleife referenziert/geklont.
+    let family_out_pin_template = LogicalPinInfo {
+        identifier: "family_out".to_string(),
+        display_name: "Parent".to_string(),
+        relation_type: "Family".to_string(),
+        direction: PinDirection::Output,
+    };
+    let family_in_pin_template = LogicalPinInfo {
+        identifier: "family_in".to_string(),
+        display_name: "Child".to_string(),
+        relation_type: "Family".to_string(),
+        direction: PinDirection::Input,
+    };
+    let friend_bi_pin_template = LogicalPinInfo {
+        identifier: "friend_bi".to_string(),
+        display_name: "Friend".to_string(),
+        relation_type: "Friendship".to_string(),
+        direction: PinDirection::InOut,
+    };
+    // --- ENDE VORLAGEN ---
 
-    // --- Schritt 1: VisNodes erstellen (unverändert, nutzt Vorlage) ---
+    // --- Schritt 1: VisNodes erstellen (mit dynamischer Pin-Zuweisung) ---
     for (entity, species) in node_entity_query.iter() {
         let node_id = entity.index() as usize;
         entity_to_node_id_map.insert(entity, node_id);
-        // --- NEU: Header-Farbe ermitteln ---
         let header_color = get_header_color_for_species(&species.species);
-        // ------------------------------------
+
+        // --- Erstelle die Pin-Liste für DIESEN Node ---
+        let mut current_logical_pins: Vec<LogicalPinInfo> = Vec::new();
+
+        // --- FÜGE PINS BASIEREND AUF REGELN HINZU (aktuell: immer alle) ---
+        // Regel 1: Alle können potentiell Eltern sein
+        current_logical_pins.push(family_out_pin_template.clone());
+
+        // Regel 2: Alle können potentiell Kinder haben
+        current_logical_pins.push(family_in_pin_template.clone());
+
+        // Regel 3: Alle können potentiell Freunde haben/werden
+        current_logical_pins.push(friend_bi_pin_template.clone());
+
+        // *** HIER wäre der Ort für bedingte Logik: ***
+        // if has_component_xyz(entity, &some_query) {
+        //     current_logical_pins.push(some_other_pin_template.clone());
+        // }
+        // *********************************************
+
+        // --- Erstelle den VisNode mit der generierten Pin-Liste ---
         let node = VisNode {
             id: node_id,
             entity: Some(entity),
             name: species.species.join(", "),
             position: Vec2::new(X_POS, current_y),
             color: header_color,
-            logical_pins: standard_logical_pins.clone(),
+            logical_pins: current_logical_pins, // <-- DYNAMISCH ZUGWIESEN
         };
         temp_nodes.push(node);
         current_y += Y_SPACING;
-    }
+    } // --- Ende der Node-Erstellungsschleife ---
 
     // --- Schritt 2: VisLinks für Parent/Child-Beziehungen erstellen ---
-    // (Dieser Block bleibt unverändert)
+    // (Dieser Block bleibt unverändert, er nutzt die Pin-Identifier)
     bevy::log::debug!("--- Running Parent Query ---");
     for (child_entity, parent_component) in parent_query.iter() {
         let parent_entity = parent_component.get();
-
         bevy::log::debug!(
             "Parent Query Found: Child={:?}, Parent={:?}",
             child_entity,
@@ -112,7 +124,7 @@ pub fn provide_simulation_graph_data(
             entity_to_node_id_map.get(&parent_entity),
             entity_to_node_id_map.get(&child_entity),
         ) {
-            // Verwende die *neuen* Identifier für Family
+            // Pin IDs werden weiterhin über die konstanten Identifier gefunden
             let start_pin_id = generate_pin_id(parent_node_id, "family_out");
             let end_pin_id = generate_pin_id(child_node_id, "family_in");
             let link_id = start_pin_id ^ end_pin_id;
@@ -121,7 +133,7 @@ pub fn provide_simulation_graph_data(
                 id: link_id,
                 start_pin_id,
                 end_pin_id,
-                color: family_color, // NEU: Verwende die definierte Familienfarbe
+                color: family_color,
             });
             bevy::log::debug!(" -> Creating VisLink for Parent relation");
         } else {
@@ -129,33 +141,35 @@ pub fn provide_simulation_graph_data(
         }
     }
     bevy::log::debug!("--- Finished Parent Query ---");
-    // --- Schritt 3: Optionalen Test-Link entfernen und dynamische Links hinzufügen ---
-    // (Der alte Block if temp_nodes.len() >= 2 {...} wird komplett entfernt/ersetzt)
 
-    // --- NEU: VisLinks für Freundschafts-Beziehungen erstellen ---
+    // --- Schritt 3: VisLinks für Freundschafts-Beziehungen erstellen ---
+    // (Dieser Block bleibt auch unverändert)
     for (entity1, friend_component) in friend_query.iter() {
         let entity2 = friend_component.0; // Die Entity, mit der entity1 befreundet ist
 
         // Verhindere doppelte Links (verarbeite nur eine Richtung der Beziehung)
         // Wir vergleichen die Indizes, um sicherzustellen, dass wir jedes Paar nur einmal hinzufügen.
         if entity1.index() < entity2.index() {
+            // <--- Prüfpunkt 1: Duplikat-Vermeidung
             // Prüfe, ob *beide* befreundeten Entities als Nodes im Graphen vorhanden sind
             if let (Some(&node1_id), Some(&node2_id)) = (
+                // <--- Prüfpunkt 2: Existenz beider Nodes
                 entity_to_node_id_map.get(&entity1),
                 entity_to_node_id_map.get(&entity2),
             ) {
                 // Generiere die spezifischen Pin-IDs für die Freundschaft
+                // <--- Prüfpunkt 3: Konsistente Pin-Identifier
                 let pin1_id = generate_pin_id(node1_id, "friend_bi");
                 let pin2_id = generate_pin_id(node2_id, "friend_bi");
 
                 // Eindeutige Link-ID generieren
-                let link_id = pin1_id ^ pin2_id;
+                let link_id = pin1_id ^ pin2_id; // <--- Prüfpunkt 4: Link-ID Generierung
 
                 // Erstelle den VisLink
                 graph_data.links.push(VisLink {
                     id: link_id,
-                    start_pin_id: pin1_id,
-                    end_pin_id: pin2_id,
+                    start_pin_id: pin1_id,   // <--- Zuweisung Pin 1
+                    end_pin_id: pin2_id,     // <--- Zuweisung Pin 2
                     color: friendship_color, // NEU: Verwende die definierte Freundschaftsfarbe
                 });
                 bevy::log::trace!(
