@@ -1,38 +1,27 @@
 // src/ui_components/node_graph/context.rs
 use bevy::color::Srgba; // Direkter Import für Srgba Konvertierung
-use bevy::log;
 use bevy::math::Vec2 as BevyVec2; // Für Umwandlung
 use bevy::prelude::Resource; // Bevy Typen
-use bevy_egui::egui::{self, Color32, CornerRadius, StrokeKind}; // Egui Typen, inkl. CornerRadius
+use bevy_egui::egui::{self, Color32, CornerRadius}; // Egui Typen, inkl. CornerRadius
 use bevy_egui::egui::{Frame, Layout, Rect, Stroke};
 use derivative::Derivative;
-use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
 
-// Use-Anweisungen für die UI-Module
-use super::ui_data::*;
-use super::ui_link::*;
-use super::ui_node::*;
-use super::ui_pin::*;
-use super::ui_style::{ColorStyle, Style, StyleFlags};
-
-pub use {
-    super::ui_node::NodeArgs,
-    super::ui_pin::{AttributeFlags, PinShape, PinStyleArgs, PinType},
+pub use super::{
+    drawing::*,
+    hover::resolve_hover_state,
+    identity::generate_pin_id,
+    interaction::*,
+    ui_data::*,
+    ui_link::*,
+    ui_node::NodeArgs,
+    ui_node::*,
+    ui_pin::*,
+    ui_pin::{AttributeFlags, PinShape, PinStyleArgs, PinType},
+    ui_style::{ColorStyle, Style, StyleFlags},
 };
 
-// *** NEUER TYP für die Validierungs-Closure ***
-/// Ein Typ für eine Funktion oder Closure, die prüft, ob zwei Pins miteinander verbunden werden dürfen.
-/// Erhält die Specs der beiden Pins und den aktuellen Zustand des NodesContext (nur lesend).
 pub type LinkValidationCallback = dyn Fn(&PinSpec, &PinSpec, &NodesContext) -> bool;
-
-pub fn generate_pin_id(node_id: usize, pin_identifier: &str) -> usize {
-    let mut hasher = DefaultHasher::new();
-    node_id.hash(&mut hasher);
-    pin_identifier.hash(&mut hasher);
-    hasher.finish() as usize
-}
 
 #[derive(Debug, Clone)]
 pub enum GraphChange {
@@ -57,58 +46,43 @@ pub enum GraphChange {
 
 #[derive(Derivative)]
 #[derivative(Debug, Default)]
-pub struct InteractionState {
-    mouse_pos: egui::Pos2,
-    mouse_delta: egui::Vec2,
-    left_mouse_clicked: bool,
-    left_mouse_released: bool,
-    alt_mouse_clicked: bool,
-    left_mouse_dragging: bool,
-    alt_mouse_dragging: bool,
-    mouse_in_canvas: bool,
-    link_detatch_with_modifier_click: bool,
-    delete_pressed: bool,
-}
-
-#[derive(Derivative)]
-#[derivative(Debug, Default)]
-pub struct PersistentState {
-    interaction_state: InteractionState,
-    selected_node_indices: Vec<usize>,
-    selected_link_indices: Vec<usize>,
-    node_depth_order: Vec<usize>,
-    panning: egui::Vec2,
+pub(crate) struct PersistentState {
+    pub(crate) interaction_state: InteractionState,
+    pub(crate) selected_node_indices: Vec<usize>,
+    pub(crate) selected_link_indices: Vec<usize>,
+    pub(crate) node_depth_order: Vec<usize>,
+    pub(crate) panning: egui::Vec2,
     #[derivative(Default(value = "ClickInteractionType::None"))]
-    click_interaction_type: ClickInteractionType,
-    click_interaction_state: ClickInteractionState,
-}
-
-#[derive(Derivative)]
-#[derivative(Debug, Default)] // Korrekte Syntax
-pub struct FrameState {
-    #[derivative(Default(value = "[[0.0; 2].into(); 2].into()"))]
-    canvas_rect_screen_space: egui::Rect,
-    node_indices_overlapping_with_mouse: Vec<usize>,
-    occluded_pin_indices: Vec<usize>,
-    hovered_node_index: Option<usize>,
-    interactive_node_index: Option<usize>,
-    hovered_link_idx: Option<usize>,
-    hovered_pin_index: Option<usize>,
-    hovered_pin_flags: usize,
-    deleted_link_idx: Option<usize>,
-    snap_link_idx: Option<usize>,
-    element_state_change: ElementStateChange,
-    active_pin: Option<usize>,
-    graph_changes: Vec<GraphChange>, // Enthält jetzt auch NewLinkRequested
-    pins_tmp: HashMap<usize, Pin>,
-    nodes_tmp: HashMap<usize, Node>,
-    just_selected_node: bool,
+    pub(crate) click_interaction_type: ClickInteractionType,
+    pub(crate) click_interaction_state: ClickInteractionState,
 }
 
 #[derive(Debug, Default)]
 pub struct NodesSettings {
     pub io: IO,
     pub style: Style,
+}
+
+#[derive(Derivative)]
+#[derivative(Debug, Default)] // Korrekte Syntax
+pub struct FrameState {
+    #[derivative(Default(value = "[[0.0; 2].into(); 2].into()"))]
+    pub(crate) canvas_rect_screen_space: egui::Rect,
+    pub(crate) node_indices_overlapping_with_mouse: Vec<usize>,
+    pub(crate) occluded_pin_indices: Vec<usize>,
+    pub(crate) hovered_node_index: Option<usize>,
+    pub(crate) interactive_node_index: Option<usize>,
+    pub(crate) hovered_link_idx: Option<usize>,
+    pub(crate) hovered_pin_index: Option<usize>,
+    pub(crate) hovered_pin_flags: usize,
+    pub(crate) deleted_link_idx: Option<usize>,
+    pub(crate) snap_link_idx: Option<usize>,
+    pub(crate) element_state_change: ElementStateChange,
+    pub(crate) active_pin: Option<usize>,
+    pub(crate) graph_changes: Vec<GraphChange>, // Enthält jetzt auch NewLinkRequested
+    pub(crate) pins_tmp: HashMap<usize, Pin>,
+    pub(crate) nodes_tmp: HashMap<usize, Node>,
+    pub(crate) just_selected_node: bool,
 }
 
 impl FrameState {
@@ -136,54 +110,15 @@ impl FrameState {
     }
 }
 
-impl InteractionState {
-    pub fn update(
-        &self,
-        io: &egui::InputState,
-        opt_hover_pos: Option<egui::Pos2>,
-        emulate_three_button_mouse: Modifier,
-        link_detatch_with_modifier_click: Modifier,
-        alt_mouse_button: Option<egui::PointerButton>,
-    ) -> Self {
-        let mut new_state = Self::default();
-        if let Some(mouse_pos) = opt_hover_pos {
-            new_state.mouse_in_canvas = true;
-            new_state.mouse_pos = mouse_pos;
-        } else {
-            new_state.mouse_in_canvas = false;
-            new_state.mouse_pos = self.mouse_pos;
-        }
-        new_state.mouse_delta = new_state.mouse_pos - self.mouse_pos;
-        let primary_down = io.pointer.primary_down();
-        new_state.left_mouse_released =
-            (self.left_mouse_clicked || self.left_mouse_dragging) && !primary_down;
-        new_state.left_mouse_dragging =
-            (self.left_mouse_clicked || self.left_mouse_dragging) && primary_down;
-        new_state.left_mouse_clicked =
-            primary_down && !new_state.left_mouse_dragging && !self.left_mouse_clicked;
-        let alt_btn_down = alt_mouse_button.is_some_and(|btn| io.pointer.button_down(btn));
-        let emulate_active = emulate_three_button_mouse.is_active(&io.modifiers) && primary_down;
-        let alt_down = alt_btn_down || emulate_active;
-        new_state.alt_mouse_dragging =
-            (self.alt_mouse_clicked || self.alt_mouse_dragging) && alt_down;
-        new_state.alt_mouse_clicked =
-            alt_down && !new_state.alt_mouse_dragging && !self.alt_mouse_clicked;
-        new_state.link_detatch_with_modifier_click =
-            link_detatch_with_modifier_click.is_active(&io.modifiers);
-        new_state.delete_pressed = io.key_pressed(egui::Key::Delete);
-        new_state
-    }
-}
-
 #[derive(Resource, Derivative)]
 #[derivative(Debug, Default)]
 pub struct NodesContext {
-    state: PersistentState,
-    frame_state: FrameState,
-    settings: NodesSettings,
-    nodes: HashMap<usize, Node>, // Behält erzeugte Nodes (Persistent State)
-    pub(crate) pins: HashMap<usize, Pin>, // Behält erzeugte Pins (Persistent State)
-    links: HashMap<usize, Link>, // Behält erzeugte Links (Persistent State)
+    pub(crate) state: PersistentState,
+    pub(crate) frame_state: FrameState,
+    pub(crate) settings: NodesSettings,
+    pub(crate) nodes: HashMap<usize, Node>,
+    pub(crate) pins: HashMap<usize, Pin>,
+    pub(crate) links: HashMap<usize, Link>,
 }
 
 impl NodesContext {
@@ -327,7 +262,7 @@ impl NodesContext {
         );
         if (self.settings.style.flags & StyleFlags::GridLines as usize) != 0 {
             // Zeichne das Grid direkt im `ui`, es wird durch `painter_at` oder globales ClipRect begrenzt.
-            self.draw_grid(canvas_rect.size(), ui);
+            draw_grid(self, canvas_rect.size(), ui);
         }
 
         // 5. Populate Internal State (Nodes/Pins/Links)
@@ -387,16 +322,16 @@ impl NodesContext {
                 self.settings.io.alt_mouse_button,
             );
         });
-        self.resolve_hover_state();
-        self.process_clicks();
-        self.click_interaction_update(ui, link_validator); // Wichtig: ui übergeben
+        resolve_hover_state(self);
+        process_clicks(self);
+        click_interaction_update(self, ui, link_validator); // Wichtig: ui übergeben
         if self.state.interaction_state.delete_pressed {
-            self.handle_delete();
+            handle_delete(self);
         }
 
         // === MODIFIED: Zeichnen jetzt am Ende und im Haupt-UI ===
         // `final_draw` fügt Shapes zum Painter des übergebenen UI hinzu
-        self.final_draw(ui); // Wichtig: ui übergeben
+        final_draw(self, ui); // Wichtig: ui übergeben
         self.collect_events();
 
         // 7. Draw Canvas Outline (Verwende den `painter`, der auf `canvas_rect` geclippt ist)
@@ -629,7 +564,7 @@ impl NodesContext {
     }
     // Gibt die *aktuelle* Screen-Space-Position eines Pins zurück
     // Wichtig, da sich die Node-Position durch Dragging ändern kann
-    fn get_screen_space_pin_coordinates(&self, pin: &Pin) -> egui::Pos2 {
+    pub fn get_screen_space_pin_coordinates(&self, pin: &Pin) -> egui::Pos2 {
         let Some(parent_node) = self.nodes.get(&pin.state.parent_node_idx) else {
             return pin.state.pos; // Fallback auf gespeicherte Position, falls Node weg ist
         };
@@ -660,1273 +595,22 @@ impl NodesContext {
         )
     }
     // --- Drawing Methods ---
-    fn draw_grid(&self, _canvas_size: egui::Vec2, ui: &mut egui::Ui) {
-        /* Vollständige Implementierung wie oben */
-        let painter = ui.painter();
-        let style = &self.settings.style;
-        let spacing = style.grid_spacing;
-        let line_stroke = egui::Stroke::new(1.0, style.colors[ColorStyle::GridLine as usize]);
-        let canvas_origin_screen = self.editor_space_to_screen_space(egui::Pos2::ZERO); // Wo der (0,0) Punkt des Grids auf dem Bildschirm liegt
-        let visible_rect = ui.clip_rect(); // Sichtbarer Bereich der UI
-
-        // Vertikale Linien
-        let x_min_grid_for_screen =
-            visible_rect.min.x - canvas_origin_screen.x - self.state.panning.x; // Korrektur: Verwende grid space für Berechnung
-        let x_start_index = (x_min_grid_for_screen / spacing).floor() as i32;
-        // Erste *sichtbare* vertikale Linie im Grid Space bestimmen
-        let mut grid_x = x_start_index as f32 * spacing; // Grid Koordinate
-        loop {
-            let screen_x = self.grid_space_to_screen_space(egui::pos2(grid_x, 0.0)).x;
-            if screen_x < visible_rect.min.x {
-                grid_x += spacing;
-                continue;
-            } // Überspringe, wenn links ausserhalb
-            if screen_x > visible_rect.max.x {
-                break;
-            } // Stoppe, wenn rechts ausserhalb
-
-            painter.line_segment(
-                [
-                    egui::pos2(screen_x, visible_rect.min.y),
-                    egui::pos2(screen_x, visible_rect.max.y),
-                ],
-                line_stroke,
-            );
-            grid_x += spacing;
-        }
-
-        // Horizontale Linien
-        let y_min_grid_for_screen =
-            visible_rect.min.y - canvas_origin_screen.y - self.state.panning.y; // Korrektur: Verwende grid space
-        let y_start_index = (y_min_grid_for_screen / spacing).floor() as i32;
-        // Erste *sichtbare* horizontale Linie im Grid Space bestimmen
-        let mut grid_y = y_start_index as f32 * spacing; // Grid Koordinate
-        loop {
-            let screen_y = self.grid_space_to_screen_space(egui::pos2(0.0, grid_y)).y;
-            if screen_y < visible_rect.min.y {
-                grid_y += spacing;
-                continue;
-            } // Überspringe, wenn oben ausserhalb
-            if screen_y > visible_rect.max.y {
-                break;
-            } // Stoppe, wenn unten ausserhalb
-
-            painter.line_segment(
-                [
-                    egui::pos2(visible_rect.min.x, screen_y),
-                    egui::pos2(visible_rect.max.x, screen_y),
-                ],
-                line_stroke,
-            );
-            grid_y += spacing;
-        }
-    }
-
-    fn draw_link(&mut self, link_id: usize, ui: &mut egui::Ui) {
-        let link_hovered = self.frame_state.hovered_link_idx == Some(link_id);
-        let link_directly_selected = self.state.selected_link_indices.contains(&link_id);
-
-        if let Some(link) = self.links.get(&link_id) {
-            if let (Some(start_pin), Some(end_pin)) = (
-                self.pins.get(&link.spec.start_pin_index),
-                self.pins.get(&link.spec.end_pin_index),
-            ) {
-                // === NEUE PRÜFUNG: Ist einer der verbundenen Nodes ausgewählt? ===
-                let start_node_id = start_pin.state.parent_node_idx;
-                let end_node_id = end_pin.state.parent_node_idx;
-                let node_is_selected = self.state.selected_node_indices.contains(&start_node_id)
-                    || self.state.selected_node_indices.contains(&end_node_id);
-                // ================================================================
-
-                let link_data = LinkBezierData::get_link_renderable(
-                    self.get_screen_space_pin_coordinates(start_pin),
-                    self.get_screen_space_pin_coordinates(end_pin),
-                    start_pin.spec.kind,
-                    self.settings.style.link_line_segments_per_length,
-                );
-
-                // === ANGEPASSTE FARBWAHL ===
-                let color = if node_is_selected || link_directly_selected {
-                    // Link hervorheben, wenn Node oder Link selbst ausgewählt ist
-                    link.state.style.selected
-                } else if link_hovered {
-                    link.state.style.hovered
-                } else {
-                    link.state.style.base
-                };
-                // ===========================
-
-                // --- Dicke optional anpassen ---
-                // Man könnte auch die Dicke ändern, wenn ein Node selektiert ist
-                let thickness = if node_is_selected || link_directly_selected {
-                    link.state.style.thickness * 1.2 // Mache den Link etwas dicker
-                } else {
-                    link.state.style.thickness // Normale Dicke
-                };
-                let outline_thickness_factor = 1.2; // Faktor für die Outline-Breite
-                let outline_color = Color32::GREEN;
-
-                // --------------------------------
-
-                // 1. Zeichne den breiteren Outline-Pfad zuerst
-                ui.painter().add(link_data.draw(
-                    // Erzeuge den Stroke für die Outline
-                    egui::Stroke::new(thickness * outline_thickness_factor, outline_color),
-                ));
-
-                // 2. Zeichne den schmaleren, farbigen Pfad darüber
-                ui.painter().add(link_data.draw(
-                    // Erzeuge den Stroke für den eigentlichen Link
-                    egui::Stroke::new(thickness, color),
-                ));
-            } else {
-                // Link verweist auf ungültige Pins, sollte durch `retain` vorher entfernt worden sein
-                bevy::log::warn!(
-                    "Versuche Link {} zu zeichnen, aber Pins nicht gefunden.",
-                    link_id
-                );
-            }
-        } else {
-            // Sollte nicht vorkommen, wenn link_id aus self.links kommt
-        }
-    }
-
-    fn draw_node(&mut self, node_id: usize, ui: &mut egui::Ui) {
-        if let Some(node) = self.nodes.get(&node_id) {
-            // let node_hovered = self.frame_state.hovered_node_index == Some(node_id);
-            let is_selected = self.state.selected_node_indices.contains(&node_id);
-
-            // Farben auswählen
-            let bg_col = if is_selected {
-                node.state.color_style.background_selected
-            } else {
-                node.state.color_style.background
-            };
-
-            let title_col = if is_selected {
-                node.state.color_style.titlebar_selected
-            } else {
-                node.state.color_style.titlebar
-            };
-
-            let outline_col = if is_selected {
-                // SEHR HELLE Farbe für ausgewählten Node
-                Color32::WHITE // Oder z.B. eine sehr helle Variante der Akzentfarbe
-            } else if node.spec.active {
-                // Falls wir `active` später nutzen
-                self.settings.style.colors[ColorStyle::NodeOutlineActive as usize]
-            } else {
-                // Standard-Outline-Farbe (aus dem Blender Theme)
-                self.settings.style.colors[ColorStyle::NodeOutline as usize]
-            };
-
-            let painter = ui.painter(); // Painter vom übergebenen UI
-            let screen_rect = egui::Rect::from_min_max(
-                self.grid_space_to_screen_space(node.state.rect.min),
-                self.grid_space_to_screen_space(node.state.rect.max),
-            );
-            let screen_title_rect = node.state.get_node_title_rect_screen(self);
-            let rounding = CornerRadius::from(node.state.layout_style.corner_rounding); // Korrigiert
-
-            // Hintergrund
-            if let Some(idx) = node.state.background_shape {
-                painter.set(
-                    idx,
-                    egui::Shape::rect_filled(screen_rect, rounding.clone(), bg_col),
-                ); // Clone rounding
-            }
-            // Titelbalken
-            if node.state.title_bar_content_rect.height() > 0.0 {
-                if let Some(idx) = node.state.titlebar_shape {
-                    let title_rect_shape = screen_rect.intersect(screen_title_rect);
-                    let title_shape = egui::Shape::Rect(egui::epaint::RectShape {
-                        rect: title_rect_shape,
-                        corner_radius: egui::epaint::CornerRadius {
-                            nw: rounding.nw,
-                            ne: rounding.ne,
-                            sw: 0,
-                            se: 0,
-                        }, // Korrigiert
-                        fill: title_col,
-                        stroke: egui::Stroke::NONE,
-                        stroke_kind: StrokeKind::Outside,
-                        round_to_pixels: Some(false),
-                        blur_width: 0.0,
-                        brush: None,
-                    });
-                    painter.set(idx, title_shape);
-                }
-            }
-            // Outline
-            if (self.settings.style.flags & StyleFlags::NodeOutline as usize) != 0 {
-                if let Some(idx) = node.state.outline_shape {
-                    painter.set(
-                        idx,
-                        egui::Shape::Rect(egui::epaint::RectShape {
-                            rect: screen_rect
-                                .expand(node.state.layout_style.border_thickness / 2.0),
-                            corner_radius: rounding.clone(), // Clone rounding
-                            fill: Color32::TRANSPARENT,
-                            stroke: egui::Stroke::new(
-                                node.state.layout_style.border_thickness,
-                                outline_col,
-                            ),
-                            stroke_kind: StrokeKind::Outside,
-                            round_to_pixels: Some(false),
-                            blur_width: 0.0,
-                            brush: None,
-                        }),
-                    );
-                }
-            }
-
-            let pin_ids_to_draw = node.state.pin_indices.clone();
-            // drop(node); // Release immutable borrow
-
-            for pin_id in pin_ids_to_draw {
-                self.draw_pin(pin_id, ui);
-            } // Übergebe gleiches UI
-        } else {
-            log::warn!(
-                "Versuche Node {} zu zeichnen, aber nicht gefunden.",
-                node_id
-            );
-        }
-    }
-    fn draw_pin(&mut self, pin_idx: usize, ui: &mut egui::Ui) {
-        let pin_hovered = self.frame_state.hovered_pin_index == Some(pin_idx);
-        let pin_data: Option<(egui::Pos2, PinShape, Color32, egui::layers::ShapeIdx, usize)> = // Füge Pin Flags hinzu
-            // Immutable borrow um Pin Daten zu lesen
-            if let Some(pin) = self.pins.get(&pin_idx) {
-                 let screen_pos = self.get_screen_space_pin_coordinates(pin); // Position berechnen
-
-                 let draw_color = pin.state.color_style.background;
-                 let draw_shape = pin.state.color_style.shape;
-                 let shape_idx = pin.state.shape_gui.expect("Pin Shape Index nicht initialisiert"); // Sollte in add_pin gesetzt sein
-                let flags = pin.spec.flags;
-
-                 Some((screen_pos, draw_shape, draw_color, shape_idx, flags))
-             } else {
-                 None
-            };
-
-        // Wenn Pin Daten vorhanden sind -> Zeichnen und State aktualisieren (mutable borrow)
-        if let Some((screen_pos, draw_shape, draw_color, shape_idx, flags)) = pin_data {
-            // Zeichnen mit painter.set()
-            self.settings
-                .style
-                .draw_pin_shape(screen_pos, draw_shape, draw_color, shape_idx, ui);
-
-            // === Aktualisiere Pin State ===
-            if let Some(pin_mut) = self.pins.get_mut(&pin_idx) {
-                // Update der aktuellen Screen Position des Pins
-                pin_mut.state.pos = screen_pos;
-
-                // Wenn dieser Pin gerade gehovert wird, speichere seine Flags für Interaction Checks
-                if pin_hovered {
-                    self.frame_state.hovered_pin_flags = flags;
-                }
-            }
-        }
-    }
-
-    fn draw_temporary_elements(&self, ui: &mut egui::Ui) {
-        // === Zeichnen für LinkCreation ===
-        if self.state.click_interaction_type == ClickInteractionType::LinkCreation {
-            // Hole Start-Pin (sollte existieren, da die Interaktion läuft)
-            if let Some(start_pin_id) = self
-                .state
-                .click_interaction_state
-                .link_creation
-                .start_pin_idx
-            {
-                if let Some(start_pin) = self.pins.get(&start_pin_id) {
-                    let start_pos = self.get_screen_space_pin_coordinates(start_pin); // Berechne aktuelle Startposition
-
-                    // Bestimme Endposition: Entweder Mausposition oder Position eines gesnappten Pins
-                    let end_pos = self
-                        .state
-                        .click_interaction_state
-                        .link_creation
-                        .end_pin_index
-                        .and_then(|id| self.pins.get(&id))
-                        .map_or(self.state.interaction_state.mouse_pos, |p| {
-                            self.get_screen_space_pin_coordinates(p)
-                        }); // Berechne aktuelle Endposition
-
-                    // Erstelle die Bezier-Daten
-                    let link_data = LinkBezierData::get_link_renderable(
-                        start_pos,
-                        end_pos,
-                        start_pin.spec.kind,
-                        self.settings.style.link_line_segments_per_length,
-                    );
-
-                    // Zeichne die temporäre Linie
-                    let temp_link_color = if self
-                        .state
-                        .click_interaction_state
-                        .link_creation
-                        .end_pin_index
-                        .is_some()
-                    {
-                        // Farbe, wenn über gültigem Pin gesnapped
-                        self.settings.style.colors[ColorStyle::LinkSelected as usize]
-                    } else {
-                        // Standardfarbe während des Ziehens
-                        self.settings.style.colors[ColorStyle::Link as usize]
-                    };
-
-                    ui.painter()
-                        .add(link_data.draw((self.settings.style.link_thickness, temp_link_color)));
-                }
-            }
-        }
-
-        // === Zeichnen für BoxSelection ===
-        if self.state.click_interaction_type == ClickInteractionType::BoxSelection {
-            let selection_rect = self.state.click_interaction_state.box_selection;
-            // Stelle sicher, dass das Rechteck normalisiert ist (min < max)
-            let normalized_rect = egui::Rect::from_min_max(
-                selection_rect.min.min(selection_rect.max),
-                selection_rect.min.max(selection_rect.max),
-            );
-
-            // Zeichne gefülltes Rechteck
-            ui.painter().rect_filled(
-                normalized_rect,
-                CornerRadius::ZERO,
-                self.settings.style.colors[ColorStyle::BoxSelector as usize],
-            );
-            // Zeichne Umriss
-            ui.painter().rect_stroke(
-                normalized_rect,
-                CornerRadius::ZERO,
-                egui::Stroke::new(
-                    1.0,
-                    self.settings.style.colors[ColorStyle::BoxSelectorOutline as usize],
-                ),
-                StrokeKind::Inside,
-            );
-        }
-    }
 
     // --- Coordinate Systems ---
-    fn screen_space_to_grid_space(&self, v: egui::Pos2) -> egui::Pos2 {
+    pub fn screen_space_to_grid_space(&self, v: egui::Pos2) -> egui::Pos2 {
         // Von Screen-Koordinaten (relativ zum Fenster/Canvas) zu Grid-Koordinaten (virtueller Raum mit Panning)
         v - self.frame_state.canvas_origin_screen_space() - self.state.panning
     }
-    fn grid_space_to_screen_space(&self, v: egui::Pos2) -> egui::Pos2 {
+    pub fn grid_space_to_screen_space(&self, v: egui::Pos2) -> egui::Pos2 {
         // Von Grid-Koordinaten (virtueller Raum mit Panning) zu Screen-Koordinaten (relativ zum Fenster/Canvas)
         v + self.state.panning + self.frame_state.canvas_origin_screen_space()
     }
-    fn editor_space_to_screen_space(&self, v: egui::Pos2) -> egui::Pos2 {
+    pub fn editor_space_to_screen_space(&self, v: egui::Pos2) -> egui::Pos2 {
         // Von Editor-Koordinaten (z.B. 0,0 ist oben links im Canvas, ignoriert Panning) zu Screen-Koordinaten
         v + self.frame_state.canvas_origin_screen_space()
     }
 
     // --- Resolves (Mit eingefügtem Code) ---
-    fn resolve_hover_state(&mut self) {
-        if !self.state.interaction_state.mouse_in_canvas {
-            self.frame_state.hovered_pin_index = None;
-            self.frame_state.hovered_node_index = None;
-            self.frame_state.hovered_link_idx = None;
-            return;
-        }
-
-        // === Wiederherstellen: Pin Hover wieder aktivieren! ===
-        self.resolve_occluded_pins();
-        self.resolve_hovered_pin(); // hovered_pin_index wird hier wieder korrekt gesetzt!
-
-        // Node Hover deaktivieren wir aber weiterhin
-        if self.frame_state.hovered_pin_index.is_none() {
-            self.resolve_hovered_node(); // Diese Zeile lassen
-                                         // Node Hover State wird hier potentiell gesetzt
-        } else {
-            self.frame_state.hovered_node_index = None; // Oder hier auf None gesetzt, wenn Pin hovered
-        }
-        // *** ÄNDERUNG: Setze Node Hover IMMER auf None, NACHDEM er für die Pin-Prüfung benutzt wurde ***
-        self.frame_state.hovered_node_index = None; // Node Hover hier deaktivieren
-
-        // Link Hover (bleibt wie es war)
-        if self.frame_state.hovered_pin_index.is_none()
-            && self.frame_state.hovered_node_index.is_none()
-        {
-            // Node Hover ist jetzt immer None, Pin Hover aber potentiell Some!
-            // Korrektur: Link nur hovern, wenn auch Pin nicht gehovert wird.
-            self.resolve_hovered_link();
-        } else {
-            // Wenn Pin ODER (theoretisch) Node hovered -> kein Link Hover
-            self.frame_state.hovered_link_idx = None;
-        }
-    }
-
-    fn resolve_occluded_pins(&mut self) {
-        self.frame_state.occluded_pin_indices.clear();
-        let depth_stack = &self.state.node_depth_order;
-        if depth_stack.len() < 2 {
-            return;
-        } // Nur nötig, wenn mind. 2 Nodes
-
-        // Iteriere von unten nach oben (ausser dem obersten Node)
-        for i in 0..(depth_stack.len() - 1) {
-            if let Some(node_below) = self.nodes.get(&depth_stack[i]) {
-                // Gehe alle Nodes *über* dem aktuellen Node durch
-                for j in (i + 1)..depth_stack.len() {
-                    if let Some(node_above) = self.nodes.get(&depth_stack[j]) {
-                        // Node Rect ist Grid Space -> Konvertieren zu Screen Space für den Test
-                        let screen_rect_above = egui::Rect::from_min_max(
-                            self.grid_space_to_screen_space(node_above.state.rect.min),
-                            self.grid_space_to_screen_space(node_above.state.rect.max),
-                        );
-
-                        // Prüfe jeden Pin des unteren Nodes
-                        for pin_id in &node_below.state.pin_indices {
-                            if let Some(pin) = self.pins.get(pin_id) {
-                                // Pin Position (Screen Space) wird im draw_pin gesetzt/aktualisiert
-                                let pin_pos_screen = self.get_screen_space_pin_coordinates(pin);
-                                if screen_rect_above.contains(pin_pos_screen) {
-                                    // Wenn der Pin vom oberen Node verdeckt wird, markieren
-                                    self.frame_state.occluded_pin_indices.push(*pin_id);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        // Dedupliziere die Liste (optional, falls ein Pin von mehreren Nodes verdeckt werden könnte)
-        self.frame_state.occluded_pin_indices.sort_unstable();
-        self.frame_state.occluded_pin_indices.dedup();
-    }
-
-    fn resolve_hovered_pin(&mut self) {
-        self.frame_state.hovered_pin_index = None; // Start with no hovered pin
-        let mut smallest_dist_sq = self.settings.style.pin_hover_radius.powi(2);
-        let mouse_pos = self.state.interaction_state.mouse_pos;
-
-        // Gehe alle aktuell im Frame existierenden Pins durch
-        for (id, pin) in self.pins.iter() {
-            // Überspringe, wenn der Pin von einem anderen Node verdeckt ist
-            if self.frame_state.occluded_pin_indices.contains(id) {
-                continue;
-            }
-
-            // pin.state.pos sollte die aktuelle Screen Position sein (wird in draw_pin gesetzt)
-            let pin_pos_screen = self.get_screen_space_pin_coordinates(pin);
-            let dist_sq = pin_pos_screen.distance_sq(mouse_pos);
-
-            // Prüfe, ob dieser Pin näher ist als der bisher nächste gefundene
-            if dist_sq < smallest_dist_sq {
-                smallest_dist_sq = dist_sq;
-                self.frame_state.hovered_pin_index = Some(*id); // Merke diesen Pin als gehovered
-            }
-        }
-    }
-
-    fn resolve_hovered_node(&mut self) {
-        self.frame_state.hovered_node_index = None;
-        // === KORREKTUR unused_mut / unused variable ===
-        // let mut _max_depth = -1_isize; // Nicht mehr benötigt mit der neuen Logik
-
-        for node_id in self.state.node_depth_order.iter().rev() {
-            if let Some(node) = self.nodes.get(node_id) {
-                let screen_rect = egui::Rect::from_min_max(
-                    self.grid_space_to_screen_space(node.state.rect.min),
-                    self.grid_space_to_screen_space(node.state.rect.max),
-                );
-                if screen_rect.contains(self.state.interaction_state.mouse_pos) {
-                    self.frame_state.hovered_node_index = Some(*node_id);
-                    return;
-                }
-            }
-        }
-    }
-
-    fn resolve_hovered_link(&mut self) {
-        self.frame_state.hovered_link_idx = None; // Reset
-        let mut smallest_dist_sq = self.settings.style.link_hover_distance.powi(2);
-        let mouse_pos = self.state.interaction_state.mouse_pos;
-
-        for (id, link) in self.links.iter() {
-            // Hole Start- und End-Pins (existieren sicher, da vorher geprüft)
-            if let (Some(start_pin), Some(end_pin)) = (
-                self.pins.get(&link.spec.start_pin_index),
-                self.pins.get(&link.spec.end_pin_index),
-            ) {
-                // Ignoriere Link-Hover, wenn Maus über einem der beteiligten Pins ist
-                // Dies wird bereits durch die Hover-Priorisierung (Pins > Links) abgedeckt.
-
-                // Berechne Bezier basierend auf aktuellen Pin-Positionen
-                let start_pos_screen = self.get_screen_space_pin_coordinates(start_pin);
-                let end_pos_screen = self.get_screen_space_pin_coordinates(end_pin);
-                let link_data = LinkBezierData::get_link_renderable(
-                    start_pos_screen,
-                    end_pos_screen,
-                    start_pin.spec.kind,
-                    self.settings.style.link_line_segments_per_length,
-                );
-
-                // Grobe Prüfung: Bounding Box
-                let containing_rect = link_data.bezier.get_containing_rect_for_bezier_curve(
-                    self.settings.style.link_hover_distance, // Abstand zum Expandieren der Box
-                );
-                if containing_rect.contains(mouse_pos) {
-                    // Feine Prüfung: Abstand zur Kurve
-                    let dist_sq = link_data.get_distance_to_cubic_bezier_sq(&mouse_pos); // Nutze quadratischen Abstand
-                    if dist_sq < smallest_dist_sq {
-                        smallest_dist_sq = dist_sq;
-                        self.frame_state.hovered_link_idx = Some(*id);
-                    }
-                }
-            }
-        }
-    }
-
-    // --- Begin Interaction Methods ---
-    fn begin_canvas_interaction(&mut self, start_panning: bool) {
-        if self.state.click_interaction_type == ClickInteractionType::None {
-            if start_panning {
-                self.state.click_interaction_type = ClickInteractionType::Panning;
-            } else {
-                // Starte Box Selection
-                self.state.click_interaction_type = ClickInteractionType::BoxSelection;
-                self.state.selected_node_indices.clear(); // Auswahl löschen beim Starten
-                self.state.selected_link_indices.clear();
-                self.state.click_interaction_state.box_selection = egui::Rect::from_min_max(
-                    self.state.interaction_state.mouse_pos, // Start an der Mausposition
-                    self.state.interaction_state.mouse_pos,
-                );
-            }
-        }
-    }
-
-    fn begin_link_interaction(&mut self, link_id: usize) {
-        // Prüfen, ob ein Pin gehovert wird UND Detach-Flag gesetzt ist
-        let pin_is_hovered_and_detachable = self
-            .frame_state
-            .hovered_pin_index
-            .map(|pin_id| {
-                // Prüft ob der Pin zum Link gehört und detachbar ist
-                (self.frame_state.hovered_pin_flags
-                    & AttributeFlags::EnableLinkDetachWithDragClick as usize
-                    != 0)
-                    && self.links.get(&link_id).map_or(false, |l| {
-                        l.spec.start_pin_index == pin_id || l.spec.end_pin_index == pin_id
-                    })
-            })
-            .unwrap_or(false);
-
-        // Prüfen, ob Detach-Modifier aktiv ist
-        let detach_with_modifier = self
-            .state
-            .interaction_state
-            .link_detatch_with_modifier_click;
-
-        // Fall 1: Detach durch Klick auf Pin mit Flag
-        if pin_is_hovered_and_detachable {
-            if let Some(pin_id) = self.frame_state.hovered_pin_index {
-                self.begin_link_detach(link_id, pin_id);
-                return;
-            }
-        }
-
-        // Fall 2: Detach durch Klick + Modifier auf Link
-        if detach_with_modifier && !pin_is_hovered_and_detachable {
-            // Verhindert Detach, wenn schon durch Pin getriggert
-            if let Some(link) = self.links.get(&link_id) {
-                // Finde den näheren Pin zur Mausposition für den Detach-Start
-                if let (Some(start_pin), Some(end_pin)) = (
-                    self.pins.get(&link.spec.start_pin_index),
-                    self.pins.get(&link.spec.end_pin_index),
-                ) {
-                    let pos_start = self.get_screen_space_pin_coordinates(start_pin);
-                    let pos_end = self.get_screen_space_pin_coordinates(end_pin);
-                    let dist_start_sq =
-                        pos_start.distance_sq(self.state.interaction_state.mouse_pos);
-                    let dist_end_sq = pos_end.distance_sq(self.state.interaction_state.mouse_pos);
-
-                    let closest_pin_idx = if dist_start_sq < dist_end_sq {
-                        link.spec.start_pin_index
-                    } else {
-                        link.spec.end_pin_index
-                    };
-                    self.begin_link_detach(link_id, closest_pin_idx);
-                    return;
-                }
-            }
-        }
-
-        // Fall 3: Standard Link Selection
-        self.begin_link_selection(link_id);
-    }
-
-    fn begin_link_creation(&mut self, pin_id: usize) {
-        // Nur starten, wenn noch keine Interaktion läuft und der Pin existiert
-        if self.state.click_interaction_type == ClickInteractionType::None {
-            if let Some(pin) = self.pins.get(&pin_id) {
-                // Prüfen, ob Link-Erstellung von diesem Pin-Typ erlaubt ist (typischerweise Output)
-                // Oder ob spezielle Flags gesetzt sind. Hier vereinfacht: Outputs können starten.
-                if pin.spec.kind == PinType::Output
-                    || (pin.spec.flags & AttributeFlags::EnableLinkCreationOnSnap as usize != 0)
-                {
-                    // Beispiel für Flag-Nutzung
-                    // Initialisiere den LinkCreation State korrekt
-                    self.state.click_interaction_state.link_creation =
-                        ClickInteractionStateLinkCreation {
-                            start_pin_idx: Some(pin_id),
-                            end_pin_index: None,     // Kein End-Pin beim Start
-                            modifying_link_id: None, // Es wird kein Link modifiziert, also None
-                            link_creation_type: LinkCreationType::Standard,
-                        };
-                    // Setze Interaction Type erst, wenn State korrekt ist
-                    self.state.click_interaction_type = ClickInteractionType::LinkCreation;
-                    self.frame_state.element_state_change.link_started = true;
-                } else {
-                    bevy::log::trace!(
-                        "Link creation not allowed from pin {:?} (Type: {:?})",
-                        pin_id,
-                        pin.spec.kind
-                    );
-                }
-            }
-        }
-    }
-
-    fn begin_link_selection(&mut self, link_id: usize) {
-        if self.state.click_interaction_type == ClickInteractionType::None
-            || (self.state.click_interaction_type == ClickInteractionType::Link
-                && !self.state.selected_link_indices.contains(&link_id))
-        {
-            self.state.click_interaction_type = ClickInteractionType::Link;
-            self.state.selected_node_indices.clear(); // Nur Links selektieren
-            self.state.selected_link_indices.clear();
-            self.state.selected_link_indices.push(link_id);
-        } else if self.state.click_interaction_type == ClickInteractionType::Link {
-            // Optional: Bei Klick auf bereits selektierten Link -> Deselection?
-            // self.state.selected_link_indices.clear();
-            // self.state.click_interaction_type = ClickInteractionType::None;
-        }
-    }
-
-    fn begin_node_selection(&mut self, node_id: usize) {
-        if self.state.click_interaction_type != ClickInteractionType::None {
-            return;
-        } // Nur wenn keine andere Interaktion läuft
-
-        self.state.click_interaction_type = ClickInteractionType::Node;
-
-        // Check for multi-selection (Shift-Click, Ctrl-Click, etc.) - Nicht implementiert hier
-        // Standardverhalten: Clear und Select
-        if !self.state.selected_node_indices.contains(&node_id) {
-            self.state.selected_node_indices.clear();
-            self.state.selected_link_indices.clear(); // Auch Links deselektieren
-            self.state.selected_node_indices.push(node_id);
-            self.frame_state.just_selected_node = true; // Markiere für Detail View Update etc.
-        } else {
-            // Node war bereits selektiert. Optional: Bei erneutem Klick nicht wieder auswählen oder Modifikatoren prüfen.
-            self.frame_state.just_selected_node = false; // Nicht *gerade eben* selektiert
-        }
-
-        // Node in der Tiefenordnung nach oben bringen
-        if let Some(pos) = self
-            .state
-            .node_depth_order
-            .iter()
-            .position(|x| *x == node_id)
-        {
-            // Wenn gefunden, entfernen und ans Ende (oben) schieben
-            let id_to_move = self.state.node_depth_order.remove(pos);
-            self.state.node_depth_order.push(id_to_move);
-        } else {
-            // Sollte nicht passieren, wenn node_id aus einer gültigen Quelle stammt
-            bevy::log::warn!(
-                "Node {:?} nicht in Tiefenordnung gefunden beim Selektieren.",
-                node_id
-            );
-            self.state.node_depth_order.push(node_id); // Vorsichtshalber hinzufügen
-        }
-    }
-
-    // Startet Link-Erstellung vom *anderen* Pin, nachdem der Original-Link entfernt wurde
-    fn begin_link_detach(&mut self, link_id: usize, detach_pin_idx: usize) {
-        if self.state.click_interaction_type == ClickInteractionType::None {
-            if let Some(link_to_detach) = self.links.get(&link_id) {
-                // Nur lesen
-
-                let other_pin_id = if link_to_detach.spec.start_pin_index == detach_pin_idx {
-                    link_to_detach.spec.end_pin_index
-                } else {
-                    link_to_detach.spec.start_pin_index
-                };
-
-                if self.pins.contains_key(&other_pin_id) {
-                    let modifying_id = Some(link_id); // Hole die ID vor dem Verschieben
-                    self.state.click_interaction_state.link_creation =
-                        ClickInteractionStateLinkCreation {
-                            start_pin_idx: Some(other_pin_id),
-                            end_pin_index: None,
-                            modifying_link_id: modifying_id, // Setze die ID
-                            link_creation_type: LinkCreationType::FromDetach,
-                        };
-                    self.state.click_interaction_type = ClickInteractionType::LinkCreation;
-                    self.frame_state.element_state_change.link_started = true;
-                } else {
-                    log::warn!(
-                        "Link detach: Anderer Pin ({:?}) nicht gefunden.",
-                        other_pin_id
-                    );
-                    // Interaktion wird nicht gestartet, da der andere Pin fehlt
-                }
-            } else {
-                log::warn!("Link detach: Link {:?} nicht gefunden.", link_id);
-            }
-        }
-    }
-
-    // --- Update/Logic Methods ---
-    fn translate_selected_nodes(&mut self) {
-        // Nur ausführen, wenn gezogen wird UND eine Node-Interaktion läuft
-        if self.state.interaction_state.left_mouse_dragging
-            && self.state.click_interaction_type == ClickInteractionType::Node
-        {
-            // Delta in Screen Space
-            let delta_screen = self.state.interaction_state.mouse_delta;
-            // Delta in Grid Space (einfache Subtraktion der Canvas-Origin reicht nicht, Panning muss raus!)
-            // Da Panning *während* des Zugs konstant bleibt, ist Screen Delta = Grid Delta
-            let delta_grid = delta_screen;
-
-            if delta_grid.length_sq() > 0.0 {
-                // Nur wenn es eine Bewegung gab
-                let mut changes = Vec::new(); // Sammle Änderungen für Events
-
-                // Gehe alle selektierten Node IDs durch
-                for node_id in &self.state.selected_node_indices {
-                    // Mutable Borrow auf den Node, wenn er existiert
-                    if let Some(node) = self.nodes.get_mut(node_id) {
-                        // Prüfe, ob Node beweglich ist (optionales Flag)
-                        if node.state.draggable {
-                            // Update die Node *Spezifikation* (Ursprung im Grid Space)
-                            node.spec.origin += delta_grid;
-                            // Update den *Zustand* (Rect im Grid Space)
-                            node.state.rect = node.state.rect.translate(delta_grid);
-
-                            // Sammle die Änderung für das Event
-                            changes.push((
-                                *node_id,
-                                BevyVec2::new(node.spec.origin.x, node.spec.origin.y), // Aktuelle Grid-Position
-                            ));
-                        }
-                    }
-                }
-
-                // Sende alle gesammelten Events
-                for (id, pos) in changes {
-                    self.frame_state
-                        .graph_changes
-                        .push(GraphChange::NodeMoved(id, pos));
-                }
-            }
-        }
-    }
-
-    fn should_link_snap_to_pin(
-        &self,
-        start_pin_id: usize,
-        hovered_pin_id: usize,
-        duplicate_link: Option<usize>,
-        link_validator: &LinkValidationCallback, // NEU
-    ) -> bool {
-        // 1. Allgemeine Prüfungen (Pins existieren, nicht derselbe Node, kein Duplikat)
-        let Some(start_pin) = self.pins.get(&start_pin_id) else {
-            return false;
-        };
-        let Some(end_pin) = self.pins.get(&hovered_pin_id) else {
-            return false;
-        };
-        if start_pin.state.parent_node_idx == end_pin.state.parent_node_idx {
-            return false;
-        }
-        if duplicate_link.is_some() {
-            return false;
-        }
-        // PinType Gleichheit wird jetzt im Callback geprüft, da InOut<->InOut erlaubt sein soll
-
-        // === 2. ANWENDUNGSSPEZIFISCHE VALIDIERUNG via Callback ===
-        // Rufe die übergebene Funktion auf. Wir übergeben die PinSpecs und den Kontext.
-        if !link_validator(&start_pin.spec, &end_pin.spec, self) {
-            return false;
-        }
-
-        // Wenn alle Prüfungen bestanden
-        true
-    }
-
-    fn box_selector_update_selection(&mut self) {
-        // Nicht mehr &self, braucht &mut self
-        // Nur ausführen, wenn die Box-Selektion aktiv ist
-        if self.state.click_interaction_type != ClickInteractionType::BoxSelection {
-            return;
-        }
-
-        // Update die Endposition der Box zur aktuellen Mausposition
-        self.state.click_interaction_state.box_selection.max =
-            self.state.interaction_state.mouse_pos;
-        let box_rect_screen = self.state.click_interaction_state.box_selection;
-
-        // Normalisiere das Rechteck (min sollte immer links oben sein)
-        let normalized_box_screen = egui::Rect::from_min_max(
-            box_rect_screen.min.min(box_rect_screen.max),
-            box_rect_screen.min.max(box_rect_screen.max),
-        );
-
-        // Wandle das Screen-Rect der Box in Grid-Space um für den Node-Vergleich
-        let box_rect_grid = egui::Rect::from_min_max(
-            self.screen_space_to_grid_space(normalized_box_screen.min),
-            self.screen_space_to_grid_space(normalized_box_screen.max),
-        );
-
-        let previous_selected_nodes = self.state.selected_node_indices.clone(); // Merke vorherige Auswahl für Reihenfolge
-        self.state.selected_node_indices.clear(); // Leere aktuelle Auswahl
-        self.state.selected_link_indices.clear(); // Auch Links leeren
-
-        // --- Node Selection ---
-        for (id, node) in self.nodes.iter() {
-            // Prüfe Überschneidung im Grid Space
-            if box_rect_grid.intersects(node.state.rect) {
-                self.state.selected_node_indices.push(*id);
-            }
-        }
-        // Optional: Behalte ursprüngliche Selektionsreihenfolge bei, falls Nodes wieder selektiert werden
-        self.state.selected_node_indices.sort_by_key(|id| {
-            previous_selected_nodes
-                .iter()
-                .position(|&old_id| old_id == *id)
-                .unwrap_or(usize::MAX)
-        });
-
-        // --- Link Selection ---
-        for (id, link) in self.links.iter() {
-            // Prüfe, ob *beide* Pins des Links existieren
-            if let (Some(start_pin), Some(end_pin)) = (
-                self.pins.get(&link.spec.start_pin_index),
-                self.pins.get(&link.spec.end_pin_index),
-            ) {
-                // Prüfe, ob *beide* Nodes der Pins existieren
-                if self.nodes.contains_key(&start_pin.state.parent_node_idx)
-                    && self.nodes.contains_key(&end_pin.state.parent_node_idx)
-                {
-                    // Berechne Pin-Positionen im Screen Space
-                    let p1_screen = self.get_screen_space_pin_coordinates(start_pin);
-                    let p2_screen = self.get_screen_space_pin_coordinates(end_pin);
-
-                    // Prüfe Überschneidung des Links mit der *Screen*-Box
-                    if self.rectangle_overlaps_link(
-                        &normalized_box_screen,
-                        &p1_screen,
-                        &p2_screen,
-                        start_pin.spec.kind,
-                    ) {
-                        self.state.selected_link_indices.push(*id);
-                    }
-                }
-            }
-        }
-        // box_rect_screen // Wird nicht mehr zurückgegeben
-    }
-
-    fn rectangle_overlaps_link(
-        &self,
-        rect: &egui::Rect,   // Box im Screen Space
-        start: &egui::Pos2,  // Start-Pin im Screen Space
-        end: &egui::Pos2,    // End-Pin im Screen Space
-        start_type: PinType, // Typ des Start-Pins für Bezier-Richtung
-    ) -> bool {
-        // Schnelle Prüfung: Bounding Box des Links gegen Bounding Box des Rects
-        let mut link_bounding_box = egui::Rect::from_two_pos(*start, *end);
-        link_bounding_box = link_bounding_box.union(*rect); // Vergrößere, um sicher zu sein
-
-        if !rect.intersects(link_bounding_box.expand(5.0)) {
-            // Kleiner Puffer
-            return false;
-        }
-
-        // Genauere Prüfung (falls Bounding Boxen überlappen)
-        if rect.contains(*start) || rect.contains(*end) {
-            return true; // Einer der Endpunkte ist in der Box
-        }
-
-        // Berechne die Bezier-Kurve des Links
-        let link_data = LinkBezierData::get_link_renderable(
-            *start,
-            *end,
-            start_type,
-            self.settings.style.link_line_segments_per_length,
-        );
-
-        // Verwende die Hilfsfunktion der Bezier-Daten zur Überlappungsprüfung
-        link_data.rectangle_overlaps_bezier(rect)
-    }
-
-    fn find_duplicate_link(&self, start_pin_id: usize, end_pin_id: usize) -> Option<usize> {
-        // Normalisiere die Pin-IDs für den Vergleich (Reihenfolge egal)
-        let (p1, p2) = if start_pin_id < end_pin_id {
-            (start_pin_id, end_pin_id)
-        } else {
-            (end_pin_id, start_pin_id)
-        };
-
-        // Suche nach einem existierenden Link mit denselben (normalisierten) Pin-IDs
-        for (id, link) in self.links.iter() {
-            let (l1, l2) = if link.spec.start_pin_index < link.spec.end_pin_index {
-                (link.spec.start_pin_index, link.spec.end_pin_index)
-            } else {
-                (link.spec.end_pin_index, link.spec.start_pin_index)
-            };
-
-            if p1 == l1 && p2 == l2 {
-                return Some(*id); // Duplikat gefunden, gib seine ID zurück
-            }
-        }
-
-        None // Kein Duplikat gefunden
-    }
-
-    // === MODIFIED: TODO 4 - Permanente Link-Erstellung integriert ===
-    fn click_interaction_update(
-        &mut self,
-        ui: &mut egui::Ui,
-        link_validator: &LinkValidationCallback,
-    ) {
-        match self.state.click_interaction_type {
-            ClickInteractionType::LinkCreation => {
-                // Hole ID des ggf. modifizierten Links
-                let modifying_link_id = self
-                    .state
-                    .click_interaction_state
-                    .link_creation
-                    .modifying_link_id;
-                let start_pin_id = self
-                    .state
-                    .click_interaction_state
-                    .link_creation
-                    .start_pin_idx
-                    .unwrap_or(usize::MAX);
-                // ... Prüfe ob start_pin_id gültig ...
-
-                let mut snapped_pin_id: Option<usize> = None;
-                if let Some(hovered_pin_id) = self.frame_state.hovered_pin_index {
-                    let duplicate_link_id = self.find_duplicate_link(start_pin_id, hovered_pin_id);
-
-                    // *** VALIDIERUNG über Callback ***
-                    // Rufe `should_link_snap_to_pin` auf, das *jetzt* den Validator verwendet
-                    if self.should_link_snap_to_pin(
-                        start_pin_id,
-                        hovered_pin_id,
-                        duplicate_link_id,
-                        link_validator,
-                    ) {
-                        snapped_pin_id = Some(hovered_pin_id);
-                    }
-                }
-                self.state
-                    .click_interaction_state
-                    .link_creation
-                    .end_pin_index = snapped_pin_id;
-
-                if self.state.interaction_state.left_mouse_released {
-                    if let Some(end_pin_id) = snapped_pin_id {
-                        // --- Erfolgreich an Pin gesnapped ---
-
-                        // Bestimme korrekte finale Pin-Rollen (Output -> Input)
-                        let (output_pin_id, input_pin_id) = {
-                            // Hole die Pin-Typen der beteiligten Pins
-                            let start_pin_kind = self
-                                .pins
-                                .get(&start_pin_id)
-                                .map_or(PinType::None, |p| p.spec.kind);
-                            // end_pin_id ist hier im Scope gültig!
-                            let end_pin_kind = self
-                                .pins
-                                .get(&end_pin_id)
-                                .map_or(PinType::None, |p| p.spec.kind);
-
-                            // Gehe davon aus, dass der Validator sichergestellt hat, dass einer Input und einer Output ist.
-                            // Falls der Start-Pin ein Output ist ODER der End-Pin ein Input ist, ist die Reihenfolge start -> end korrekt.
-                            if start_pin_kind == PinType::Output || end_pin_kind == PinType::Input {
-                                (start_pin_id, end_pin_id)
-                            } else {
-                                // Andernfalls war der Start-Pin der Input, also drehe die Reihenfolge.
-                                (end_pin_id, start_pin_id)
-                            }
-                        };
-
-                        // Prüfe, ob wir gerade einen bestehenden Link modifiziert haben
-                        if let Some(original_link_id) = modifying_link_id {
-                            // --- Fall 1: Link wurde modifiziert (Detach & Re-Connect) ---
-
-                            // --- NEUE LOGIK: Holen der alten Pins ---
-                            // Entferne temporär, um an die Spec zu kommen
-                            if let Some(removed_link_data) = self.links.remove(&original_link_id) {
-                                let old_start_pin = removed_link_data.spec.start_pin_index;
-                                let old_end_pin = removed_link_data.spec.end_pin_index;
-
-                                // Sende das Event mit ALLEN Pin-Infos
-                                self.frame_state
-                                    .graph_changes
-                                    .push(GraphChange::LinkModified {
-                                        new_start_pin_id: output_pin_id,
-                                        new_end_pin_id: input_pin_id,
-                                        old_start_pin_id: old_start_pin, // Alte Pins hinzufügen
-                                        old_end_pin_id: old_end_pin,
-                                    });
-                                bevy::log::info!(
-                                    "GraphChange::LinkModified sent. Old Pins: {}->{}, New Pins: {} -> {}",
-                                    old_start_pin, old_end_pin, output_pin_id, input_pin_id
-                                );
-
-                                // Den Link brauchen wir nicht wieder einzufügen,
-                                // da er im nächsten Frame vom Provider sowieso
-                                // neu erstellt wird (oder auch nicht, wenn die Beziehung weg ist).
-                                // Das `remove` hier genügt.
-                            } else {
-                                // Fallback, falls Link schon weg war
-                                bevy::log::error!("LinkModification failed: Could not find link with old UI ID {} to remove and get old pins.", original_link_id);
-                                // Sende Event nur mit neuen Pins (wie vorher)
-                                self.frame_state
-                                    .graph_changes
-                                    .push(GraphChange::LinkModified {
-                                        new_start_pin_id: output_pin_id,
-                                        new_end_pin_id: input_pin_id,
-                                        old_start_pin_id: usize::MAX, // Platzhalter
-                                        old_end_pin_id: usize::MAX,   // Platzhalter
-                                    });
-                            }
-                            // ---------------------------------------
-                        } else {
-                            // --- Fall 2: Brandneuer Link wurde erstellt ---
-                            // BERECHNE ID mit XOR der Pin IDs
-                            let new_link_id = output_pin_id ^ input_pin_id;
-
-                            // Erstelle die Spezifikation für den neuen Link
-                            let new_link_spec = LinkSpec {
-                                id: new_link_id, // XOR ID verwenden
-                                start_pin_index: output_pin_id,
-                                end_pin_index: input_pin_id,
-                                style: Default::default(),
-                            };
-                            // Erstelle den Zustand für den neuen Link
-                            let new_link_state = LinkState {
-                                style: self.settings.style.format_link(new_link_spec.style.clone()),
-                                shape: Some(ui.painter().add(egui::Shape::Noop)),
-                            };
-                            // Füge den neuen Link zum internen Zustand hinzu
-                            if let Some(_existing_link) = self.links.insert(
-                                new_link_id,
-                                Link {
-                                    spec: new_link_spec,
-                                    state: new_link_state,
-                                },
-                            ) {
-                                bevy::log::warn!("Overwrote existing link with same XOR ID {} during new link creation!", new_link_id);
-                            }
-
-                            // Sende das Erstellt-Event
-                            self.frame_state
-                                .graph_changes
-                                .push(GraphChange::NewLinkRequested(output_pin_id, input_pin_id));
-                            bevy::log::info!(
-                                "GraphChange::NewLinkRequested sent for pins: {} -> {}",
-                                output_pin_id,
-                                input_pin_id
-                            );
-                        } // Ende else (Neuer Link)
-                        self.frame_state.element_state_change.link_created = true;
-                    } else {
-                        // --- Ins Leere gedropped ---
-                        // Prüfe, ob wir im Modify-Modus waren
-                        let _was_modifying = modifying_link_id.is_some(); // Hole den Wert *bevor* er zurückgesetzt wird
-
-                        self.frame_state.element_state_change.link_dropped = true;
-                    }
-
-                    // Interaktion beenden, egal ob erfolgreich oder nicht
-                    self.state.click_interaction_type = ClickInteractionType::None;
-                    // Wichtig: Auch den spezifischen Zustand der LinkCreation-Interaktion zurücksetzen!
-                    // Dies löscht modifying_link_id, start_pin_idx etc. für die nächste Interaktion.
-                    self.state.click_interaction_state.link_creation = Default::default();
-
-                // Sollte None sein
-                } else {
-                    // --- Ins Leere gedropped ---
-                    // Wenn ein Link modifiziert wurde (modifying_link_id war Some), passiert hier nichts dauerhaftes.
-                    // Der Link wurde nie aus self.links entfernt und wird im nächsten Frame einfach wieder normal gezeichnet.
-                    // Wenn ein neuer Link erstellt wurde (modifying_link_id war None), wird er ebenfalls nicht hinzugefügt.
-                    // Setze nur das Flag für die Außenwelt (falls benötigt)
-                    self.frame_state.element_state_change.link_dropped = true;
-                    // log::warn!("Link detach: Link {:?} nicht gefunden.", link_id); // <-- DIESE ZEILE LÖSCHEN
-                }
-            }
-
-            ClickInteractionType::BoxSelection => {
-                self.box_selector_update_selection(); // Aktualisiert die Auswahl basierend auf der Box
-                if self.state.interaction_state.left_mouse_released {
-                    // Box-Selektion beendet
-                    self.state.click_interaction_type = ClickInteractionType::None;
-                    // Bringt neu ausgewählte Nodes in der Tiefenordnung nach oben (optional)
-                    let s = self.state.selected_node_indices.clone();
-                    self.state.node_depth_order.retain(|id| !s.contains(id));
-                    self.state.node_depth_order.extend(s);
-                }
-            }
-            ClickInteractionType::Node => {
-                self.translate_selected_nodes(); // Bewegt ausgewählte Nodes
-                if self.state.interaction_state.left_mouse_released {
-                    // Node-Drag beendet
-                    self.state.click_interaction_type = ClickInteractionType::None;
-                }
-            }
-            ClickInteractionType::Link => {
-                // Keine Aktion während des Haltens/Ziehens eines Links (nur bei Release interessant)
-                if self.state.interaction_state.left_mouse_released {
-                    // Link-Selektion "beendet" (keine spezifische Aktion hier nötig)
-                    self.state.click_interaction_type = ClickInteractionType::None;
-                }
-            }
-
-            ClickInteractionType::Panning => {
-                // Nur wenn die Alt-Taste gehalten und gezogen wird
-                if self.state.interaction_state.alt_mouse_dragging {
-                    self.state.panning += self.state.interaction_state.mouse_delta;
-                // Update Panning
-                }
-                // Panning beenden, wenn Alt-Taste losgelassen wird (oder nicht mehr gezogen)
-                // Prüfung auf !dragging UND !clicked könnte nötig sein, je nach egui Event Timing
-                else if !self.state.interaction_state.alt_mouse_dragging
-                    && !self.state.interaction_state.alt_mouse_clicked
-                {
-                    self.state.click_interaction_type = ClickInteractionType::None;
-                }
-            }
-            ClickInteractionType::None => {
-                // Keine aktive Interaktion
-            }
-        }
-    }
-
-    fn handle_delete(&mut self) {
-        let mut links_to_remove_ids: Vec<usize> =
-            self.state.selected_link_indices.drain(..).collect();
-        let nodes_to_remove_ids: Vec<usize> = self.state.selected_node_indices.drain(..).collect();
-        let mut pins_to_remove_ids = Vec::new();
-
-        // 1. Finde alle Pins der zu löschenden Nodes
-        for node_id in &nodes_to_remove_ids {
-            if let Some(node) = self.nodes.get(node_id) {
-                pins_to_remove_ids.extend(node.state.pin_indices.iter().copied());
-            }
-        }
-
-        // 2. Finde alle Links, die mit den zu löschenden Pins verbunden sind
-        // Wir müssen die Links hier nicht vorab finden, da wir sie direkt beim Iterieren entfernen können.
-        // Allerdings brauchen wir eine Kopie der Link-IDs, falls wir die von zu löschenden Nodes auch entfernen wollen.
-        let mut implicitly_removed_links = Vec::new();
-        if !nodes_to_remove_ids.is_empty() {
-            // Nur suchen, wenn Nodes entfernt werden
-            for (link_id, link) in self.links.iter() {
-                if pins_to_remove_ids.contains(&link.spec.start_pin_index)
-                    || pins_to_remove_ids.contains(&link.spec.end_pin_index)
-                {
-                    if !links_to_remove_ids.contains(link_id) {
-                        // Verhindere Duplikate
-                        implicitly_removed_links.push(*link_id);
-                    }
-                }
-            }
-            links_to_remove_ids.extend(implicitly_removed_links);
-            links_to_remove_ids.sort_unstable();
-            links_to_remove_ids.dedup();
-        }
-
-        // 3. Entferne die Links (ausgewählte + implizite) aus dem internen State und sammle Events
-        for link_id in &links_to_remove_ids {
-            // WICHTIG: Erst den Link holen, DANN entfernen!
-            if let Some(removed_link) = self.links.remove(link_id) {
-                // Sende das NEUE Event mit den Pin IDs
-                self.frame_state
-                    .graph_changes
-                    .push(GraphChange::LinkRemoved {
-                        start_pin_id: removed_link.spec.start_pin_index, // Pin IDs aus dem entfernten Link holen
-                        end_pin_id: removed_link.spec.end_pin_index,
-                    });
-            } else {
-                bevy::log::warn!(
-                    "Attempted to remove link UI ID {} but it was not found.",
-                    *link_id
-                );
-            }
-        }
-
-        // 4. Entferne die Nodes aus dem internen State und sammle Events
-        for node_id in nodes_to_remove_ids {
-            // Iteriere über die zuvor gesammelten IDs
-            if self.nodes.remove(&node_id).is_some() {
-                self.frame_state
-                    .graph_changes
-                    .push(GraphChange::NodeRemoved(node_id));
-                // Entferne Node auch aus der Tiefenordnung
-                self.state.node_depth_order.retain(|id| *id != node_id);
-
-                // Entferne zugehörige Pins (sicherer, die IDs vorher zu sammeln)
-                // `pins_to_remove_ids` enthält bereits die Pins aller gelöschten Nodes.
-            }
-        }
-
-        // 5. Entferne die Pins der gelöschten Nodes aus dem internen State
-        for pin_id in pins_to_remove_ids {
-            // Verwende die gesammelten IDs
-            self.pins.remove(&pin_id);
-        }
-
-        // 6. Selektionen leeren (passiert durch .drain() oben)
-        // self.state.selected_link_indices.clear();
-        // self.state.selected_node_indices.clear();
-    }
-
-    // src/ui_components/node_graph/context.rs -> fn final_draw
-
-    fn final_draw(&mut self, ui_draw: &mut egui::Ui) {
-        // === 1. Links zeichnen (unter den Nodes) ===
-        let link_ids: Vec<usize> = self.links.keys().copied().collect(); // Beinhaltet jetzt nur noch XOR IDs
-
-        let interaction_type = self.state.click_interaction_type;
-        let modifying_id_opt = if interaction_type == ClickInteractionType::LinkCreation {
-            self.state
-                .click_interaction_state
-                .link_creation
-                .modifying_link_id
-        } else {
-            None
-        };
-
-        for link_id in link_ids {
-            let is_being_modified = modifying_id_opt == Some(link_id);
-
-            if is_being_modified {
-                continue;
-            }
-            self.draw_link(link_id, ui_draw);
-        }
-
-        // === 2. Nodes zeichnen ...
-        let node_order = self.state.node_depth_order.clone();
-        for node_id in node_order.iter() {
-            self.draw_node(*node_id, ui_draw);
-        }
-
-        // === 3. Temporäre Elemente zeichnen ...
-        self.draw_temporary_elements(ui_draw);
-    }
 
     // === MODIFIED: TODO 4 - Event Sammlung angepasst ===
     fn collect_events(&mut self) {
@@ -1948,44 +632,27 @@ impl NodesContext {
     }
 
     // --- Getter Methods ---
-    #[allow(dead_code)]
-    pub fn node_hovered(&self) -> Option<usize> {
-        self.frame_state.hovered_node_index
-    }
-    #[allow(dead_code)]
-    pub fn link_hovered(&self) -> Option<usize> {
-        self.frame_state.hovered_link_idx
-    }
-    #[allow(dead_code)]
-    pub fn pin_hovered(&self) -> Option<usize> {
-        self.frame_state.hovered_pin_index
-    }
-    #[allow(dead_code)]
-    pub fn num_selected_nodes(&self) -> usize {
-        self.state.selected_node_indices.len()
-    }
 
     pub fn get_selected_nodes(&self) -> Vec<usize> {
         self.state.selected_node_indices.clone()
     }
 
-    #[allow(dead_code)]
     pub fn get_selected_links(&self) -> Vec<usize> {
         self.state.selected_link_indices.clone()
     }
-    #[allow(dead_code)]
+
     pub fn clear_node_selection(&mut self) {
         self.state.selected_node_indices.clear();
     }
-    #[allow(dead_code)]
+
     pub fn clear_link_selection(&mut self) {
         self.state.selected_link_indices.clear();
     }
-    #[allow(dead_code)]
+
     pub fn active_attribute(&self) -> Option<usize> {
         self.frame_state.active_pin
-    } // Eher selten genutzt, da Hovered Pin wichtiger ist
-    #[allow(dead_code)]
+    }
+
     pub fn link_started(&self) -> Option<usize> {
         if self.frame_state.element_state_change.link_started {
             self.state
@@ -1996,7 +663,7 @@ impl NodesContext {
             None
         }
     }
-    #[allow(dead_code)]
+
     pub fn link_dropped(&self, include_detached: bool) -> Option<usize> {
         if self.frame_state.element_state_change.link_dropped {
             let creation_state = &self.state.click_interaction_state.link_creation;
@@ -2034,7 +701,6 @@ impl NodesContext {
         None
     }
 
-    #[allow(dead_code)]
     // Gibt optional den Pin zurück, an den erfolgreich drangesnapped wurde (Ende der LinkCreation)
     pub fn link_snapped_to_pin(&self) -> Option<usize> {
         if self.frame_state.element_state_change.link_created {
@@ -2047,7 +713,6 @@ impl NodesContext {
         }
     }
 
-    #[allow(dead_code)]
     pub fn link_destroyed(&self) -> Option<usize> {
         self.frame_state.deleted_link_idx
     }
@@ -2056,15 +721,14 @@ impl NodesContext {
         &self.frame_state.graph_changes
     }
 
-    #[allow(dead_code)]
     pub fn get_panning(&self) -> egui::Vec2 {
         self.state.panning
     }
-    #[allow(dead_code)]
+
     pub fn reset_panning(&mut self, panning: egui::Vec2) {
         self.state.panning = panning;
     }
-    #[allow(dead_code)]
+
     pub fn get_node_dimensions(&self, id: usize) -> Option<egui::Vec2> {
         self.nodes.get(&id).map(|n| n.state.rect.size())
     }
@@ -2073,134 +737,12 @@ impl NodesContext {
         self.frame_state.just_selected_node
     }
 
-    #[allow(dead_code)]
     pub fn set_node_draggable(&mut self, node_id: usize, draggable: bool) {
         if let Some(node) = self.nodes.get_mut(&node_id) {
             node.state.draggable = draggable;
         }
     }
-
-    fn process_clicks(&mut self) {
-        if !self.state.interaction_state.mouse_in_canvas {
-            return;
-        }
-
-        // --- Linksklick ---
-        if self.state.interaction_state.left_mouse_clicked {
-            if let Some(pin_idx) = self.frame_state.hovered_pin_index {
-                // Klick auf Pin -> Versuche, Link-Erstellung zu starten
-                self.begin_link_creation(pin_idx);
-            } else if let Some(node_idx) = self.frame_state.hovered_node_index {
-                // Klick auf Node -> Starte Node-Selektion/-Drag
-                // Verhindere Start, wenn gerade ein Pin im *selben* Node geklickt wurde (falls `active_pin` genutzt wird)
-                // if self.frame_state.active_pin.map_or(true, |p_id| self.pins.get(&p_id).map_or(true, |p| p.state.parent_node_idx != node_idx)) {
-                self.begin_node_selection(node_idx);
-                // }
-            } else if let Some(link_idx) = self.frame_state.hovered_link_idx {
-                // Klick auf Link -> Starte Link-Interaktion (Select/Detach)
-                self.begin_link_interaction(link_idx);
-            } else {
-                // Klick ins Leere -> Starte Box-Selektion
-                self.begin_canvas_interaction(false);
-            }
-        }
-        // --- Alternativklick (z.B. Mitte, Rechts) ---
-        else if self.state.interaction_state.alt_mouse_clicked {
-            // Klick ins Leere mit Alt -> Starte Panning
-            if self.frame_state.hovered_node_index.is_none()
-                && self.frame_state.hovered_pin_index.is_none()
-                && self.frame_state.hovered_link_idx.is_none()
-            {
-                self.begin_canvas_interaction(true);
-            }
-            // Optional: Alt-Klick auf Node/Pin/Link für Kontextmenü etc.
-        }
-    }
 } // === Ende impl NodesContext ===
-
-// === Hilfsstrukturen/Enums am Ende ===
-#[derive(Derivative, Default, Debug, Clone)] // Clone hinzugefügt
-struct ElementStateChange {
-    link_started: bool,
-    link_dropped: bool,
-    link_created: bool, // Erfolgreich an Pin gesnapped und Maus losgelassen
-}
-impl ElementStateChange {
-    pub fn reset(&mut self) {
-        *self = Self::default();
-    }
-}
-
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
-enum ClickInteractionType {
-    None,
-    Node,
-    Link,
-    LinkCreation,
-    Panning,
-    BoxSelection,
-}
-impl Default for ClickInteractionType {
-    fn default() -> Self {
-        Self::None
-    }
-}
-
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Default)]
-enum LinkCreationType {
-    #[default]
-    Standard,
-    FromDetach,
-} // Default zu Standard
-
-#[derive(Derivative, Debug, Clone)] // Clone hinzugefügt
-#[derivative(Default)]
-struct ClickInteractionStateLinkCreation {
-    start_pin_idx: Option<usize>, // Option, falls Detach fehlschlägt
-    end_pin_index: Option<usize>,
-    modifying_link_id: Option<usize>, // NEU: ID des Links, der modifiziert wird
-    #[derivative(Default(value = "LinkCreationType::default()"))]
-    link_creation_type: LinkCreationType,
-}
-#[derive(Derivative, Debug, Clone)] // Only Clone hinzugefügt
-#[derivative(Default)]
-struct ClickInteractionState {
-    link_creation: ClickInteractionStateLinkCreation,
-    #[derivative(Default(value = "egui::Rect::ZERO"))]
-    box_selection: egui::Rect,
-}
-
-#[derive(Derivative, Debug, Default)]
-pub struct IO {
-    /* ... unverändert ... */
-    #[derivative(Default(value = "Modifier::None"))]
-    pub emulate_three_button_mouse: Modifier,
-    #[derivative(Default(value = "Modifier::None"))]
-    pub link_detatch_with_modifier_click: Modifier,
-    #[derivative(Default(value = "Some(egui::PointerButton::Middle)"))]
-    pub alt_mouse_button: Option<egui::PointerButton>,
-}
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Modifier {
-    /* ... unverändert ... */
-    Alt,
-    Ctrl,
-    Shift,
-    Command,
-    #[default]
-    None,
-}
-impl Modifier {
-    fn is_active(&self, mods: &egui::Modifiers) -> bool {
-        match self {
-            Modifier::Alt => mods.alt,
-            Modifier::Ctrl => mods.ctrl,
-            Modifier::Shift => mods.shift,
-            Modifier::Command => mods.command,
-            Modifier::None => mods.is_none() && !mods.any(), // Strengere Prüfung auf *gar keine* Modifier
-        }
-    }
-}
 
 // === NodeState Helfer (mit Context für Konvertierung) ===
 impl NodeState {
@@ -2215,20 +757,12 @@ impl NodeState {
     }
 
     // Konvertiert das Grid-Space Titel-Rect in Screen-Space
-    fn get_node_title_rect_screen(&self, context: &NodesContext) -> egui::Rect {
+    pub(crate) fn get_node_title_rect_screen(&self, context: &NodesContext) -> egui::Rect {
         let grid_rect = self.get_node_title_rect_grid();
         egui::Rect::from_min_max(
             // MinMax verwenden, um sicherzugehen
             context.grid_space_to_screen_space(grid_rect.min),
             context.grid_space_to_screen_space(grid_rect.max),
         )
-    }
-}
-
-// Helper für Bezier-Distanz im Quadrat (vermeidet sqrt)
-impl LinkBezierData {
-    pub(crate) fn get_distance_to_cubic_bezier_sq(&self, pos: &egui::Pos2) -> f32 {
-        let point_on_curve = self.get_closest_point_on_cubic_bezier(pos);
-        pos.distance_sq(point_on_curve)
     }
 }

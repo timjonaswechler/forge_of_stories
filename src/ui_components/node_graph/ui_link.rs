@@ -182,6 +182,10 @@ impl LinkBezierData {
         };
         egui::Shape::Path(path_shape)
     }
+    pub(crate) fn get_distance_to_cubic_bezier_sq(&self, pos: &egui::Pos2) -> f32 {
+        let point_on_curve = self.get_closest_point_on_cubic_bezier(pos);
+        pos.distance_sq(point_on_curve)
+    }
 }
 pub fn line_closest_point(a: &egui::Pos2, b: &egui::Pos2, p: &egui::Pos2) -> egui::Pos2 {
     // ... (Implementierung unverändert) ...

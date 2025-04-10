@@ -1,7 +1,13 @@
 // src/ui_components/node_graph/mod.rs
 pub mod context;
+pub mod coords;
+pub mod drawing;
+pub mod hover;
+pub mod identity;
+pub mod interaction;
 pub mod plugin;
 pub mod resources;
+pub mod state;
 pub mod systems;
 pub mod ui_data;
 pub mod ui_link;

@@ -9,7 +9,6 @@ use crate::ui_components::node_graph::{
 use bevy::prelude::*;
 use bevy::utils::HashMap;
 // Entferne: use bevy_egui::egui::{self, Color32}; // <- Diese Zeile entfernen oder anpassen
-use bevy_egui::egui; // Nur egui behalten, wenn nur das gebraucht wird
 
 #[derive(Component, Debug, Clone, Copy)] // Debug, Clone, Copy optional aber nützlich
 pub struct FriendWith(pub Entity);
