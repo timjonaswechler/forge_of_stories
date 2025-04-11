@@ -52,8 +52,6 @@ pub struct LinkSpec {
 pub struct LinkState {
     #[derivative(Debug = "ignore")]
     pub style: LinkStyle, // Style ist jetzt Clone
-    #[derivative(Debug = "ignore")]
-    pub shape: Option<egui::layers::ShapeIdx>,
 }
 
 #[derive(Derivative, Default)]

@@ -80,12 +80,6 @@ pub struct NodeState {
     pub pin_indices: Vec<usize>,
     #[derivative(Default(value = "true"))]
     pub draggable: bool,
-    #[derivative(Debug = "ignore")]
-    pub titlebar_shape: Option<egui::layers::ShapeIdx>,
-    #[derivative(Debug = "ignore")]
-    pub background_shape: Option<egui::layers::ShapeIdx>,
-    #[derivative(Debug = "ignore")]
-    pub outline_shape: Option<egui::layers::ShapeIdx>,
 }
 
 impl NodeState {

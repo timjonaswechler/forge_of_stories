@@ -7,7 +7,9 @@ pub mod identity;
 pub mod interaction;
 pub mod plugin;
 pub mod resources;
+pub mod settings;
 pub mod state;
+pub mod storage;
 pub mod systems;
 pub mod ui_data;
 pub mod ui_link;
@@ -16,7 +18,7 @@ pub mod ui_pin;
 pub mod ui_style;
 
 // Re-exports für einfachen Zugriff
-pub use context::NodesContext;
+
 pub use plugin::NodeGraphPlugin;
 pub use resources::GraphUIData;
 

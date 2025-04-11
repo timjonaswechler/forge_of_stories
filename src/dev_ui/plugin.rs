@@ -12,7 +12,7 @@ use crate::dev_ui::simulation_graph::{
     update_selected_node_details, // Dieser Import sollte jetzt klappen
 };
 
-use crate::ui_components::node_graph::plugin::graph_ui_system;
+use crate::ui_components::node_graph::systems::graph_ui_system;
 
 /// Plugin, das die Entwickler-UI-Tools integriert.
 /// Es fügt die generischen UI-Komponenten hinzu (z.B. NodeGraphPlugin)

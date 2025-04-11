@@ -81,8 +81,6 @@ pub struct PinState {
     pub pos: egui::Pos2,
     #[derivative(Debug = "ignore")]
     pub color_style: PinStyle,
-    #[derivative(Debug = "ignore")]
-    pub shape_gui: Option<egui::layers::ShapeIdx>,
 }
 
 impl Default for PinState {
@@ -92,7 +90,6 @@ impl Default for PinState {
             attribute_rect: egui::Rect::ZERO,
             pos: Default::default(),
             color_style: Default::default(),
-            shape_gui: Default::default(),
         }
     }
 }

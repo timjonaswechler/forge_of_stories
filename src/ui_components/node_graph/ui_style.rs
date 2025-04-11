@@ -157,7 +157,7 @@ impl Style {
     }
 
     // --- Die anderen Methoden bleiben exakt wie zuvor ---
-    pub(crate) fn get_screen_space_pin_coordinates(
+    pub fn get_screen_space_pin_coordinates(
         &self,
         node_rect: &egui::Rect,
         attribute_rect: &egui::Rect,
@@ -172,11 +172,11 @@ impl Style {
 
     pub(crate) fn draw_pin_shape(
         &self,
-        pin_pos: egui::Pos2,               // Die Position des Pin-Mittelpunkts
-        pin_shape: PinShape, // Welche Form (jetzt nur noch Circle/CircleFilled relevant)
+        pin_pos: egui::Pos2,      // Die Position des Pin-Mittelpunkts
+        pin_shape: PinShape,      // Welche Form (jetzt nur noch Circle/CircleFilled relevant)
         pin_color: egui::Color32, // Die (Füll-)Farbe des Pins
-        shape_idx: egui::layers::ShapeIdx, // Der Index zum Setzen des Shapes im Painter
-        ui: &mut egui::Ui,   // Das UI zum Holen des Painters
+
+        ui: &mut egui::Ui, // Das UI zum Holen des Painters
     ) {
         let painter = ui.painter();
         // Definiere den Outline Stroke (1 Pixel breit, schwarz)
@@ -188,61 +188,36 @@ impl Style {
         match pin_shape {
             PinShape::CircleFilled => {
                 // Zeichne einen GEFÜLLTEN Kreis mit schwarzer Outline
-                painter.set(
-                    shape_idx,
-                    egui::Shape::Circle(egui::epaint::CircleShape {
-                        center: pin_pos,
-                        radius: self.pin_circle_radius, // Radius aus dem Style
-                        fill: pin_color,                // Die übergebene Pin-Farbe als Füllung
-                        stroke: outline_stroke,         // Der definierte schwarze Stroke
-                    }),
-                );
+                painter.add(egui::Shape::Circle(egui::epaint::CircleShape {
+                    center: pin_pos,
+                    radius: self.pin_circle_radius, // Radius aus dem Style
+                    fill: pin_color,                // Die übergebene Pin-Farbe als Füllung
+                    stroke: outline_stroke,         // Der definierte schwarze Stroke
+                }));
             }
             PinShape::Circle => {
                 // Zeichne nur den UMRISS eines Kreises (Outline ist hier die Hauptfarbe)
                 // Verwende pin_color für den Stroke, aber füge auch eine dünne schwarze Außenlinie hinzu,
                 // damit auch ungefüllte Kreise eine konsistente Outline haben.
                 // Zeichne zuerst die schwarze Outline (etwas größer)
-                painter.set(
-                    shape_idx, // Benutze denselben Index, der letzte set() gewinnt oder sie überlagern
-                    egui::Shape::Circle(egui::epaint::CircleShape {
-                        center: pin_pos,
-                        radius: self.pin_circle_radius + outline_stroke.width / 2.0, // Leicht größer für außen
-                        fill: Color32::TRANSPARENT,
-                        stroke: outline_stroke,
-                    }),
-                );
-                // Zeichne den farbigen Stroke darüber (mit Originalgröße)
-                // Braucht eigentlich einen neuen ShapeIndex oder komplexeres Zeichnen.
-                // Einfacher: Nur die farbige Linie zeichnen und auf Outline verzichten bei `Circle`.
-                /* // Alternative nur farbiger Stroke:
-                 painter.set(
-                    shape_idx,
-                    egui::Shape::circle_stroke(
-                         pin_pos,
-                         self.pin_circle_radius,
-                         egui::Stroke::new(self.pin_line_thickness, pin_color) // Standard dicke Linie
-                    ),
-                );
-                 */
-                // Kompromiss: Nur den gefüllten Kreis verwenden, Circle ignorieren.
-                // Kopiere den Code von CircleFilled hierher, um sicherzustellen, dass immer
-                // etwas Sichtbares mit Outline gezeichnet wird.
-                painter.set(
-                    shape_idx,
-                    egui::Shape::Circle(egui::epaint::CircleShape {
-                        center: pin_pos,
-                        radius: self.pin_circle_radius,
-                        fill: pin_color, // Behandle Circle wie CircleFilled
-                        stroke: outline_stroke,
-                    }),
-                );
+                painter.add(egui::Shape::Circle(egui::epaint::CircleShape {
+                    center: pin_pos,
+                    radius: self.pin_circle_radius + outline_stroke.width / 2.0, // Leicht größer für außen
+                    fill: Color32::TRANSPARENT,
+                    stroke: outline_stroke,
+                }));
+
+                painter.add(egui::Shape::Circle(egui::epaint::CircleShape {
+                    center: pin_pos,
+                    radius: self.pin_circle_radius,
+                    fill: pin_color, // Behandle Circle wie CircleFilled
+                    stroke: outline_stroke,
+                }));
             }
             // Ignoriere alle anderen Shapes (Triangle, Quad etc.) komplett
             _ => {
                 // Zeichne nichts oder einen Fallback (z.B. einen kleinen schwarzen Punkt)
-                painter.set(
-                    shape_idx,
+                painter.add(
                     egui::Shape::circle_filled(pin_pos, 1.0, Color32::BLACK), // Mini-Punkt als Fallback
                 );
                 warn!(

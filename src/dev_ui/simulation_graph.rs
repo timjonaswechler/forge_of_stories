@@ -1,9 +1,14 @@
 //src/dev_ui/simulation_graph.rs
 use crate::genetics::components::SpeciesGenes;
+use crate::ui_components::node_graph::storage;
 use crate::ui_components::node_graph::{
-    context::{GraphChange, NodesContext, PinType},
+    context::GraphChange,
     resources::{DetailDisplayData, GraphUIData},
+    settings::NodesSettings,    // Neue Ressource importieren
+    state::GraphUiStateManager, // Neue Ressource importieren
+    storage::GraphStorage,      // Neue Ressource importieren
     ui_data::{generate_pin_id, LogicalPinInfo, PinDirection, VisLink, VisNode},
+    ui_pin::PinType, // Richtiger Pfad für PinType
 };
 
 use bevy::prelude::*;
@@ -187,12 +192,13 @@ pub fn provide_simulation_graph_data(
 /// Reagiert z.B. auf das Erstellen von Links durch den Benutzer.
 pub fn handle_graph_changes_system(
     mut commands: Commands,
-    context: Res<NodesContext>,
+    ui_state: Res<GraphUiStateManager>,
+    storage: Res<GraphStorage>,
     graph_data: Res<GraphUIData>,
     parent_query: Query<&Parent>,
 ) {
     // Hole alle Änderungen aus dem Kontext für diesen Frame.
-    let changes = context.get_changes().clone();
+    let changes = ui_state.get_graph_changes().clone();
 
     for change in changes {
         match change {
@@ -207,7 +213,7 @@ pub fn handle_graph_changes_system(
 
                 // 1. Finde Nodes und Entities für die beteiligten Pins
                 // Annahme: Validator hat sichergestellt, dass Pins zu unterschiedl. Nodes gehören.
-                let maybe_nodes = find_nodes_for_pins(&context, start_pin_id, end_pin_id);
+                let maybe_nodes = find_nodes_for_pins(storage.as_ref(), *start_pin_id, *end_pin_id);
                 if let Some((source_node_id, target_node_id)) = maybe_nodes {
                     // 'source' ist der Node mit dem Output-Pin, 'target' der mit dem Input-Pin
 
@@ -223,8 +229,8 @@ pub fn handle_graph_changes_system(
 
                         // 2. Hole Pin-Spezifikationen, um relation_type und kind zu prüfen
                         // (context wird nur lesend benötigt, daher kein Borrowing-Problem hier)
-                        let start_pin = context
-                            .get_pin(start_pin_id)
+                        let start_pin = storage
+                            .get_pin(*start_pin_id)
                             .expect("Start Pin should exist for NewLinkRequested");
                         // PinType des Start-Pins bestimmt die Interpretation von source/target
                         let start_pin_kind = start_pin.spec.kind;
@@ -324,7 +330,7 @@ pub fn handle_graph_changes_system(
                 // Wenn die Pins nicht mehr da sind, können wir nichts tun.
 
                 if let (Some(start_pin), Some(end_pin)) =
-                    (context.get_pin(start_pin_id), context.get_pin(end_pin_id))
+                    (storage.get_pin(*start_pin_id), storage.get_pin(*end_pin_id))
                 {
                     let start_node_id = start_pin.state.parent_node_idx;
                     let end_node_id = end_pin.state.parent_node_idx;
@@ -410,13 +416,13 @@ pub fn handle_graph_changes_system(
 
                 // Versuche, die Entities der ALTEN Beziehung zu finden
                 if let Some((old_source_node, old_target_node)) =
-                    find_nodes_for_pins(&context, old_start_pin_id, old_end_pin_id)
+                    find_nodes_for_pins(&storage, *old_start_pin_id, *old_end_pin_id)
                 {
                     if let Some((old_source_entity, old_target_entity)) =
                         find_entities_for_nodes(&graph_data, old_source_node, old_target_node)
                     {
                         // Hole den Spec des ALTEN Start-Pins, um den Typ zu bestimmen
-                        if let Some(old_start_pin_spec) = context.get_pin(old_start_pin_id) {
+                        if let Some(old_start_pin_spec) = storage.get_pin(*old_start_pin_id) {
                             match old_start_pin_spec.spec.relation_type.as_str() {
                                 "Family" => {
                                     // Alte Beziehung war Family: old_source war Parent, old_target war Child
@@ -450,7 +456,7 @@ pub fn handle_graph_changes_system(
                     } else {
                         bevy::log::warn!("LinkModified-Cleanup: Could not find entities for old nodes {} and {}.", old_source_node, old_target_node);
                     }
-                } else if old_start_pin_id != usize::MAX {
+                } else if *old_start_pin_id != usize::MAX {
                     // Nur warnen, wenn keine Platzhalter-IDs
                     bevy::log::warn!("LinkModified-Cleanup: Could not find nodes for old pins {} and {}. Old relation might persist.", old_start_pin_id, old_end_pin_id);
                 }
@@ -460,7 +466,8 @@ pub fn handle_graph_changes_system(
                 // wenn das Aufräumen scheitert. Aktuell: Füge die neue immer hinzu.
                 // if old_relation_removed || old_start_pin_id == usize::MAX { // Wenn alte weg oder unbekannt
                 // Logik von oben, leicht angepasst:
-                let maybe_nodes = find_nodes_for_pins(&context, new_start_pin_id, new_end_pin_id);
+                let maybe_nodes =
+                    find_nodes_for_pins(storage.as_ref(), *new_start_pin_id, *new_end_pin_id);
                 if let Some((new_source_node_id, new_target_node_id)) = maybe_nodes {
                     let maybe_entities = find_entities_for_nodes(
                         &graph_data,
@@ -469,11 +476,11 @@ pub fn handle_graph_changes_system(
                     );
                     if let Some((new_source_entity, new_target_entity)) = maybe_entities {
                         bevy::log::info!("LinkModified: Applying NEW connection: Source(Output)={:?}, Target(Input)={:?}", new_source_entity, new_target_entity);
-                        let start_pin = context
-                            .get_pin(new_start_pin_id)
+                        let start_pin = storage
+                            .get_pin(*new_start_pin_id)
                             .expect("New start pin should exist for LinkModified");
-                        let _end_pin = context // Ist _end_pin, da momentan ungenutzt
-                            .get_pin(new_end_pin_id)
+                        let _end_pin = storage // Ist _end_pin, da momentan ungenutzt
+                            .get_pin(*new_end_pin_id)
                             .expect("New end pin should exist for LinkModified");
 
                         // PinType des *ursprünglich* geklickten Start-Pins der *neuen* Verbindung.
@@ -568,7 +575,7 @@ pub fn handle_graph_changes_system(
                 let maybe_entity = graph_data
                     .nodes
                     .iter()
-                    .find(|n| n.id == node_id)
+                    .find(|n| n.id == *node_id)
                     .and_then(|n| n.entity);
 
                 if let Some(entity_to_despawn) = maybe_entity {
@@ -609,14 +616,14 @@ pub fn handle_graph_changes_system(
 }
 
 pub fn update_selected_node_details(
-    nodes_context: Res<NodesContext>,
+    ui_state: Res<GraphUiStateManager>,
     mut graph_data: ResMut<GraphUIData>,
     query_name: Query<&Name>,
     query_genes: Query<&SpeciesGenes>,
     query_parent: Query<&Parent>,
     query_friend: Query<&FriendWith>,
 ) {
-    let selected_nodes = nodes_context.get_selected_nodes();
+    let selected_nodes = ui_state.get_selected_nodes();
 
     if selected_nodes.len() == 1 {
         let selected_node_id = selected_nodes[0];
@@ -628,7 +635,7 @@ pub fn update_selected_node_details(
 
         if let Some(entity) = maybe_entity {
             // Prüfen, ob sich Auswahl geändert hat oder Details noch nicht gesetzt sind
-            let should_update = nodes_context.is_node_just_selected()
+            let should_update = ui_state.is_node_just_selected()
                 || graph_data.selected_node_details_display.is_none()
                 || graph_data
                     .selected_node_details_display
@@ -681,14 +688,14 @@ pub fn update_selected_node_details(
 
 /// Findet die Node-IDs, zu denen die Pins gehören.
 fn find_nodes_for_pins(
-    context: &NodesContext,
+    storage: &GraphStorage,
     pin1_id: usize,
     pin2_id: usize,
 ) -> Option<(usize, usize)> {
     // Hole die kompletten Pin-Daten über die öffentliche Methode oder direkten Zugriff (falls public)
     // Annahme: Du hast jetzt eine pub fn get_pin(&self, pin_id: usize) -> Option<&Pin> in context.rs erstellt
-    let pin1 = context.get_pin(pin1_id)?; // gibt &Pin zurück
-    let pin2 = context.get_pin(pin2_id)?; // gibt &Pin zurück
+    let pin1 = storage.get_pin(pin1_id)?; // gibt &Pin zurück
+    let pin2 = storage.get_pin(pin2_id)?; // gibt &Pin zurück
 
     // *** KORREKTUR: Greife auf das 'state'-Feld für die Node-ID zu ***
     let node1_id = pin1.state.parent_node_idx;
