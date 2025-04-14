@@ -5,10 +5,6 @@ use forge_of_stories::{
     app_setup::{AppState, CorePlugin, EventPlugin, SetupPlugin},
     attributes::plugin::AttributesPlugin,
     debug::plugin::DebugPlugin,
-    // --- Entfernt/Geändert ---
-    // dev_tools::node_graph::NodeGraphPlugin, // ALT
-    dev_ui::plugin::DevUIPlugin, // *** NEU ***
-    // -------------------------
     genetics::plugin::GeneticsCorePlugin,
     simulation::plugin::SimulationPlugin,
     visuals::plugin::VisualsPlugin,
@@ -36,8 +32,7 @@ fn main() {
             AttributesPlugin,
             VisualsPlugin,
             SimulationPlugin,
-            DebugPlugin, // Konsolen-Debugging
-            DevUIPlugin, // *** Das neue Plugin für die Entwickler-UI ***
+            DebugPlugin,
         ))
         .run();
 }
