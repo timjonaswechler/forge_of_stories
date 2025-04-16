@@ -18,8 +18,9 @@
 *.log
 
 # Cargo.lock (nur ignorieren, wenn es sich um eine Bibliothek handelt)
-/Cargo.lock
+*.lock
 
 *.py
 *.md
-bevy_animation_graph-master/*
+.data
+.idea

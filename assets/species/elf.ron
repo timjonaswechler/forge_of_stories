@@ -1,24 +1,6 @@
 (
     species_name: "Elf",
 
-    skin_colors: [
-        // Konvertiert von 0-255 JS-Palette zu 0.0-1.0 sRGB für RON
-        Srgba((red: 1.0, green: 0.9216, blue: 0.8039, alpha: 1.0)),      // [255, 235, 205]
-        Srgba((red: 1.0, green: 0.8549, blue: 0.7255, alpha: 1.0)),      // [255, 218, 185]
-        Srgba((red: 0.9608, green: 0.7843, blue: 0.5686, alpha: 1.0)),    // [245, 200, 145]
-        Srgba((red: 0.7059, green: 0.7843, blue: 0.902, alpha: 1.0)),     // [180, 200, 230]
-    ],
-
-    hair_colors: [
-        // Beibehaltung der 0.0-1.0 Werte, aber im Srgba-Format
-        Srgba((red: 0.9, green: 0.9, blue: 0.8, alpha: 1.0)),
-        Srgba((red: 0.8, green: 0.8, blue: 0.6, alpha: 1.0)),
-        Srgba((red: 0.7, green: 0.6, blue: 0.3, alpha: 1.0)),
-        Srgba((red: 0.3, green: 0.2, blue: 0.1, alpha: 1.0)),
-        Srgba((red: 0.1, green: 0.1, blue: 0.1, alpha: 1.0)),
-    ],
-
-    eye_colors: [ Green, Blue, Gray, Brown ],
 
     attribute_distributions: {
         Strength: (mean: 0.35, std_dev: 0.08),

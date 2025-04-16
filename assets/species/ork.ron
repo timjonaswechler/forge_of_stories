@@ -1,0 +1,25 @@
+(
+    species_name: "Ork",
+    attribute_distributions: {
+        Strength: (mean: 0.75, std_dev: 0.12),
+        Agility: (mean: 0.3, std_dev: 0.1),
+        Toughness: (mean: 0.8, std_dev: 0.1),
+        Endurance: (mean: 0.7, std_dev: 0.1),
+        Recuperation: (mean: 0.65, std_dev: 0.1),
+        DiseaseResistance: (mean: 0.75, std_dev: 0.1),
+        Focus: (mean: 0.3, std_dev: 0.15),
+        Creativity: (mean: 0.2, std_dev: 0.1),
+        Willpower: (mean: 0.75, std_dev: 0.15),
+        AnalyticalAbility: (mean: 0.25, std_dev: 0.1),
+        Intuition: (mean: 0.4, std_dev: 0.15),
+        Memory: (mean: 0.3, std_dev: 0.1),
+        Patience: (mean: 0.25, std_dev: 0.1),
+        SpatialSense: (mean: 0.4, std_dev: 0.1),
+        Empathy: (mean: 0.2, std_dev: 0.1),
+        Leadership: (mean: 0.7, std_dev: 0.15),
+        SocialAwareness: (mean: 0.3, std_dev: 0.1),
+        LinguisticAbility: (mean: 0.3, std_dev: 0.1),
+        Negotiation: (mean: 0.2, std_dev: 0.1),
+        Musicality: (mean: 0.1, std_dev: 0.05),
+    }
+)

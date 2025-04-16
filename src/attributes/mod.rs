@@ -10,6 +10,7 @@ pub use components::{
     Attribute,
     AttributeCategory,
     AttributeGroup, // Der Trait wird hier definiert und exportiert
+    AttributeType,
     MentalAttributes,
     PhysicalAttributes,
     SocialAttributes,
@@ -21,7 +22,6 @@ pub use plugin::AttributesPlugin;
 // Aus systems: Die öffentlichen Systemfunktionen
 // Wichtig: Wir exportieren den AttributeGroup Trait NICHT erneut aus systems
 pub use systems::{
-    apply_attributes, // Das generische System
     calculate_effective_attribute_values,
     update_attribute_rust,
     update_attribute_usage,

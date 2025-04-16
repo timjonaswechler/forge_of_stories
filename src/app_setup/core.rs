@@ -1,9 +1,9 @@
-// Neue Datei: src/plugins/core_plugin.rs
+// src/app_setup/core.rs // Geändert von "Neue Datei: src/plugins/core_plugin.rs" -> Pfad korrigiert
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy_rand::prelude::{EntropyPlugin, WyRand};
 
-use crate::{FIXED_SEED, USE_FIXED_SEED}; // Importiere Konstanten aus main.rs (oder lagere sie aus)
+use crate::{FIXED_SEED, USE_FIXED_SEED};
 
 pub struct CorePlugin;
 
@@ -33,5 +33,20 @@ impl Plugin for CorePlugin {
             app.add_plugins(EntropyPlugin::<WyRand>::default());
             info!("Using system entropy for RNG seed.");
         }
+
+        // --- Kamera hinzufügen ---
+        // Füge ein Startup-System hinzu, das die Kamera spawnt.
+        // Die IsDefaultUiCamera Komponente stellt sicher, dass die UI an diese Kamera gebunden wird.
+        app.add_systems(Startup, setup_camera);
     }
+}
+
+// Startup-System zum Erstellen der UI-Kamera
+fn setup_camera(mut commands: Commands) {
+    commands.spawn((
+        Camera2d::default(),
+        // Diese Komponente ist wichtig, damit die UI weiß, welche Kamera sie verwenden soll!
+        IsDefaultUiCamera,
+    ));
+    info!("Spawned default UI camera.");
 }

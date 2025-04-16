@@ -3,12 +3,7 @@
 // Top-Level Module für Features
 pub mod app_setup;
 pub mod attributes;
-pub mod config;
-pub mod debug;
-pub mod genetics;
-pub mod simulation;
 pub mod ui_components;
-pub mod visuals;
 
 // Konstanten (wenn nicht in config verschoben)
 pub const FIXED_SEED: u64 = 1234567890;
@@ -30,5 +25,6 @@ pub enum SimulationSystemSet {
 pub enum AppState {
     #[default]
     Loading,
+    MainMenu,
     Running,
 }

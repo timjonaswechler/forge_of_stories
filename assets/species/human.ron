@@ -1,0 +1,27 @@
+(
+    species_name: "Mensch",
+
+
+    attribute_distributions: {
+        Strength: ( mean: 0.5, std_dev: 0.1 ),
+        Agility: ( mean: 0.5, std_dev: 0.1 ),
+        Toughness: ( mean: 0.5, std_dev: 0.1 ),
+        Endurance: ( mean: 0.5, std_dev: 0.1 ),
+        Recuperation: ( mean: 0.5, std_dev: 0.1 ),
+        DiseaseResistance: ( mean: 0.5, std_dev: 0.1 ),
+        Focus: ( mean: 0.5, std_dev: 0.15 ),
+        Creativity: ( mean: 0.5, std_dev: 0.15 ),
+        Willpower: ( mean: 0.5, std_dev: 0.15 ),
+        AnalyticalAbility: ( mean: 0.5, std_dev: 0.15 ),
+        Intuition: ( mean: 0.5, std_dev: 0.15 ),
+        Memory: ( mean: 0.5, std_dev: 0.15 ),
+        Patience: ( mean: 0.5, std_dev: 0.15 ),
+        SpatialSense: ( mean: 0.5, std_dev: 0.15 ),
+        Empathy: ( mean: 0.5, std_dev: 0.2 ),
+        Leadership: ( mean: 0.5, std_dev: 0.2 ),
+        SocialAwareness: ( mean: 0.5, std_dev: 0.2 ),
+        LinguisticAbility: ( mean: 0.5, std_dev: 0.2 ),
+        Negotiation: ( mean: 0.5, std_dev: 0.2 ),
+        Musicality: ( mean: 0.5, std_dev: 0.2 ),
+    }
+)
