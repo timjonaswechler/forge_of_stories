@@ -34,6 +34,12 @@ pub enum AttributeType {
     Musicality,
 }
 
+#[derive(serde::Deserialize, Debug, Clone, Default)]
+pub struct AttributeDistribution {
+    pub mean: f32,
+    pub std_dev: f32,
+}
+
 #[derive(Component, Debug, Clone)]
 pub struct Attribute {
     pub id: AttributeType,
@@ -271,10 +277,9 @@ impl Default for SocialAttributes {
 // -- AttributeGroup Trait Anpassung --
 
 // Generischer Trait für Attributgruppen (Nimmt jetzt AttributeType)
+// Generischer Trait für Attributgruppen
 pub trait AttributeGroup {
     fn get_attribute_mut(&mut self, id: AttributeType) -> Option<&mut Attribute>;
-    // Optional: Eine Methode, um alle Attribute aufzulisten
-    // fn get_all_attributes_mut(&mut self) -> Vec<&mut Attribute>;
 }
 
 // Implementierung für PhysicalAttributes (Matching auf AttributeType)

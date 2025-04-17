@@ -1,4 +1,4 @@
-// src/app_setup/core.rs // Geändert von "Neue Datei: src/plugins/core_plugin.rs" -> Pfad korrigiert
+// src/app_setup/core.rs
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy_rand::prelude::{EntropyPlugin, WyRand};

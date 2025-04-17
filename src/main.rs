@@ -1,34 +1,29 @@
 // src/main.rs
 use bevy::prelude::*;
+use bevy_common_assets::ron::RonAssetPlugin;
+use forge_of_stories::ui::theme::ThemeAsset;
 
 use forge_of_stories::{
-    app_setup::{AppState, CorePlugin, EventPlugin, SetupPlugin},
-    attributes::plugin::AttributesPlugin,
-    // debug::plugin::DebugPlugin,
-    // genetics::plugin::GeneticsCorePlugin,
-    // simulation::plugin::SimulationPlugin,
-    // Importiere BEIDE UI Plugins
-    ui_components::{LoadingScreenPlugin, MainMenuPlugin},
-    // visuals::plugin::VisualsPlugin,
+    attributes::AttributesPlugin,         // Dein Attribut-Plugin
+    initialization::AppState,             // Wird von lib.rs re-exportiert
+    initialization::InitializationPlugin, // <- Haupt-Setup-Plugin
+    ui::load_theme,
+    ui::UiPlugin,
     SimulationSystemSet,
 };
 
 fn main() {
     App::new()
         .add_plugins((
-            CorePlugin,
-            EventPlugin,
-            SetupPlugin,
-            LoadingScreenPlugin,
-            MainMenuPlugin, // MainMenuPlugin hinzufügen
-                            // GeneticsCorePlugin,
-                            // AttributesPlugin, // Wird weiter unten hinzugefügt
-                            // VisualsPlugin,
-                            // SimulationPlugin,
-                            // DebugPlugin,
+            InitializationPlugin, // Fügt Core, Events, Assets, Debug, State hinzu
+            AttributesPlugin,     // Gameplay: Attribute
+            UiPlugin,             // Gameplay: UI (Loading, MainMenu, etc.)
+            // ... andere Top-Level Gameplay-Plugins ...
+            RonAssetPlugin::<ThemeAsset>::new(&["ron"]),
         ))
-        .init_state::<AppState>()
-        .add_plugins(AttributesPlugin) // Lässt sich gut hier hinzufügen
+        // init_resource<UiDebugOptions>() // Entfernt (macht DebugPlugin)
+        // init_state::<AppState>() // Entfernt (macht StatePlugin in InitializationPlugin)
+        .init_asset::<ThemeAsset>()
         .configure_sets(
             Update,
             (
@@ -38,8 +33,8 @@ fn main() {
                 SimulationSystemSet::AttributeCalculation,
             )
                 .chain()
-                // Läuft jetzt nur noch im Running State (war schon korrekt)
                 .run_if(in_state(AppState::Running)),
         )
+        .add_systems(Startup, load_theme)
         .run();
 }

@@ -1,6 +1,9 @@
 // src/attributes/plugin.rs
-use super::components::*;
-use super::systems::*;
+use super::{
+    components::*,              // Behalte Komponenten-Imports
+    events::AttributeUsedEvent, // <--- Importiere das Event
+    systems::*,                 // Behalte System-Imports
+};
 use crate::{AppState, SimulationSystemSet};
 use bevy::prelude::*;
 
@@ -8,7 +11,12 @@ pub struct AttributesPlugin;
 
 impl Plugin for AttributesPlugin {
     fn build(&self, app: &mut App) {
-        // Systeme für AttributeApplication
+        info!("AttributesPlugin initialized.");
+        // --- REGISTRIERE DAS EVENT ---
+        app.add_event::<AttributeUsedEvent>();
+        // -------------------------
+
+        // Systeme für AttributeApplication (unverändert)
         app.add_systems(
             Update,
             (
@@ -16,22 +24,22 @@ impl Plugin for AttributesPlugin {
                 apply_attributes::<MentalAttributes>,
                 apply_attributes::<SocialAttributes>,
             )
-                .in_set(SimulationSystemSet::AttributeApplication) // Nur dieses Set
+                .in_set(SimulationSystemSet::AttributeApplication)
                 .run_if(in_state(AppState::Running)),
         );
 
-        // Systeme für AttributeCalculation
+        // Systeme für AttributeCalculation (unverändert)
         app.add_systems(
             Update,
             (
                 calculate_effective_attribute_values,
                 update_attribute_rust,
-                update_physical_attributes, // Kann hier bleiben (wenn Body hinzugefügt wird) oder weggelassen werden
+                update_physical_attributes,
                 update_mental_attributes,
                 update_social_attributes,
-                update_attribute_usage, // Gehört auch eher hierher
+                update_attribute_usage, // Dieses System kann jetzt auf das Event zugreifen
             )
-                .in_set(SimulationSystemSet::AttributeCalculation) // Nur dieses Set
+                .in_set(SimulationSystemSet::AttributeCalculation)
                 .run_if(in_state(AppState::Running)),
         );
     }

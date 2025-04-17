@@ -1,62 +1,16 @@
-use crate::attributes::components::{
-    Attribute, AttributeType, MentalAttributes, PhysicalAttributes, SocialAttributes,
+// src/attributes/systems.rs
+
+// Importiere die notwendigen Komponenten und den Trait aus dem components-Modul
+use crate::attributes::{
+    components::{
+        Attribute, AttributeGroup, MentalAttributes, PhysicalAttributes, SocialAttributes,
+    },
+    events::AttributeUsedEvent, // <--- Importiere das Event von seinem neuen Ort
 };
-
-// ÄNDERUNG: Importiere VisualTraits direkt
 use bevy::prelude::*;
-use bevy::time::Time;
+use bevy::time::Time; // Importiere Time für update_attribute_rust und update_attribute_usage
 
-// Generischer Trait für Attributgruppen
-pub trait AttributeGroup {
-    // <- Du definierst den Trait hier
-    fn get_attribute_mut(&mut self, id: AttributeType) -> Option<&mut Attribute>;
-}
-
-// Implementierungen für PhysicalAttributes, MentalAttributes, SocialAttributes (unverändert)...
-// (Die Implementierungen sind korrekt hier platziert, da der Trait hier definiert wird)
-// ... (Implementierungen für PhysicalAttributes, MentalAttributes, SocialAttributes) ...
-impl AttributeGroup for PhysicalAttributes {
-    fn get_attribute_mut(&mut self, id: AttributeType) -> Option<&mut Attribute> {
-        match id {
-            AttributeType::Strength => Some(&mut self.strength),
-            AttributeType::Agility => Some(&mut self.agility),
-            AttributeType::Toughness => Some(&mut self.toughness),
-            AttributeType::Endurance => Some(&mut self.endurance),
-            AttributeType::Recuperation => Some(&mut self.recuperation),
-            AttributeType::DiseaseResistance => Some(&mut self.disease_resistance),
-            _ => None,
-        }
-    }
-}
-impl AttributeGroup for MentalAttributes {
-    fn get_attribute_mut(&mut self, id: AttributeType) -> Option<&mut Attribute> {
-        match id {
-            AttributeType::AnalyticalAbility => Some(&mut self.analytical_ability),
-            AttributeType::Focus => Some(&mut self.focus),
-            AttributeType::Willpower => Some(&mut self.willpower),
-            AttributeType::Creativity => Some(&mut self.creativity),
-            AttributeType::Intuition => Some(&mut self.intuition),
-            AttributeType::Patience => Some(&mut self.patience),
-            AttributeType::Memory => Some(&mut self.memory),
-            AttributeType::SpatialSense => Some(&mut self.spatial_sense),
-            _ => None,
-        }
-    }
-}
-impl AttributeGroup for SocialAttributes {
-    fn get_attribute_mut(&mut self, id: AttributeType) -> Option<&mut Attribute> {
-        match id {
-            AttributeType::Empathy => Some(&mut self.empathy),
-            AttributeType::SocialAwareness => Some(&mut self.social_awareness),
-            AttributeType::LinguisticAbility => Some(&mut self.linguistic_ability),
-            AttributeType::Musicality => Some(&mut self.musicality),
-            AttributeType::Leadership => Some(&mut self.leadership),
-            AttributeType::Negotiation => Some(&mut self.negotiation),
-            _ => None,
-        }
-    }
-}
-// System zur Berechnung der effektiven Attributwerte
+// System zur Berechnung der effektiven Attributwerte (unverändert)
 pub fn calculate_effective_attribute_values(mut query: Query<&mut Attribute>) {
     for mut attribute in query.iter_mut() {
         let mut value = attribute.current_value;
@@ -71,37 +25,141 @@ pub fn calculate_effective_attribute_values(mut query: Query<&mut Attribute>) {
 
 // System für Attributverfall/Rust (unverändert)
 pub fn update_attribute_rust(time: Res<Time>, mut query: Query<&mut Attribute>) {
-    const RUST_THRESHOLD_DAYS: f32 = 30.0;
+    const RUST_THRESHOLD_DAYS: f32 = 30.0; // Beispielwert
+
+    // Beispielhafte Konvertierung von Sekunden in In-Game-Tage (Annahme: 1 Sekunde = 1 Stunde)
+    let seconds_per_ingame_day = 24.0; // * 60.0 * 60.0; // Wenn 1 Sekunde = 1 Sekunde wäre
 
     for mut attribute in query.iter_mut() {
         if let Some(last_used) = attribute.last_used {
+            // Verwende time.elapsed() um die Gesamtzeit seit Spielstart zu bekommen
             let time_since_used = time.elapsed() - last_used;
-            let days_since_used = time_since_used.as_secs_f32() / (24.0 * 60.0 * 60.0);
+            let days_since_used = time_since_used.as_secs_f32() / seconds_per_ingame_day;
 
             if days_since_used > RUST_THRESHOLD_DAYS {
-                let new_rust_level = (days_since_used / RUST_THRESHOLD_DAYS).floor() as u8;
-                attribute.rust_level = Some(new_rust_level.min(6));
+                // Berechne Rust-Level basierend darauf, wie viele RUST_THRESHOLD_DAYS-Perioden vergangen sind
+                let rust_periods = (days_since_used / RUST_THRESHOLD_DAYS).floor();
+                // Begrenze das Rust-Level (z.B. auf maximal 6)
+                let new_rust_level = (rust_periods as u8).min(6);
+                attribute.rust_level = Some(new_rust_level);
+                // Optional: Logge Änderung
+                // info!("Attribute {:?} rust level set to {:?} ({} days since last use)", attribute.id, attribute.rust_level, days_since_used);
+            } else {
+                // Wenn das Attribut wieder verwendet wurde (last_used aktualisiert) ODER die Zeit noch nicht reicht,
+                // sollte der Rust-Level potenziell entfernt werden (oder zumindest nicht erhöht).
+                // Das Entfernen von Rust passiert typischerweise, wenn `last_used` aktualisiert wird.
+                // Hier könnten wir sicherstellen, dass es None ist, wenn die Bedingung nicht erfüllt ist.
+                // Aber Vorsicht: Das würde Rust entfernen, sobald die Zeit *unter* den Threshold fällt,
+                // was seltsam wäre. Besser: Rust nur entfernen, wenn das Attribut aktiv genutzt wird.
+                // Daher lassen wir den Rust-Level hier bestehen, wenn er einmal gesetzt wurde und die Zeit noch läuft.
+                // Das `update_attribute_usage` System sollte `rust_level` auf `None` setzen bei Benutzung.
             }
+        } else {
+            // Wenn das Attribut noch nie benutzt wurde, startet es ohne Rust.
+            attribute.rust_level = None;
         }
     }
 }
 
 // Platzhalter-System, korrigiert für Warnungen
-pub fn apply_attributes<T: AttributeGroup + Component>(
-    mut query: Query<(&mut T, &AttributeType)>,
-    _commands: Commands, // Markiert als unbenutzt
+// T muss Component sein, damit Query funktioniert.
+// T muss AttributeGroup sein, um get_attribute_mut aufrufen zu können.
+pub fn apply_attributes<T: Component + AttributeGroup>(
+    // Die Query holt alle Entitäten, die sowohl die Komponente T (z.B. PhysicalAttributes)
+    // als auch eine (hypothetische) AttributeType-Komponente haben, die angibt,
+    // welches Attribut gerade relevant ist. Dieser Teil ist konzeptionell.
+    // Wahrscheinlicher ist, dass ein *Event* dieses System triggert und das AttributeType liefert,
+    // oder dass dieses System über *alle* Attribute in T iteriert.
+    // Lassen wir die Query vorerst so, als Beispiel für einen generischen Ansatz.
+    // In der Praxis braucht man hier oft spezifischere Logik.
+    mut query: Query<&mut T>, // <- Angepasst: Iteriert über die Gruppen
+                              // _commands: Commands, // Markiert als unbenutzt, wenn nichts gespawnt wird
 ) {
-    for (mut attributes, attribute_type) in query.iter_mut() {
-        if let Some(_attribute) = attributes.get_attribute_mut(*attribute_type) { // Markiert als unbenutzt
-             // Hier wird das Attribut angewendet
-             // Beispiel: commands.spawn().insert(attribute.clone());
-             // Platzhalter - Logik hier einfügen
-             // info!("Applying attribute: {:?}", attribute.id); // Beispiel-Log
+    for mut _attributes_group in query.iter_mut() { // <- Iteriert über die gefundene(n) Attributgruppe(n)
+         // Hier müsste die Logik stehen, die entscheidet, *welches* Attribut
+         // aus der Gruppe T angewendet werden soll und *wie*.
+         // Beispiel: Man könnte über alle Attribute in der Gruppe iterieren
+         // oder auf ein spezifisches Event reagieren.
+
+        // Platzhalter - Logik hier einfügen
+        // Beispiel:
+        // if let Some(strength_attr) = attributes_group.get_attribute_mut(AttributeType::Strength) {
+        //     if strength_attr.effective_value > 4000.0 {
+        //         info!("Entity has high strength!");
+        //         // Füge z.B. eine temporäre Komponente hinzu oder sende ein Event
+        //     }
+        // }
+    }
+}
+
+// Update-Systeme (nur mit unterstrichenen Parametern, wenn sie nicht verwendet werden)
+pub fn update_physical_attributes(_query: Query<&PhysicalAttributes>) {
+    // TODO: Implementiere Logik, z.B. basierend auf Gesundheit, Müdigkeit etc.
+}
+
+pub fn update_mental_attributes(_query: Query<&MentalAttributes>) {
+    // TODO: Implementiere Logik, z.B. basierend auf Stress, Lernen etc.
+}
+
+pub fn update_social_attributes(_query: Query<&SocialAttributes>) {
+    // TODO: Implementiere Logik, z.B. basierend auf Interaktionen, Reputation etc.
+}
+
+// System zum Aktualisieren von 'last_used' (wenn ein Attribut benutzt wird)
+// Dieses System würde typischerweise durch Events getriggert werden, die anzeigen,
+// dass ein Attribut verwendet wurde.
+// Beispiel: Event `AttributeUsedEvent { entity: Entity, attribute_type: AttributeType }`
+pub fn update_attribute_usage(
+    mut attribute_query: Query<(
+        // Query über alle Attribut-Gruppen-Komponenten
+        Option<&mut PhysicalAttributes>,
+        Option<&mut MentalAttributes>,
+        Option<&mut SocialAttributes>,
+    )>,
+    time: Res<Time>,
+    // Hypothetischer Event Reader
+    mut ev_attribute_used: EventReader<AttributeUsedEvent>,
+) {
+    let current_time = time.elapsed();
+
+    for event in ev_attribute_used.read() {
+        // Finde die Entität aus dem Event und hole ihre Attribut-Komponenten
+        if let Ok((mut phys_opt, mut ment_opt, mut soc_opt)) = attribute_query.get_mut(event.entity)
+        {
+            let attribute_type = event.attribute_type;
+
+            // Finde das spezifische Attribut über die Gruppen und aktualisiere es
+            let mut attribute_found: Option<&mut Attribute> = None;
+
+            if let Some(ref mut phys) = phys_opt {
+                if let Some(attr) = phys.get_attribute_mut(attribute_type) {
+                    attribute_found = Some(attr);
+                }
+            }
+            if attribute_found.is_none() {
+                if let Some(ref mut ment) = ment_opt {
+                    if let Some(attr) = ment.get_attribute_mut(attribute_type) {
+                        attribute_found = Some(attr);
+                    }
+                }
+            }
+            if attribute_found.is_none() {
+                if let Some(ref mut soc) = soc_opt {
+                    if let Some(attr) = soc.get_attribute_mut(attribute_type) {
+                        attribute_found = Some(attr);
+                    }
+                }
+            }
+
+            // Wenn das Attribut gefunden wurde, aktualisiere last_used und entferne Rust
+            if let Some(attribute) = attribute_found {
+                attribute.last_used = Some(current_time);
+                // Wenn ein Attribut verwendet wird, verschwindet der Rost sofort.
+                if attribute.rust_level.is_some() {
+                    attribute.rust_level = None;
+                    // info!("Attribute {:?} used, rust removed.", attribute.id);
+                }
+            }
         }
     }
 }
-// ... (restliche Systeme unverändert, aber stelle sicher, dass sie Parameter korrekt verwenden oder markieren) ...
-pub fn update_physical_attributes(_query: Query<&PhysicalAttributes>) {}
-pub fn update_mental_attributes(_query: Query<&MentalAttributes>) {}
-pub fn update_social_attributes(_query: Query<&SocialAttributes>) {}
-pub fn update_attribute_usage(mut _attribute_query: Query<&mut Attribute>, _time: Res<Time>) {}

@@ -1,14 +1,15 @@
 // src/attributes/mod.rs
-pub mod components;
-pub mod plugin;
-pub mod systems;
-
+mod components;
+mod events;
+mod plugin;
+mod systems;
 // ----- Spezifische Re-Exports -----
 
 // Aus components: Typen und der definierende Trait
 pub use components::{
     Attribute,
     AttributeCategory,
+    AttributeDistribution,
     AttributeGroup, // Der Trait wird hier definiert und exportiert
     AttributeType,
     MentalAttributes,
@@ -16,7 +17,7 @@ pub use components::{
     SocialAttributes,
 };
 
-// Aus plugin: Das Plugin selbst
+pub use events::AttributeUsedEvent;
 pub use plugin::AttributesPlugin;
 
 // Aus systems: Die öffentlichen Systemfunktionen
