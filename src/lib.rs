@@ -1,6 +1,7 @@
 // src/lib.rs
 pub mod attributes;
 pub mod initialization; // <- Geändert
+pub mod simulation;
 pub mod ui; // <- Geändert
 
 // Konstanten

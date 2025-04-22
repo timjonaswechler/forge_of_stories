@@ -1,9 +1,11 @@
-// src/app_setup/core.rs
+// src/initialization/core/plugin.rs
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy_rand::prelude::{EntropyPlugin, WyRand};
 
-use crate::{FIXED_SEED, USE_FIXED_SEED};
+use crate::{FIXED_SEED, USE_FIXED_SEED}; // Assuming these are defined at crate root
+
+use super::systems::setup_camera; // Import the system
 
 pub struct CorePlugin;
 
@@ -11,6 +13,10 @@ impl Plugin for CorePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(
             DefaultPlugins
+                .set(AssetPlugin {
+                    watch_for_changes_override: Some(true),
+                    ..default()
+                })
                 .set(WindowPlugin {
                     primary_window: Some(Window {
                         title: "Forge of Stories".into(),
@@ -39,14 +45,4 @@ impl Plugin for CorePlugin {
         // Die IsDefaultUiCamera Komponente stellt sicher, dass die UI an diese Kamera gebunden wird.
         app.add_systems(Startup, setup_camera);
     }
-}
-
-// Startup-System zum Erstellen der UI-Kamera
-fn setup_camera(mut commands: Commands) {
-    commands.spawn((
-        Camera2d::default(),
-        // Diese Komponente ist wichtig, damit die UI weiß, welche Kamera sie verwenden soll!
-        IsDefaultUiCamera,
-    ));
-    info!("Spawned default UI camera.");
 }

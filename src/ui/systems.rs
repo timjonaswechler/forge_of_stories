@@ -38,3 +38,37 @@ pub fn button_interaction_system(
         }
     }
 }
+
+// Läuft jedes Frame, reagiert aber nur, wenn UiTheme verändert wurde
+pub fn update_widget_button_style(
+    theme: Res<UiTheme>,
+    mut button_query: Query<(&Children, &mut Node, &mut BorderColor), With<WidgetButton>>,
+    mut text_font_query: Query<&mut TextFont>,
+    mut text_color_query: Query<&mut TextColor>,
+) {
+    // Sobald UiTheme neu geladen wurde:
+    if !theme.is_changed() {
+        return;
+    }
+
+    let style = &theme.button_style;
+
+    for (children, mut node, mut border_color) in button_query.iter_mut() {
+        // Padding & Rahmen aktualisieren
+        node.padding = style.padding;
+        node.border = style.border;
+        *border_color = style.normal_border.into();
+
+        // Text-Fonts der Kinder updaten
+        for &child in children.iter() {
+            if let Ok(mut tf) = text_font_query.get_mut(child) {
+                tf.font_size = style.font_size;
+                // Optional: falls du auch das Font-Handle live ändern willst:
+                // tf.font = theme.default_font().clone();
+            }
+            if let Ok(mut tc) = text_color_query.get_mut(child) {
+                tc.0 = style.text_color; // Passe bei Bedarf auch die Textfarbe an
+            }
+        }
+    }
+}

@@ -1,28 +1,26 @@
 // src/main.rs
 use bevy::prelude::*;
+
 use bevy_common_assets::ron::RonAssetPlugin;
-use forge_of_stories::ui::theme::ThemeAsset;
+
+use forge_of_stories::simulation::SimulationPlugin;
+use forge_of_stories::ui::theme::ThemeAsset; // <- Importieren
 
 use forge_of_stories::{
-    attributes::AttributesPlugin,         // Dein Attribut-Plugin
-    initialization::AppState,             // Wird von lib.rs re-exportiert
-    initialization::InitializationPlugin, // <- Haupt-Setup-Plugin
-    ui::load_theme,
-    ui::UiPlugin,
-    SimulationSystemSet,
+    attributes::AttributesPlugin, initialization::AppState, initialization::InitializationPlugin,
+    ui::load_theme, ui::UiPlugin, SimulationSystemSet,
 };
 
 fn main() {
     App::new()
+        // Aktiviert Hot‑Reload fürs Theme (und alle anderen Assets)
         .add_plugins((
-            InitializationPlugin, // Fügt Core, Events, Assets, Debug, State hinzu
-            AttributesPlugin,     // Gameplay: Attribute
-            UiPlugin,             // Gameplay: UI (Loading, MainMenu, etc.)
-            // ... andere Top-Level Gameplay-Plugins ...
-            RonAssetPlugin::<ThemeAsset>::new(&["ron"]),
+            InitializationPlugin,
+            AttributesPlugin,
+            UiPlugin,
+            SimulationPlugin, // <- HIER HINZUFÜGEN
         ))
-        // init_resource<UiDebugOptions>() // Entfernt (macht DebugPlugin)
-        // init_state::<AppState>() // Entfernt (macht StatePlugin in InitializationPlugin)
+        // ... Rest der Konfiguration ...
         .init_asset::<ThemeAsset>()
         .configure_sets(
             Update,

@@ -1,7 +1,7 @@
 (
     button_style: (
-        font_size: 24.0,
-        padding: 10.0,
+        font_size: 20.0,
+        padding: 15.0,
         border: 2.0,
         text_color: (1.0, 1.0, 1.0, 1.0),
         normal_background: (0.15, 0.15, 0.15, 1.0),

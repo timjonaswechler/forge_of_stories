@@ -1,22 +1,29 @@
 // src/initialization/mod.rs
+
+// Declare sub-modules
 mod assets;
 mod core;
 mod debug;
 mod events;
-mod plugin; // <- Neu für das Haupt-Plugin
-mod state; // <- Neu für AppState
+mod plugin;
+mod state; // Main initialization plugin module
 
-// --- Öffentliche Exporte ---
+// --- Public Exports ---
 
-// Das Haupt-Plugin für dieses Modul
+// The main plugin for this module
 pub use plugin::InitializationPlugin;
 
-// Wichtige Typen und Ressourcen
-pub use assets::{AssetLoadingTracker, EssentialAssets, GameAssets, SpeciesTemplate}; // AttributeDistribution ist intern
-pub use state::AppState; // AppState hier exportieren
+// Important types and resources needed outside the module
+pub use assets::types::{AssetLoadingTracker, EssentialAssets, GameAssets, SpeciesTemplate};
+pub use events::types::{AppStartupCompletedEvent, AssetsLoadedEvent};
+pub use state::types::AppState;
 
-// Optionale Exporte (falls von außerhalb benötigt, sonst privat lassen)
-// pub use core::CorePlugin;
-// pub use debug::DebugPlugin;
-pub use events::{AppStartupCompletedEvent, AssetsLoadedEvent};
-// pub use assets::{EssentialAssetsPlugin, GameAssetsPlugin}; // Normalerweise nicht benötigt
+// Re-export internal plugins if needed elsewhere (less common)
+// pub use assets::plugin::AssetManagementPlugins;
+// pub use core::plugin::CorePlugin;
+// pub use debug::plugin::DebugPlugin;
+// pub use events::plugin::EventPlugin;
+// pub use state::plugin::StatePlugin;
+
+// Note: AttributeDistribution and FontsFolderHandle are usually internal
+// to the assets module and don't need to be exported publicly here.

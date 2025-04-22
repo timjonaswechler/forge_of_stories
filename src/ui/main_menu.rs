@@ -50,7 +50,7 @@ fn setup_main_menu_ui(mut commands: Commands, theme: Res<UiTheme>) {
                 row_gap: Val::Px(30.0),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.05, 0.05, 0.05)),
+            BackgroundColor(Color::srgb(0.5, 0.05, 0.05)),
             MainMenuUIRoot,
         ))
         .id();

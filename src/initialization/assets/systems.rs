@@ -1,81 +1,17 @@
-// src/initialization/assets.rs
-use crate::{attributes::AttributeType, ui::theme::UiTheme, AppState}; // Import UiTheme
-use bevy::{asset::LoadedFolder, prelude::*}; // Add AssetPath
+// src/initialization/assets/systems.rs
+use bevy::{asset::LoadedFolder, prelude::*};
+use std::{collections::HashMap, path::Path};
 
-use bevy_common_assets::ron::RonAssetPlugin;
-use std::collections::HashMap;
-use std::path::Path; // Add Path
+// Import types/resources from our types file
+use super::types::{
+    AssetLoadingTracker, EssentialAssets, FontsFolderHandle, GameAssets, SpeciesTemplate,
+};
+// Import necessary types from outside this module
+use crate::{attributes::AttributeType, ui::theme::UiTheme, AppState}; // AppState for state transitions
 
-// --- Asset Typ Definitionen ---
-#[derive(Resource)]
-pub struct EssentialAssets {
-    pub font: Handle<Font>, // Keep your essential font separate if needed for loading screen
-    pub logo: Handle<Image>,
-}
+// --- Essential Asset Systems ---
 
-#[derive(Resource, Default)]
-pub struct GameAssets {
-    pub species_templates: Vec<Handle<SpeciesTemplate>>,
-    // Store loaded fonts by name (e.g., "Roboto-Regular")
-    pub fonts: HashMap<String, Handle<Font>>,
-    pub textures: Vec<Handle<Image>>,
-    // Add other asset types here as needed
-}
-
-// Temporary resource to track the folder loading
-#[derive(Resource)]
-struct FontsFolderHandle(Handle<LoadedFolder>);
-
-#[derive(Resource, Default)]
-pub struct AssetLoadingTracker {
-    pub species_templates_loaded: bool,
-    pub fonts_folder_loaded: bool, // Track the folder itself
-    pub fonts_processed: bool,     // Track if we've processed the handles
-    pub textures_loaded: bool,
-}
-
-#[derive(Asset, TypePath, serde::Deserialize, Debug, Clone)]
-pub struct SpeciesTemplate {
-    pub species_name: String,
-    #[serde(default)]
-    pub attribute_distributions: HashMap<AttributeType, AttributeDistribution>,
-}
-
-#[derive(serde::Deserialize, Debug, Clone, Default)]
-pub struct AttributeDistribution {
-    pub mean: f32,
-    pub std_dev: f32,
-}
-
-// --- Asset Management Logik ---
-
-/// Bündelt die Plugins für das Laden von essentiellen und Spiel-Assets.
-pub(super) struct AssetManagementPlugins;
-
-impl Plugin for AssetManagementPlugins {
-    fn build(&self, app: &mut App) {
-        app.add_plugins((
-            RonAssetPlugin::<SpeciesTemplate>::new(&["ron"]),
-            EssentialAssetsPlugin,
-            GameAssetsPlugin,
-        ));
-    }
-}
-
-// --- Plugin für essentielle Assets ---
-struct EssentialAssetsPlugin;
-
-impl Plugin for EssentialAssetsPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(AppState::Startup), load_essential_assets)
-            .add_systems(
-                Update,
-                check_essential_assets_loaded.run_if(in_state(AppState::Startup)),
-            );
-    }
-}
-
-fn load_essential_assets(mut commands: Commands, asset_server: Res<AssetServer>) {
+pub fn load_essential_assets(mut commands: Commands, asset_server: Res<AssetServer>) {
     info!("Requesting essential assets (for loading screen)...");
     // Assuming assets/fonts/Roboto-Regular.ttf exists
     let font = asset_server.load("fonts/Roboto-Regular.ttf");
@@ -83,7 +19,7 @@ fn load_essential_assets(mut commands: Commands, asset_server: Res<AssetServer>)
     commands.insert_resource(EssentialAssets { font, logo });
 }
 
-fn check_essential_assets_loaded(
+pub fn check_essential_assets_loaded(
     asset_server: Res<AssetServer>,
     essential_assets: Option<Res<EssentialAssets>>,
     mut next_state: ResMut<NextState<AppState>>,
@@ -99,33 +35,9 @@ fn check_essential_assets_loaded(
     }
 }
 
-// --- Plugin für Spiel-Assets ---
-struct GameAssetsPlugin;
+// --- Game Asset Systems ---
 
-impl Plugin for GameAssetsPlugin {
-    fn build(&self, app: &mut App) {
-        app.init_resource::<GameAssets>()
-            .init_resource::<AssetLoadingTracker>()
-            .add_systems(OnEnter(AppState::Loading), load_game_assets)
-            .add_systems(
-                Update,
-                (
-                    check_folder_loaded, // Check if the folder *itself* is loaded
-                    // Process the loaded folder once AFTER it's loaded
-                    process_loaded_fonts.run_if(resource_exists::<FontsFolderHandle>),
-                )
-                    .chain()
-                    .run_if(in_state(AppState::Loading)), // Run these in sequence during Loading state
-            )
-            .add_systems(
-                Update,
-                check_all_game_assets_processed // New system to check the tracker and transition state
-                    .run_if(in_state(AppState::Loading)),
-            );
-    }
-}
-
-fn load_game_assets(mut commands: Commands, asset_server: Res<AssetServer>) {
+pub fn load_game_assets(mut commands: Commands, asset_server: Res<AssetServer>) {
     info!("Requesting game assets to load...");
 
     // --- Load other assets ---
@@ -148,7 +60,7 @@ fn load_game_assets(mut commands: Commands, asset_server: Res<AssetServer>) {
 }
 
 // System 1: Check if the folder handle itself is loaded
-fn check_folder_loaded(
+pub fn check_folder_loaded(
     asset_server: Res<AssetServer>,
     folder_handle: Option<Res<FontsFolderHandle>>, // Use Option<> for safety
     mut tracker: ResMut<AssetLoadingTracker>,
@@ -161,28 +73,34 @@ fn check_folder_loaded(
             info!("Game Asset Check: Fonts folder loaded.");
             tracker.fonts_folder_loaded = true;
         }
-    } else if !tracker.fonts_folder_loaded {
-        // This case might happen if the system runs before load_game_assets finishes inserting the resource.
-        // It's generally fine, it will just check again next frame.
-        // You could add a warning here if it persists unexpectedly.
     }
+    // No need for the `else if` block from before, the system just won't do anything
+    // if the resource isn't present yet.
 }
 
 // System 2: Process the loaded folder *after* check_folder_loaded confirms it's ready
-fn process_loaded_fonts(
+pub fn process_loaded_fonts(
     mut commands: Commands,
     folder_handle: Res<FontsFolderHandle>, // Now we require it, runs only if it exists
     loaded_folders: Res<Assets<LoadedFolder>>,
+    // We need GameAssets to store the processed handles
+    mut game_assets: ResMut<GameAssets>,
+    // We need UiTheme to potentially set the default font
     mut ui_theme: ResMut<UiTheme>,
     mut tracker: ResMut<AssetLoadingTracker>,
 ) {
     // Only proceed if the folder is loaded but fonts haven't been processed yet
+    // The run_if check resource_exists::<FontsFolderHandle> ensures the handle resource exists.
+    // We *also* need the tracker flag because this system runs *each frame* if the resource exists,
+    // but we only want to process the folder content *once*.
     if !tracker.fonts_folder_loaded || tracker.fonts_processed {
         return;
     }
 
     info!("Processing loaded fonts folder...");
-    let loaded_folder = loaded_folders.get(&folder_handle.0).unwrap(); // Should be safe due to run_if
+    // We can unwrap here because fonts_folder_loaded is true, implying the handle is valid
+    // and the folder is loaded and accessible via the Assets resource.
+    let loaded_folder = loaded_folders.get(&folder_handle.0).unwrap();
 
     for handle in loaded_folder.handles.iter() {
         // Get the asset path (e.g., "fonts/Roboto-Regular.ttf")
@@ -201,11 +119,16 @@ fn process_loaded_fonts(
             if !file_stem.is_empty() {
                 debug!("-> Found font: '{}', handle: {:?}", file_stem, handle.id());
                 let font_handle: Handle<Font> = handle.clone().typed();
-                // Setze nur dann den Default-Font, wenn es Roboto-Regular ist
+
+                // Store in GameAssets
+                game_assets
+                    .fonts
+                    .insert(file_stem.clone(), font_handle.clone());
+
+                // Setze nur dann den Default-Font, wenn es Roboto-Regular ist (or your chosen default)
                 if file_stem == "Roboto-Regular" {
-                    ui_theme.default_font = Some(font_handle.clone());
+                    ui_theme.default_font = Some(font_handle);
                 }
-                ui_theme.fonts.insert(file_stem, font_handle);
             } else {
                 warn!("Could not extract file stem from font path: {}", path_str);
             }
@@ -218,18 +141,18 @@ fn process_loaded_fonts(
     // Mark fonts as processed and remove the temporary handle resource
     tracker.fonts_processed = true;
     commands.remove_resource::<FontsFolderHandle>();
-    info!("Game Asset Check: Fonts processed and stored in GameAssets.");
+    info!("Game Asset Check: Fonts processed and stored in GameAssets and UiTheme.");
 }
 
 // System 3: Check if game assets (templates, textures) are loaded and update tracker
 // This system NO LONGER transitions the state. It only updates the tracker.
-fn check_all_game_assets_processed(
+pub fn check_all_game_assets_processed(
     asset_server: Res<AssetServer>,
-    game_assets: Res<GameAssets>, // Need this to check templates/textures
-    mut tracker: ResMut<AssetLoadingTracker>, // Make tracker mutable
-                                  // mut next_state: ResMut<NextState<AppState>>, // No longer needed here
+    game_assets: Res<GameAssets>,
+    mut tracker: ResMut<AssetLoadingTracker>,
+    // Removed `mut next_state`
 ) {
-    // Only update if not already marked as loaded, to avoid redundant checks/logs
+    // Only update if not already marked as loaded
     if !tracker.species_templates_loaded {
         let templates_loaded = game_assets
             .species_templates
@@ -237,7 +160,7 @@ fn check_all_game_assets_processed(
             .all(|handle| asset_server.is_loaded_with_dependencies(handle));
 
         if templates_loaded {
-            // info!("Game Asset Check: Species templates loaded."); // Optional Log
+            info!("Game Asset Check: Species templates loaded.");
             tracker.species_templates_loaded = true;
         }
     }
@@ -249,8 +172,32 @@ fn check_all_game_assets_processed(
             .all(|handle| asset_server.is_loaded_with_dependencies(handle));
 
         if textures_loaded {
-            // info!("Game Asset Check: Textures loaded."); // Optional Log
+            info!("Game Asset Check: Textures loaded.");
             tracker.textures_loaded = true;
         }
+    }
+
+    // NOTE: The state transition to AppState::Running/MainMenu should happen
+    // in a separate system that checks if *all* loading is complete (fonts_processed
+    // AND species_templates_loaded AND textures_loaded). This makes the
+    // loading logic more modular. Let's add a new system for this.
+}
+
+// New System: Check if *all* loading is complete and transition state
+pub fn check_loading_complete(
+    tracker: Res<AssetLoadingTracker>,
+    mut next_state: ResMut<NextState<AppState>>,
+    // Add any other resources/conditions needed before transitioning
+    // For example, maybe you need to wait for UI setup to complete too.
+) {
+    if tracker.species_templates_loaded
+        && tracker.fonts_processed // Check that fonts were processed
+        && tracker.textures_loaded
+    {
+        info!("All game assets processed. Transitioning to AppState::MainMenu (or Running)");
+        // Choose the appropriate next state
+        next_state.set(AppState::MainMenu);
+        // Consider removing the tracker resource here if it's no longer needed
+        // commands.remove_resource::<AssetLoadingTracker>(); // Needs `mut commands: Commands`
     }
 }
