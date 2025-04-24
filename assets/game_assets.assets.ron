@@ -1,0 +1,25 @@
+#![enable(implicit_some)]
+({// <<<---- ÄUSSERE RUNDE KLAMMERN SIND KORREKT für StandardDynamicAssetCollection ----<<<
+    
+        "texture.loading_icon":File(
+            path:"textures/loading_icon.png"
+        ),
+        "font_handles": Folder(
+            path: "fonts",
+        ),
+    
+     // <<<---- HIER kommt die Map für die Assets rein! ----<<<
+
+        // === World Assets ===
+        "species.elf": File(
+            path: "species/elf.species.ron",
+        ),
+        "species.human": File(
+            path: "species/human.species.ron",
+        ),
+        "species.ork": File( // Letzter Eintrag braucht kein Komma
+            path: "species/ork.species.ron",
+        ), // Komma optional nach letztem Eintrag der Map
+     // <<<---- Map schließen ----<<<
+
+}) // <<<---- Äußere Runde Klammer schließen ----<<<

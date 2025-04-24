@@ -1,26 +1,19 @@
-[package]
+# cargo.toml
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+
+[workspace.package]
 name = "forge_of_stories"
+authors = ["Tim-Jonas Wechler"]
 version = "0.1.0"
 edition = "2021"
+description = "A game engine for creating interactive stories"
 
-[dependencies]
-bevy = { version = "0.15.3", features = [
-    "dynamic_linking",
-    "bevy_dev_tools",
-    "file_watcher",
-] }
-bevy_common_assets = { version = "0.12", features = ["ron"] }
-bevy_rand = { version = "0.9.0", features = ["rand_chacha", "wyrand"] }
-derivative = "2.2.0"
-rand = "0.8.5"
-rand_distr = "0.4.3"
+[workspace.dependencies]
+bevy = { version = "0.15.3", features = ["dynamic_linking", "file_watcher"] }
 
-
-# Deine anderen Abhängigkeiten
-strum = "0.27"
-strum_macros = "0.27"
-serde = { version = "1.0", features = ["derive"] }
-ron = "0.10.1"
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]
@@ -29,3 +22,5 @@ opt-level = 1
 # Enable high optimizations for dependencies (incl. Bevy), but not for our code
 [profile.dev.package."*"]
 opt-level = 3
+
+# --- NEU: Features Definition ---

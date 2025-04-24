@@ -1,0 +1,32 @@
+[package]
+name = "forge_app"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description.workspace = true
+
+[dependencies]
+forge_ui = { path = "../forge_ui" }
+bevy = { workspace = true }
+
+
+bevy_common_assets = { version = "0.12", features = ["ron"] }
+bevy_asset_loader = { version = "0.22.0", features = [
+    "standard_dynamic_assets",
+] }
+bevy-inspector-egui = "=0.30.0"
+
+bevy_rand = { version = "0.9.0", features = ["rand_chacha", "wyrand"] }
+derivative = "2.2.0"
+rand = "0.8.5"
+rand_distr = "0.4.3"
+strum = "0.27"
+strum_macros = "0.27"
+serde = { version = "1.0", features = ["derive"] }
+ron = "0.10.1"
+
+
+[features]
+default = [] # Standardmäßig keine optionalen Features aktiv
+# Das "debug" Feature aktiviert das Bevy dev_tools Feature und erlaubt uns, Debug-Code einzubinden
+debug = ["bevy/bevy_dev_tools"]

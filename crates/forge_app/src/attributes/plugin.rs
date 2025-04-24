@@ -4,7 +4,7 @@ use super::{
     events::AttributeUsedEvent, // <--- Importiere das Event
     systems::*,                 // Behalte System-Imports
 };
-use crate::{AppState, SimulationSystemSet};
+
 use bevy::prelude::*;
 
 pub struct AttributesPlugin;
@@ -23,9 +23,7 @@ impl Plugin for AttributesPlugin {
                 apply_attributes::<PhysicalAttributes>,
                 apply_attributes::<MentalAttributes>,
                 apply_attributes::<SocialAttributes>,
-            )
-                .in_set(SimulationSystemSet::AttributeApplication)
-                .run_if(in_state(AppState::Running)),
+            ),
         );
 
         // Systeme für AttributeCalculation (unverändert)
@@ -38,9 +36,7 @@ impl Plugin for AttributesPlugin {
                 update_mental_attributes,
                 update_social_attributes,
                 update_attribute_usage, // Dieses System kann jetzt auf das Event zugreifen
-            )
-                .in_set(SimulationSystemSet::AttributeCalculation)
-                .run_if(in_state(AppState::Running)),
+            ),
         );
     }
 }

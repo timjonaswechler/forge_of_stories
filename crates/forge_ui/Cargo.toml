@@ -1,0 +1,11 @@
+[package]
+name = "forge_ui"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description.workspace = true
+
+[lib] # Wichtig: Das ist eine Bibliothek
+
+[dependencies]
+bevy = { workspace = true }
