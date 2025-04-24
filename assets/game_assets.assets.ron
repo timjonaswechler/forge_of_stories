@@ -1,25 +1,21 @@
-#![enable(implicit_some)]
-({// <<<---- ÄUSSERE RUNDE KLAMMERN SIND KORREKT für StandardDynamicAssetCollection ----<<<
-    
-        "texture.loading_icon":File(
-            path:"textures/loading_icon.png"
-        ),
-        "font_handles": Folder(
-            path: "fonts",
-        ),
-    
-     // <<<---- HIER kommt die Map für die Assets rein! ----<<<
+// #![enable(implicit_some)]
+({
+    // === Fonts (Beispiel, wenn Sie einen bestimmten laden wollen) ===
+    // Wenn Sie main_font aus GameAssets laden wollen statt aus dem Theme
+    // "font.main": File( path: "fonts/Roboto-Regular.ttf" ),
 
-        // === World Assets ===
-        "species.elf": File(
-            path: "species/elf.species.ron",
-        ),
-        "species.human": File(
-            path: "species/human.species.ron",
-        ),
-        "species.ork": File( // Letzter Eintrag braucht kein Komma
-            path: "species/ork.species.ron",
-        ), // Komma optional nach letztem Eintrag der Map
-     // <<<---- Map schließen ----<<<
+    // === Icons ===
+    "icon.settings": File( path: "game-icons/PNG/Black/2x/gear.png" ),
+    "icon.delete": File( path: "game-icons/PNG/Black/2x/cross.png" ),
 
-}) // <<<---- Äußere Runde Klammer schließen ----<<<
+    // === Species ===
+    "species.elf": File( path: "species/elf.species.ron" ),
+    "species.human": File( path: "species/human.species.ron" ),
+    "species.ork": File( path: "species/ork.species.ron" ),
+
+    // === Theme ===
+    "theme.default": File( path: "theme/default.theme.ron" ),
+
+    // Optional: Loading Icon (falls verwendet)
+     "texture.loading_icon": File( path:"game-icons/PNG/Black/2x/return.png" ), // Prüfen ob Textures-Ordner existiert
+})

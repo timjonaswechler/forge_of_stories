@@ -11,6 +11,8 @@ pub use button::{
     OnClick,            // Optional: Falls die App direkt Callbacks nutzen möchte (weniger flexibel)
 };
 
+pub mod theme; // Theme-Management für UI-Elemente
+
 use bevy::prelude::*;
 use button::{handle_button_clicks_event, update_button_visuals};
 // Später: use card::{update_card_visuals};
