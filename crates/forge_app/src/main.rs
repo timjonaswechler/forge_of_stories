@@ -6,8 +6,14 @@ use std::collections::HashMap; // <-- Import für HashMap
 
 use forge_app::attributes::{self, AttributesPlugin}; // Ihr attributes Modul
 use forge_ui::{
+    button::{handle_button_clicks_event, update_button_visuals},
     button::{ButtonBuilder, ButtonSize, ButtonVariant}, // Nur Button-Sachen die wir brauchen
-    card::{CardBuilder, ElementStyle, NodeElement},     // << Builder und Helfer importieren
+    card::{CardBuilder, ElementStyle, NodeElement},
+    checkbox::{
+        handle_checkbox_clicks, update_checkbox_visuals,
+        update_checkmark_visibility_on_state_change,
+    },
+    checkbox::{CheckboxBuilder, CheckboxChangedEvent}, // << Builder und Helfer importieren
     label::LabelBuilder,
     theme::UiTheme,
     ButtonClickedEvent, // Event bleibt wichtig
@@ -71,7 +77,19 @@ fn main() {
         )
         .add_systems(
             Update,
-            handle_button_clicks.run_if(in_state(AppState::MainMenu)), // Handle clicks in menu state
+            (
+                // Button Systeme
+                update_button_visuals,
+                handle_button_clicks_event,
+                // Checkbox Systeme
+                update_checkbox_visuals, // Den umbenannten Systemnamen verwenden, falls update_button_visuals auch so heißt
+                handle_checkbox_clicks,
+                update_checkmark_visibility_on_state_change,
+                // Handler aus der App
+                handle_button_clicks,    // <- Ihr Button-Event-Handler
+                handle_checkbox_changes, // <- Ihr Checkbox-Event-Handler
+            )
+                .run_if(in_state(AppState::MainMenu)), // << Bedingung HIER setzen
         )
         // Optional: Wenn Sie den fn-Callback-Handler brauchen:
         // .add_systems(Update, forge_ui::button::handle_button_clicks_fn.run_if(in_state(AppState::MainMenu)))
@@ -90,6 +108,8 @@ pub struct GameAssets {
     pub settings_icon: Handle<Image>,
     #[asset(key = "icon.delete")]
     pub delete_icon: Handle<Image>,
+    #[asset(key = "icon.checkmark")]
+    pub checkmark_icon: Handle<Image>,
 
     #[asset(key = "species.elf", typed)] // 'typed' wichtig für RonAssetPlugin via Key
     pub elf_species: Handle<SpeciesData>,
@@ -335,6 +355,7 @@ fn setup_main_menu(
                 })
                 .with_children(|button_parent| {
                     // === Spawn Buttons using the Builder ===
+
                     // --- Label hinzufügen ---
                     let _ = LabelBuilder::new("Main Menu Controls")
                         .font_size(18.0) // Etwas größer
@@ -381,7 +402,94 @@ fn setup_main_menu(
                     let _ = ButtonBuilder::new()
                         .with_text("Continue (Disabled)")
                         .disabled(true)
-                        .spawn(button_parent, font_handle.clone(), &theme); // <<< Pass theme
+                        .spawn(button_parent, font_handle.clone(), &theme);
+
+                    // <<< Pass theme
+                });
+            let _ = CardBuilder::new() // << CardBuilder starten
+                .width(Val::Px(380.0)) // Beispiel: Breite setzen
+                .with_header(vec![
+                    // << Header definieren
+                    NodeElement::Text {
+                        content: "Notifications".to_string(),
+                        style: ElementStyle::Title,
+                        font_size: None, // Verwendet Default-Größe für Title
+                    },
+                    NodeElement::Text {
+                        content: "You have 3 unread messages.".to_string(),
+                        style: ElementStyle::Description,
+                        font_size: None,
+                    },
+                ])
+                .with_content(vec![
+                    // << Content definieren
+                    // Einfacher Text als Beispiel
+                    NodeElement::Text {
+                        content: "Main card content area.".to_string(),
+                        style: ElementStyle::Normal,
+                        font_size: None,
+                    },
+                    // Button direkt im Content einfügen
+                    NodeElement::Button(
+                        ButtonBuilder::new()
+                            .variant(ButtonVariant::Secondary)
+                            .with_icon(assets.settings_icon.clone()) // Beispiel-Icon verwenden
+                            .with_text("Manage Settings")
+                            .size(ButtonSize::Small),
+                    ),
+                ])
+                .with_footer(vec![
+                    // << Footer definieren
+                    // Button direkt im Footer einfügen
+                    NodeElement::Button(
+                        ButtonBuilder::new()
+                            .variant(ButtonVariant::Outline)
+                            .with_text("Cancel"),
+                    ),
+                    NodeElement::Button(
+                        ButtonBuilder::new()
+                            // Kein Variant -> Default-Button
+                            .with_text("Confirm"),
+                    ),
+                ])
+                .spawn(parent, &theme, &font_handle);
+
+            // --- Checkbox-Beispiel mit Label ---
+            // Container für Checkbox + Label nebeneinander
+            parent
+                .spawn(Node {
+                    display: Display::Flex,
+                    flex_direction: FlexDirection::Row, // Nebeneinander
+                    align_items: AlignItems::Center,    // Vertikal zentrieren
+                    column_gap: Val::Px(8.0),           // Abstand dazwischen
+                    margin: UiRect::top(Val::Px(20.0)), // Etwas Abstand nach oben
+
+                    ..default()
+                })
+                .with_children(|cb_row| {
+                    // Checkbox spawnen
+                    let checkbox_entity = CheckboxBuilder::new()
+                        .checked(true) // Startet ausgewählt
+                        .spawn(cb_row, &theme, &assets.checkmark_icon)
+                        // Marker für spezifische Reaktion
+                        .insert(TermsCheckbox) // Eigener Marker
+                        .id(); // Die Entity ID speichern, falls wir sie brauchen
+
+                    // Zugehöriges Label spawnen
+                    let _ = LabelBuilder::new("Accept terms and conditions")
+                        // Optional: Verknüpfung (in Bevy nicht direkt wie htmlFor, aber als Hinweis)
+                        // .id("terms-label") // Weniger sinnvoll in Bevy
+                        .spawn(cb_row, &theme, &font_handle);
+
+                    // // -- Beispiel für disabled Checkbox --
+                    // let _ = CheckboxBuilder::new().disabled(true).spawn(
+                    //     cb_row,
+                    //     &theme,
+                    //     &assets.checkmark_icon,
+                    // );
+                    // let _ = LabelBuilder::new("Disabled Checkbox")
+                    //     .color(theme.muted_foreground) // Ausgegraut
+                    //     .spawn(cb_row, &theme, &font_handle);
                 });
         });
     info!("Main menu UI setup complete.");
@@ -419,6 +527,28 @@ fn handle_button_clicks(
         } else {
             // Handle other buttons if necessary
             info!("--> A generic button was pressed (no specific marker found).");
+        }
+    }
+}
+
+// --- Marker für Checkbox ---
+#[derive(Component)]
+struct TermsCheckbox;
+
+// --- Event Handler für Checkbox-Änderungen ---
+fn handle_checkbox_changes(
+    mut events: EventReader<CheckboxChangedEvent>,
+    terms_query: Query<(), With<TermsCheckbox>>, // Prüfen, ob es unsere Terms-Checkbox ist
+) {
+    for event in events.read() {
+        if terms_query.get(event.checkbox_entity).is_ok() {
+            info!("Terms checkbox changed! New state: {}", event.is_checked);
+            // Hier Logik ausführen, z.B. einen "Weiter"-Button aktivieren/deaktivieren
+        } else {
+            info!(
+                "Another checkbox (Entity {:?}) changed to {}",
+                event.checkbox_entity, event.is_checked
+            );
         }
     }
 }

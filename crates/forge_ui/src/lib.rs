@@ -19,11 +19,22 @@ pub use label::{
     LabelMarker,  // << Marker exportieren
 };
 
+pub mod checkbox;
+pub use checkbox::{
+    CheckboxBuilder,      // Der Builder
+    CheckboxChangedEvent, // Das Event bei Änderung
+    CheckboxMarker,       // Marker-Komponente
+    CheckboxState,        // Die Zustandskomponente
+};
+
 pub mod theme; // Theme-Management für UI-Elemente
 
 use bevy::prelude::*;
 use button::{handle_button_clicks_event, update_button_visuals};
-// Später: use card::{update_card_visuals};
+use checkbox::{
+    handle_checkbox_clicks, update_checkbox_visuals, update_checkmark_visibility_on_state_change,
+};
+
 // Später: use tabs::{handle_tab_activation};
 
 /// Plugin für die Kernfunktionalität der Forge UI Widgets.
@@ -32,12 +43,10 @@ pub struct ForgeUiPlugin;
 
 impl Plugin for ForgeUiPlugin {
     fn build(&self, app: &mut App) {
-        app
-            // --- Button spezifisch ---
-            .add_event::<ButtonClickedEvent>()
-            .add_systems(Update, (update_button_visuals, handle_button_clicks_event));
-        // Log-Meldung, um sicherzustellen, dass das Plugin geladen wird
-        info!("ForgeUiPlugin loaded.");
+        // Nur Events registrieren
+        app.add_event::<button::ButtonClickedEvent>()
+            .add_event::<checkbox::CheckboxChangedEvent>();
+        info!("ForgeUiPlugin loaded. (Systems must be added by app)");
     }
 }
 

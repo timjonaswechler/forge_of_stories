@@ -7,6 +7,7 @@
     // === Icons ===
     "icon.settings": File( path: "game-icons/PNG/Black/2x/gear.png" ),
     "icon.delete": File( path: "game-icons/PNG/Black/2x/cross.png" ),
+    "icon.checkmark": File( path: "game-icons/PNG/White/1x/checkmark.png" ),
 
     // === Species ===
     "species.elf": File( path: "species/elf.species.ron" ),
