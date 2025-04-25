@@ -236,7 +236,7 @@ pub struct ButtonState {
 
 /// Optional: Component to hold a direct callback closure.
 /// Generally prefer events, but can be useful for simple cases.
-#[derive(Component)]
+#[derive(Component, Clone)]
 pub struct OnClick<F: Fn() + Send + Sync + 'static> {
     callback: F,
     _marker: PhantomData<F>,
@@ -271,7 +271,7 @@ pub enum ButtonChild {
 }
 
 // ======== Builder ========
-
+#[derive(Clone)]
 pub struct ButtonBuilder<F: Fn() + Send + Sync + 'static = fn()> {
     variant: ButtonVariant,
     size: ButtonSize,
