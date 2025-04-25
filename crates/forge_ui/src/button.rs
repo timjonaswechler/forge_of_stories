@@ -271,7 +271,6 @@ pub enum ButtonChild {
 }
 
 // ======== Builder ========
-#[derive(Clone)]
 pub struct ButtonBuilder<F: Fn() + Send + Sync + 'static = fn()> {
     variant: ButtonVariant,
     size: ButtonSize,
@@ -282,6 +281,21 @@ pub struct ButtonBuilder<F: Fn() + Send + Sync + 'static = fn()> {
     height: Option<Val>,
     // Allow adding arbitrary components/markers via closures
     markers: Vec<Box<dyn FnOnce(&mut EntityCommands) + Send + Sync>>,
+}
+
+impl<F: Fn() + Send + Sync + 'static + Clone> Clone for ButtonBuilder<F> {
+    fn clone(&self) -> Self {
+        Self {
+            variant: self.variant.clone(),
+            size: self.size.clone(),
+            disabled: self.disabled.clone(),
+            children_defs: self.children_defs.clone(),
+            on_click: self.on_click.clone(),
+            width: self.width.clone(),
+            height: self.height.clone(),
+            markers: Vec::new(), // cannot clone FnOnce closures, so start fresh
+        }
+    }
 }
 
 // Default constructor uses a null function type `fn()` for the callback

@@ -174,11 +174,11 @@ fn spawn_section<'w, 'a, M: Component + Default>(
     parent: &'a mut ChildBuilder<'w>,
     theme: &UiTheme,
     font_handle: &Handle<Font>,
-    marker: M,    // Der spezifische Marker (CardHeader, CardContent, etc.)
-    style: Style, // Das spezifische Layout der Sektion
+    marker: M,   // Der spezifische Marker (CardHeader, CardContent, etc.)
+    style: Node, // Das spezifische Layout der Sektion
     elements: Vec<NodeElement>,
 ) -> EntityCommands<'a> {
-    let mut section_entity_cmd = parent.spawn((marker, Node { style, ..default() }));
+    let mut section_entity_cmd = parent.spawn((marker, Node { ..style }));
 
     section_entity_cmd.with_children(|section_body| {
         for element in elements {

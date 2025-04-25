@@ -7,14 +7,10 @@ pub use button::{
 
 pub mod card;
 pub use card::{
-    spawn_card,
-    spawn_card_content,
-    spawn_card_footer,
-    spawn_card_header, // Helferfunktionen
-    Card,
-    CardContent,
-    CardFooter,
-    CardHeader, // Marker (falls man sie direkt braucht)
+    // -- Builder Pattern --
+    CardBuilder,  // << Der Haupt-Builder
+    ElementStyle, // << Enum für Text-Stile
+    NodeElement,  // << Enum für Kind-Elemente
 };
 
 pub mod theme; // Theme-Management für UI-Elemente

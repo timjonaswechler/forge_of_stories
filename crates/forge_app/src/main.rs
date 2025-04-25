@@ -6,14 +6,11 @@ use std::collections::HashMap; // <-- Import für HashMap
 
 use forge_app::attributes::{self, AttributesPlugin}; // Ihr attributes Modul
 use forge_ui::{
-    theme::UiTheme, // Die Theme-Struct
-    ButtonBuilder,
-    ButtonClickedEvent,
-    ButtonMarker,
-    ButtonSize,
-    ButtonVariant,
+    button::{ButtonBuilder, ButtonSize, ButtonVariant}, // Nur Button-Sachen die wir brauchen
+    card::{CardBuilder, ElementStyle, NodeElement},     // << Builder und Helfer importieren
+    theme::UiTheme,
+    ButtonClickedEvent, // Event bleibt wichtig
     ForgeUiPlugin,
-    OnClick, // OnClick importieren, falls Sie es verwenden
 }; // Ihre UI Elemente
 
 // Define States for Loading etc.
@@ -326,48 +323,103 @@ fn setup_main_menu(
             BackgroundColor(theme.background), // Hintergrund aus Theme
         ))
         .with_children(|parent| {
-            // === Spawn Buttons using the Builder ===
-
-            // Default Button
-            let _ = ButtonBuilder::new()
-                .with_text("Play Game")
-                .size(ButtonSize::Large)
-                .spawn(parent, font_handle.clone(), &theme); // <<< Pass theme
-
-            // Destructive Button with Icon
-            let _ = ButtonBuilder::new()
-                .variant(ButtonVariant::Destructive)
-                .with_icon(assets.delete_icon.clone())
-                .with_text("Delete Save")
-                .add_marker(|cmd| {
-                    cmd.insert(DeleteSaveButton);
+            // --- Button Gruppe (wie bisher) ---
+            parent
+                .spawn(Node {
+                    display: Display::Flex,
+                    flex_direction: FlexDirection::Column,
+                    row_gap: Val::Px(10.0),
+                    align_items: AlignItems::Center, // Zentriert die Buttons
+                    ..default()
                 })
-                .spawn(parent, font_handle.clone(), &theme); // <<< Pass theme
+                .with_children(|button_parent| {
+                    // === Spawn Buttons using the Builder ===
 
-            // Outline Button with Callback
-            let _ = ButtonBuilder::new()
-                .variant(ButtonVariant::Outline)
-                .with_text("Options")
-                .on_click(|| {
-                    println!("Options button clicked (direct callback)!");
-                })
-                .spawn(parent, font_handle.clone(), &theme); // <<< Pass theme
+                    // Default Button
+                    let _ = ButtonBuilder::new()
+                        .with_text("Play Game")
+                        .size(ButtonSize::Large)
+                        .spawn(button_parent, font_handle.clone(), &theme); // <<< Pass theme
 
-            // Icon-only button
-            let _ = ButtonBuilder::new()
-                .size(ButtonSize::Icon)
-                .variant(ButtonVariant::Secondary)
-                .with_icon(assets.settings_icon.clone())
-                .add_marker(|cmd| {
-                    cmd.insert(SettingsButton);
-                })
-                .spawn(parent, font_handle.clone(), &theme); // <<< Pass theme
+                    // Destructive Button with Icon
+                    let _ = ButtonBuilder::new()
+                        .variant(ButtonVariant::Destructive)
+                        .with_icon(assets.delete_icon.clone())
+                        .with_text("Delete Save")
+                        .add_marker(|cmd| {
+                            cmd.insert(DeleteSaveButton);
+                        })
+                        .spawn(button_parent, font_handle.clone(), &theme); // <<< Pass theme
 
-            // Disabled button
-            let _ = ButtonBuilder::new()
-                .with_text("Continue (Disabled)")
-                .disabled(true)
-                .spawn(parent, font_handle.clone(), &theme); // <<< Pass theme
+                    // Outline Button with Callback
+                    let _ = ButtonBuilder::new()
+                        .variant(ButtonVariant::Outline)
+                        .with_text("Options")
+                        .on_click(|| {
+                            println!("Options button clicked (direct callback)!");
+                        })
+                        .spawn(button_parent, font_handle.clone(), &theme); // <<< Pass theme
+
+                    // Icon-only button
+                    let _ = ButtonBuilder::new()
+                        .size(ButtonSize::Icon)
+                        .variant(ButtonVariant::Secondary)
+                        .with_icon(assets.settings_icon.clone())
+                        .add_marker(|cmd| {
+                            cmd.insert(SettingsButton);
+                        })
+                        .spawn(button_parent, font_handle.clone(), &theme); // <<< Pass theme
+
+                    // Disabled button
+                    let _ = ButtonBuilder::new()
+                        .with_text("Continue (Disabled)")
+                        .disabled(true)
+                        .spawn(button_parent, font_handle.clone(), &theme); // <<< Pass theme
+                });
+            // --- Beispiel-Karte mit Builder ---
+            let _ = CardBuilder::new() // << CardBuilder starten
+                .width(Val::Px(380.0)) // Beispiel: Breite setzen
+                .with_header(vec![
+                    // << Header definieren
+                    NodeElement::Text {
+                        content: "Notifications".to_string(),
+                        style: ElementStyle::Title,
+                        font_size: None, // Verwendet Default-Größe für Title
+                    },
+                    NodeElement::Text {
+                        content: "You have 3 unread messages.".to_string(),
+                        style: ElementStyle::Description,
+                        font_size: None,
+                    },
+                ])
+                .with_content(vec![
+                    // << Content definieren
+                    // Einfacher Text als Beispiel
+                    NodeElement::Text {
+                        content: "Main card content area.".to_string(),
+                        style: ElementStyle::Normal,
+                        font_size: None,
+                    },
+                    // Button direkt im Content einfügen
+                    NodeElement::Button(
+                        ButtonBuilder::new()
+                            .variant(ButtonVariant::Secondary)
+                            .with_icon(assets.settings_icon.clone()) // Beispiel-Icon verwenden
+                            .with_text("Manage Settings")
+                            .size(ButtonSize::Small),
+                    ),
+                ])
+                .with_footer(vec![
+                    // << Footer definieren
+                    // Button direkt im Footer einfügen
+                    NodeElement::Button(ButtonBuilder::new().with_text("Cancel")),
+                    NodeElement::Button(
+                        ButtonBuilder::new()
+                            // Kein Variant -> Default-Button
+                            .with_text("Confirm"),
+                    ),
+                ])
+                .spawn(parent, &theme, &font_handle);
         });
     info!("Main menu UI setup complete.");
 }
