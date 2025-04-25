@@ -8,6 +8,7 @@ use forge_app::attributes::{self, AttributesPlugin}; // Ihr attributes Modul
 use forge_ui::{
     button::{ButtonBuilder, ButtonSize, ButtonVariant}, // Nur Button-Sachen die wir brauchen
     card::{CardBuilder, ElementStyle, NodeElement},     // << Builder und Helfer importieren
+    label::LabelBuilder,
     theme::UiTheme,
     ButtonClickedEvent, // Event bleibt wichtig
     ForgeUiPlugin,
@@ -334,6 +335,12 @@ fn setup_main_menu(
                 })
                 .with_children(|button_parent| {
                     // === Spawn Buttons using the Builder ===
+                    // --- Label hinzufügen ---
+                    let _ = LabelBuilder::new("Main Menu Controls")
+                        .font_size(18.0) // Etwas größer
+                        .color(theme.accent_foreground) // Andere Farbe zum Testen
+                        .align(JustifyText::Center) // Zentrieren
+                        .spawn(button_parent, &theme, &font_handle);
 
                     // Default Button
                     let _ = ButtonBuilder::new()
@@ -376,50 +383,6 @@ fn setup_main_menu(
                         .disabled(true)
                         .spawn(button_parent, font_handle.clone(), &theme); // <<< Pass theme
                 });
-            // --- Beispiel-Karte mit Builder ---
-            let _ = CardBuilder::new() // << CardBuilder starten
-                .width(Val::Px(380.0)) // Beispiel: Breite setzen
-                .with_header(vec![
-                    // << Header definieren
-                    NodeElement::Text {
-                        content: "Notifications".to_string(),
-                        style: ElementStyle::Title,
-                        font_size: None, // Verwendet Default-Größe für Title
-                    },
-                    NodeElement::Text {
-                        content: "You have 3 unread messages.".to_string(),
-                        style: ElementStyle::Description,
-                        font_size: None,
-                    },
-                ])
-                .with_content(vec![
-                    // << Content definieren
-                    // Einfacher Text als Beispiel
-                    NodeElement::Text {
-                        content: "Main card content area.".to_string(),
-                        style: ElementStyle::Normal,
-                        font_size: None,
-                    },
-                    // Button direkt im Content einfügen
-                    NodeElement::Button(
-                        ButtonBuilder::new()
-                            .variant(ButtonVariant::Secondary)
-                            .with_icon(assets.settings_icon.clone()) // Beispiel-Icon verwenden
-                            .with_text("Manage Settings")
-                            .size(ButtonSize::Small),
-                    ),
-                ])
-                .with_footer(vec![
-                    // << Footer definieren
-                    // Button direkt im Footer einfügen
-                    NodeElement::Button(ButtonBuilder::new().with_text("Cancel")),
-                    NodeElement::Button(
-                        ButtonBuilder::new()
-                            // Kein Variant -> Default-Button
-                            .with_text("Confirm"),
-                    ),
-                ])
-                .spawn(parent, &theme, &font_handle);
         });
     info!("Main menu UI setup complete.");
 }

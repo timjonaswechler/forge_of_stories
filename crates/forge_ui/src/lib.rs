@@ -13,6 +13,12 @@ pub use card::{
     NodeElement,  // << Enum für Kind-Elemente
 };
 
+pub mod label;
+pub use label::{
+    LabelBuilder, // << Builder exportieren
+    LabelMarker,  // << Marker exportieren
+};
+
 pub mod theme; // Theme-Management für UI-Elemente
 
 use bevy::prelude::*;
