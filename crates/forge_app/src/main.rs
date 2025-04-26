@@ -468,7 +468,7 @@ fn setup_main_menu(
                 })
                 .with_children(|cb_row| {
                     // Checkbox spawnen
-                    let checkbox_entity = CheckboxBuilder::new()
+                    let _ = CheckboxBuilder::new()
                         .checked(true) // Startet ausgewählt
                         .spawn(cb_row, &theme, &assets.checkmark_icon)
                         // Marker für spezifische Reaktion
@@ -481,15 +481,15 @@ fn setup_main_menu(
                         // .id("terms-label") // Weniger sinnvoll in Bevy
                         .spawn(cb_row, &theme, &font_handle);
 
-                    // // -- Beispiel für disabled Checkbox --
-                    // let _ = CheckboxBuilder::new().disabled(true).spawn(
-                    //     cb_row,
-                    //     &theme,
-                    //     &assets.checkmark_icon,
-                    // );
-                    // let _ = LabelBuilder::new("Disabled Checkbox")
-                    //     .color(theme.muted_foreground) // Ausgegraut
-                    //     .spawn(cb_row, &theme, &font_handle);
+                    // -- Beispiel für disabled Checkbox --
+                    let _ = CheckboxBuilder::new().disabled(true).spawn(
+                        cb_row,
+                        &theme,
+                        &assets.checkmark_icon,
+                    );
+                    let _ = LabelBuilder::new("Disabled Checkbox")
+                        .color(theme.muted_foreground) // Ausgegraut
+                        .spawn(cb_row, &theme, &font_handle);
                 });
         });
     info!("Main menu UI setup complete.");

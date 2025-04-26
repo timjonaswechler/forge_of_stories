@@ -100,10 +100,13 @@ impl CheckboxBuilder {
         theme: &UiTheme,
         checkmark_icon_handle: &Handle<Image>,
     ) -> EntityCommands<'a> {
-        // Styling-Konstanten (könnten auch aus Theme kommen)
-        let checkbox_size = Val::Px(16.0); // Entspricht h-4 w-4
-        let checkmark_size = Val::Px(16.0); // Icon-Größe
+        // --- Styling-Konstanten ANPASSEN ---
+        let checkbox_outer_size = Val::Px(16.0); // Gesamtgröße der Box
+        let checkbox_padding = Val::Px(2.0); // Innenabstand
+                                             // Icon-Größe = Gesamtgröße - 2 * Padding (ungefähr, damit es passt)
+        let checkmark_inner_size = Val::Px(12.0); // = 16 - 2*2
         let border_width = 1.0;
+        // --- Ende Anpassung ----
 
         // Entität für das Checkmark-Icon (wird gleich gespawnt)
         let mut checkmark_entity = Entity::PLACEHOLDER;
@@ -112,9 +115,9 @@ impl CheckboxBuilder {
             CheckboxMarker, // Marker
             Button,         // Damit sie klickbar ist
             Node {
-                // Quadratische Box
-                width: checkbox_size,
-                height: checkbox_size,
+                width: checkbox_outer_size,
+                height: checkbox_outer_size,
+                padding: UiRect::all(checkbox_padding),
                 // Wichtig für Icon-Zentrierung
                 display: Display::Flex,
                 justify_content: JustifyContent::Center,
@@ -145,33 +148,34 @@ impl CheckboxBuilder {
 
         // Spawn Checkmark Icon als Kind
         checkbox_cmd.with_children(|builder| {
-            builder.spawn((
-                Node {
-                    width: checkmark_size,
-                    height: checkmark_size,
-                    margin: UiRect::axes(Val::Px(0.0), Val::Px(2.0)),
-                    ..default()
-                },
-                ImageNode {
-                    image: checkmark_icon_handle.clone(),
-                    ..default()
-                },
-                BackgroundColor(theme.primary_foreground),
-                FocusPolicy::Pass,
-                // Startet unsichtbar, wenn nicht checked
-                if self.checked {
-                    Visibility::Inherited
-                } else {
-                    Visibility::Hidden
-                },
-                // Farbe/Tint kommt aus dem Theme (Primär-Vordergrund für Kontrast)
-            ));
+            checkmark_entity = builder
+                .spawn((
+                    Node {
+                        width: checkmark_inner_size,
+                        height: checkmark_inner_size,
+                        margin: UiRect::axes(Val::Px(0.0), Val::Px(2.0)),
+                        ..default()
+                    },
+                    ImageNode {
+                        image: checkmark_icon_handle.clone(),
+                        ..default()
+                    },
+                    BackgroundColor(theme.primary_foreground),
+                    FocusPolicy::Pass,
+                    // Startet unsichtbar, wenn nicht checked
+                    if self.checked {
+                        Visibility::Inherited
+                    } else {
+                        Visibility::Hidden
+                    },
+                ))
+                .id();
         });
 
         // Update CheckmarkIconEntity mit der echten Entity ID
         // TODO: Wenn hier ein Fehler auftritt, könnte es sein, dass die Entity nicht existiert oder so einen Playeholder ID nutzen.
 
-        checkbox_cmd.insert(CheckmarkIconEntity(checkbox_cmd.id()));
+        checkbox_cmd.insert(CheckmarkIconEntity(checkmark_entity));
 
         // Marker hinzufügen
         for marker_fn in self.markers {
@@ -193,31 +197,27 @@ pub fn update_checkbox_visuals(
             &CheckboxState,
             &mut BackgroundColor,
             &mut BorderColor,
-            &CheckmarkIconEntity, // Zum Holen der Icon-Entität
+            // &CheckmarkIconEntity, // Zum Holen der Icon-Entität
         ),
-        (Changed<Interaction>, With<CheckboxMarker>),
-    >, // Reaktion auf Klick oder Statusänderung (letzteres noch nicht hier)
-    mut icon_visibility_query: Query<&mut Visibility>, // Um Icon ein/auszublenden
+        (
+            Or<(Changed<Interaction>, Changed<CheckboxState>)>,
+            With<CheckboxMarker>,
+        ), // Reaktion auf Klick oder Statusänderung
+    >,
 ) {
-    for (interaction, state, mut bg_color, mut border_color, checkmark_icon) in
-        checkbox_query.iter_mut()
-    {
+    for (interaction, state, mut bg_color, mut border_color) in checkbox_query.iter_mut() {
         // Basis-Styling basierend auf checked/disabled
-        let base_bg_color = if state.checked {
-            theme.primary
-        } else {
-            Color::NONE
-        };
-        let base_border_color = theme.primary; // Oder theme.input / theme.border ?
+        let base_bg_color = theme.background;
+        let base_border_color = theme.border; // Oder theme.input / theme.border ?
 
         // Endgültige Farben (Disabled und Hover/Pressed)
         if state.disabled {
-            *bg_color = BackgroundColor(base_bg_color.with_alpha(0.5));
-            *border_color = BorderColor(base_border_color.with_alpha(0.5));
+            *bg_color = BackgroundColor(base_bg_color.with_alpha(0.1));
+            *border_color = BorderColor(base_border_color.with_alpha(0.1));
         } else {
             // Einfacher Hover-Effekt (optional)
             let hover_factor = 0.1;
-            let pressed_factor = -0.1;
+            let pressed_factor = 0.1;
 
             *bg_color = match *interaction {
                 Interaction::Hovered => BackgroundColor(base_bg_color.lighter(hover_factor)),
@@ -231,20 +231,20 @@ pub fn update_checkbox_visuals(
             };
         }
 
-        // Sichtbarkeit des Icons aktualisieren (dies sollte idealerweise reagieren,
-        // wenn sich CheckboxState *ändert*, nicht nur bei Interaction)
-        if let Ok(mut icon_visibility) = icon_visibility_query.get_mut(checkmark_icon.0) {
-            *icon_visibility = if state.checked {
-                Visibility::Inherited
-            } else {
-                Visibility::Hidden
-            };
-        } else {
-            error!(
-                "CheckmarkIconEntity {:?} not found for checkbox!",
-                checkmark_icon.0
-            );
-        }
+        // // Sichtbarkeit des Icons aktualisieren (dies sollte idealerweise reagieren,
+        // // wenn sich CheckboxState *ändert*, nicht nur bei Interaction)
+        // if let Ok(mut icon_visibility) = icon_visibility_query.get_mut(checkmark_icon.0) {
+        //     *icon_visibility = if state.checked {
+        //         Visibility::Inherited
+        //     } else {
+        //         Visibility::Hidden
+        //     };
+        // } else {
+        //     error!(
+        //         "CheckmarkIconEntity {:?} not found for checkbox!",
+        //         checkmark_icon.0
+        //     );
+        // }
     }
 }
 
@@ -283,10 +283,10 @@ pub fn handle_checkbox_clicks(
 /// Separates System, das nur auf die Änderung des CheckboxState reagiert,
 /// um sicherzustellen, dass das Icon immer den korrekten Zustand widerspiegelt.
 pub fn update_checkmark_visibility_on_state_change(
-    mut checkbox_query: Query<(&CheckboxState, &CheckmarkIconEntity), Changed<CheckboxState>>, // Nur wenn State sich ändert
+    checkbox_query: Query<(&CheckboxState, &CheckmarkIconEntity), Changed<CheckboxState>>, // Nur wenn State sich ändert
     mut icon_visibility_query: Query<&mut Visibility>,
 ) {
-    for (state, checkmark_icon) in checkbox_query.iter_mut() {
+    for (state, checkmark_icon) in checkbox_query.iter() {
         if let Ok(mut icon_visibility) = icon_visibility_query.get_mut(checkmark_icon.0) {
             *icon_visibility = if state.checked {
                 Visibility::Inherited

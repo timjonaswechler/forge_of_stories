@@ -93,8 +93,6 @@ impl LabelBuilder {
             .spawn((Node {
                 justify_content: JustifyContent::Center,
                 overflow: Overflow::visible(),
-                max_width: Val::Px(0.0),
-
                 ..default()
             },))
             .with_children(|builder| {
