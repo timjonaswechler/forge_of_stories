@@ -6,6 +6,7 @@ use std::collections::HashMap; // <-- Import für HashMap
 
 use forge_app::attributes::{self, AttributesPlugin}; // Ihr attributes Modul
 use forge_ui::{
+    badge::{BadgeBuilder, BadgeVariant}, // Importieren Sie den TabBuilder
     button::{handle_button_clicks_event, update_button_visuals},
     button::{ButtonBuilder, ButtonSize, ButtonVariant}, // Nur Button-Sachen die wir brauchen
     card::{CardBuilder, ElementStyle, NodeElement},
@@ -347,7 +348,34 @@ fn setup_main_menu(
             BackgroundColor(theme.background), // Hintergrund aus Theme
         ))
         .with_children(|parent| {
-            // --- Button Gruppe (wie bisher) ---
+            parent
+                .spawn(Node {
+                    display: Display::Flex,
+                    flex_direction: FlexDirection::Row,
+                    justify_content: JustifyContent::Center, // Badges zentrieren
+                    align_items: AlignItems::Center,
+                    column_gap: Val::Px(8.0), // Abstand zwischen Badges
+                    margin: UiRect::top(Val::Px(20.0)),
+
+                    ..default()
+                })
+                .with_children(|badge_row| {
+                    // Verschiedene Badge-Varianten erstellen
+                    let _ = BadgeBuilder::new("Default").spawn(badge_row, &theme, &font_handle);
+
+                    let _ = BadgeBuilder::new("Secondary")
+                        .variant(BadgeVariant::Secondary)
+                        .spawn(badge_row, &theme, &font_handle);
+
+                    let _ = BadgeBuilder::new("Outline")
+                        .variant(BadgeVariant::Outline)
+                        .spawn(badge_row, &theme, &font_handle);
+
+                    let _ = BadgeBuilder::new("Destructive")
+                        .variant(BadgeVariant::Destructive)
+                        .spawn(badge_row, &theme, &font_handle);
+                }); // Ende Badge Row Children
+                    // --- Button Gruppe (wie bisher) ---
             parent
                 .spawn(Node {
                     display: Display::Flex,

@@ -35,6 +35,12 @@ pub use tabs::{
     TabsBuilder, // Der Haupt-Builder
 };
 
+pub mod badge;
+pub use badge::{
+    BadgeBuilder, // Der Builder
+    BadgeMarker,  // Der Marker
+    BadgeVariant, // Das Varianten-Enum
+};
 
 pub mod theme; // Theme-Management für UI-Elemente
 
