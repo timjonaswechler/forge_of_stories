@@ -15,6 +15,8 @@ use forge_ui::{
     },
     checkbox::{CheckboxBuilder, CheckboxChangedEvent}, // << Builder und Helfer importieren
     label::LabelBuilder,
+    tabs::handle_tab_triggers,
+    tabs::{TabId, TabsBuilder},
     theme::UiTheme,
     ButtonClickedEvent, // Event bleibt wichtig
     ForgeUiPlugin,
@@ -86,8 +88,9 @@ fn main() {
                 handle_checkbox_clicks,
                 update_checkmark_visibility_on_state_change,
                 // Handler aus der App
-                handle_button_clicks,    // <- Ihr Button-Event-Handler
-                handle_checkbox_changes, // <- Ihr Checkbox-Event-Handler
+                handle_button_clicks,         // <- Ihr Button-Event-Handler
+                handle_checkbox_changes,      // <- Ihr Checkbox-Event-Handler
+                handle_tab_triggers::<TabId>, // <- Ihr Tab-Event-Handler
             )
                 .run_if(in_state(AppState::MainMenu)), // << Bedingung HIER setzen
         )
@@ -491,6 +494,87 @@ fn setup_main_menu(
                         .color(theme.muted_foreground) // Ausgegraut
                         .spawn(cb_row, &theme, &font_handle);
                 });
+            parent
+                .spawn(Node {
+                    margin: UiRect::top(Val::Px(20.0)),
+                    // Breite für das Tabs-Widget festlegen
+                    width: Val::Px(400.0),
+
+                    ..default()
+                })
+                .with_children(|tabs_parent| {
+                    // Tabs mit String-Werten erstellen
+
+                    let _ = TabsBuilder::<TabId>::new(TabId("account".to_string())) // Default-Tab 'account'
+                        .add_tab(
+                            TabId("account".to_string()), // Wert dieses Tabs
+                            "Account",                    // Label für den Trigger
+                            |content_parent, theme, font_handle| {
+                                // Closure für den Content
+                                // Inhalt für den Account-Tab (z.B. eine Karte)
+                                let _ = CardBuilder::new()
+                                    .with_header(vec![
+                                        NodeElement::Text {
+                                            content: "Account Settings".into(),
+                                            style: ElementStyle::Title,
+                                            font_size: None,
+                                        },
+                                        NodeElement::Text {
+                                            content: "Manage your account details.".into(),
+                                            style: ElementStyle::Description,
+                                            font_size: None,
+                                        },
+                                    ])
+                                    .with_content(vec![
+                                        NodeElement::Text {
+                                            content: "Username: Placeholder".into(),
+                                            style: ElementStyle::Normal,
+                                            font_size: None,
+                                        },
+                                        // Hier könnten Inputs etc. hin
+                                    ])
+                                    .with_footer(vec![NodeElement::Button(
+                                        ButtonBuilder::new().with_text("Save Account"),
+                                    )])
+                                    .spawn(content_parent, theme, font_handle);
+                            },
+                        )
+                        .add_tab(
+                            TabId("password".to_string()), // Wert dieses Tabs
+                            "Password",                    // Label für den Trigger
+                            |content_parent, theme, font_handle| {
+                                // Closure für den Content
+                                // Inhalt für den Password-Tab
+                                let _ = CardBuilder::new()
+                                    .with_header(vec![NodeElement::Text {
+                                        content: "Change Password".into(),
+                                        style: ElementStyle::Title,
+                                        font_size: None,
+                                    }])
+                                    .with_content(vec![
+                                        NodeElement::Text {
+                                            content: "Current Password: ***".into(),
+                                            style: ElementStyle::Normal,
+                                            font_size: None,
+                                        },
+                                        NodeElement::Text {
+                                            content: "New Password: ***".into(),
+                                            style: ElementStyle::Normal,
+                                            font_size: None,
+                                        },
+                                    ])
+                                    .with_footer(vec![NodeElement::Button(
+                                        ButtonBuilder::new().with_text("Save Password"),
+                                    )])
+                                    .spawn(content_parent, theme, font_handle);
+                            },
+                        )
+                        .add_disabled_tab(
+                            TabId("security".to_string()), // Wert des deaktivierten Tabs
+                            "Security",                    // Label des deaktivierten Tabs
+                        )
+                        .spawn(tabs_parent, &theme, &font_handle); // Das ganze Tabs-Widget spawnen
+                }); // Ende Tabs Parent Children
         });
     info!("Main menu UI setup complete.");
 }
