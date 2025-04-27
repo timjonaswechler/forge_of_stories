@@ -2493,6 +2493,7 @@ dependencies = [
  "bevy",
  "log",
  "serde",
+ "uuid",
 ]
 
 [[package]]
