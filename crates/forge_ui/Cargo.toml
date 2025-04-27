@@ -9,5 +9,6 @@ description.workspace = true
 
 [dependencies]
 bevy = { workspace = true }
+uuid = { workspace = true }
 serde = { version = "1.0", features = ["derive"] } # Für Theme Deserialisierung
 log = "0.4"                                        # Für Logging

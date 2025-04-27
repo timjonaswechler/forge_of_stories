@@ -42,6 +42,16 @@ pub use badge::{
     BadgeVariant, // Das Varianten-Enum
 };
 
+pub mod dialog;
+pub use dialog::{
+    CloseDialogEvent,   // Event zum Schließen
+    DialogBuilder,      // Der Builder
+    DialogCloseTrigger, // Marker für Schließen-Buttons
+    // Marker wie DialogRoot, DialogContent weniger oft direkt gebraucht
+    DialogId,        // ID-Komponente
+    OpenDialogEvent, // Event zum Öffnen
+};
+
 pub mod theme; // Theme-Management für UI-Elemente
 
 use bevy::prelude::*;
@@ -49,8 +59,11 @@ use button::{handle_button_clicks_event, update_button_visuals};
 use checkbox::{
     handle_checkbox_clicks, update_checkbox_visuals, update_checkmark_visibility_on_state_change,
 };
+use dialog::{
+    close_dialog_system, handle_overlay_click_system, open_dialog_system,
+    register_initially_open_dialogs, ActiveDialogs,
+};
 use tabs::{handle_tab_triggers, populate_initial_tab_content, update_tabs_visuals};
-
 // Später: use tabs::{handle_tab_activation};
 
 /// Plugin für die Kernfunktionalität der Forge UI Widgets.
@@ -66,6 +79,9 @@ impl Plugin for ForgeUiPlugin {
             // Man muss das Event und die Systeme für JEDEN verwendeten Wert-Typ T registrieren.
             // Hier ein Beispiel für TabId als Wert-Typ:
             .add_event::<TabChangedEvent<tabs::TabId>>() // <-- Beispiel mit TabId
+            .init_resource::<ActiveDialogs>() // WICHTIG: Ressource initialisieren
+            .add_event::<OpenDialogEvent>()
+            .add_event::<CloseDialogEvent>()
             .add_systems(
                 PostUpdate,
                 (
@@ -76,6 +92,9 @@ impl Plugin for ForgeUiPlugin {
             .add_systems(
                 Update,
                 (
+                    open_dialog_system,                 // Öffnet Dialoge per Event
+                    close_dialog_system, // Schließt Dialoge (ESC, Event, Close Button)
+                    handle_overlay_click_system, // Schließt bei Klick aufs Overlay
                     handle_tab_triggers::<tabs::TabId>, // <-- Beispiel mit TabId
                     update_tabs_visuals::<tabs::TabId>, // <-- Beispiel mit TabId
                 ),

@@ -15,6 +15,7 @@ use forge_ui::{
         update_checkmark_visibility_on_state_change,
     },
     checkbox::{CheckboxBuilder, CheckboxChangedEvent}, // << Builder und Helfer importieren
+    dialog::{CloseDialogEvent, DialogBuilder, DialogCloseTrigger, DialogId, OpenDialogEvent},
     label::LabelBuilder,
     tabs::handle_tab_triggers,
     tabs::{TabId, TabsBuilder},
@@ -92,6 +93,7 @@ fn main() {
                 handle_button_clicks,         // <- Ihr Button-Event-Handler
                 handle_checkbox_changes,      // <- Ihr Checkbox-Event-Handler
                 handle_tab_triggers::<TabId>, // <- Ihr Tab-Event-Handler
+                handle_dialog_trigger_buttons,
             )
                 .run_if(in_state(AppState::MainMenu)), // << Bedingung HIER setzen
         )
@@ -333,7 +335,7 @@ fn setup_main_menu(
         .unwrap_or_else(|| assets.main_font.clone()); // Fallback, falls Theme keine Font hat
 
     // Create root UI node
-    commands
+    let root_ui_entity = commands
         .spawn((
             Node {
                 width: Val::Percent(100.0),
@@ -345,265 +347,340 @@ fn setup_main_menu(
                 row_gap: Val::Px(10.0),
                 ..default()
             },
-            BackgroundColor(theme.background), // Hintergrund aus Theme
+            BackgroundColor(theme.background),
+            // BackgroundColor(Color::srgba(0.0, 1.0, 0.0, 1.0)), // Hintergrund aus Theme
         ))
-        .with_children(|parent| {
-            parent
-                .spawn(Node {
-                    display: Display::Flex,
-                    flex_direction: FlexDirection::Row,
-                    justify_content: JustifyContent::Center, // Badges zentrieren
-                    align_items: AlignItems::Center,
-                    column_gap: Val::Px(8.0), // Abstand zwischen Badges
-                    margin: UiRect::top(Val::Px(20.0)),
+        .id();
 
-                    ..default()
-                })
-                .with_children(|badge_row| {
-                    // Verschiedene Badge-Varianten erstellen
-                    let _ = BadgeBuilder::new("Default").spawn(badge_row, &theme, &font_handle);
+    commands.entity(root_ui_entity).with_children(|parent| {
+        parent
+            .spawn(Node {
+                display: Display::Flex,
+                flex_direction: FlexDirection::Row,
+                justify_content: JustifyContent::Center, // Badges zentrieren
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(8.0), // Abstand zwischen Badges
+                margin: UiRect::top(Val::Px(20.0)),
 
-                    let _ = BadgeBuilder::new("Secondary")
-                        .variant(BadgeVariant::Secondary)
-                        .spawn(badge_row, &theme, &font_handle);
+                ..default()
+            })
+            .with_children(|badge_row| {
+                // Verschiedene Badge-Varianten erstellen
+                let _ = BadgeBuilder::new("Default").spawn(badge_row, &theme, &font_handle);
 
-                    let _ = BadgeBuilder::new("Outline")
-                        .variant(BadgeVariant::Outline)
-                        .spawn(badge_row, &theme, &font_handle);
+                let _ = BadgeBuilder::new("Secondary")
+                    .variant(BadgeVariant::Secondary)
+                    .spawn(badge_row, &theme, &font_handle);
 
-                    let _ = BadgeBuilder::new("Destructive")
-                        .variant(BadgeVariant::Destructive)
-                        .spawn(badge_row, &theme, &font_handle);
-                }); // Ende Badge Row Children
-                    // --- Button Gruppe (wie bisher) ---
-            parent
-                .spawn(Node {
-                    display: Display::Flex,
-                    flex_direction: FlexDirection::Column,
-                    row_gap: Val::Px(10.0),
-                    align_items: AlignItems::Center, // Zentriert die Buttons
-                    ..default()
-                })
-                .with_children(|button_parent| {
-                    // === Spawn Buttons using the Builder ===
+                let _ = BadgeBuilder::new("Outline")
+                    .variant(BadgeVariant::Outline)
+                    .spawn(badge_row, &theme, &font_handle);
 
-                    // --- Label hinzufügen ---
-                    let _ = LabelBuilder::new("Main Menu Controls")
-                        .font_size(18.0) // Etwas größer
-                        .color(theme.accent_foreground) // Andere Farbe zum Testen
-                        .align(JustifyText::Center) // Zentrieren
-                        .spawn(button_parent, &theme, &font_handle);
+                let _ = BadgeBuilder::new("Destructive")
+                    .variant(BadgeVariant::Destructive)
+                    .spawn(badge_row, &theme, &font_handle);
+            }); // Ende Badge Row Children
+                // --- Button Gruppe (wie bisher) ---
+        parent
+            .spawn(Node {
+                display: Display::Flex,
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(10.0),
+                align_items: AlignItems::Center, // Zentriert die Buttons
+                ..default()
+            })
+            .with_children(|button_parent| {
+                // === Spawn Buttons using the Builder ===
 
-                    // Default Button
-                    let _ = ButtonBuilder::new()
-                        .with_text("Play Game")
-                        .size(ButtonSize::Large)
-                        .spawn(button_parent, font_handle.clone(), &theme); // <<< Pass theme
+                // --- Label hinzufügen ---
+                let _ = LabelBuilder::new("Main Menu Controls")
+                    .font_size(18.0) // Etwas größer
+                    .color(theme.accent_foreground) // Andere Farbe zum Testen
+                    .align(JustifyText::Center) // Zentrieren
+                    .spawn(button_parent, &theme, &font_handle);
 
-                    // Destructive Button with Icon
-                    let _ = ButtonBuilder::new()
-                        .variant(ButtonVariant::Destructive)
-                        .with_icon(assets.delete_icon.clone())
-                        .with_text("Delete Save")
-                        .add_marker(|cmd| {
-                            cmd.insert(DeleteSaveButton);
-                        })
-                        .spawn(button_parent, font_handle.clone(), &theme); // <<< Pass theme
+                // Default Button
+                let _ = ButtonBuilder::new()
+                    .with_text("Play Game")
+                    .size(ButtonSize::Large)
+                    .spawn(button_parent, font_handle.clone(), &theme); // <<< Pass theme
 
-                    // Outline Button with Callback
-                    let _ = ButtonBuilder::new()
-                        .variant(ButtonVariant::Outline)
-                        .with_text("Options")
-                        .on_click(|| {
-                            println!("Options button clicked (direct callback)!");
-                        })
-                        .spawn(button_parent, font_handle.clone(), &theme); // <<< Pass theme
+                // Destructive Button with Icon
+                let _ = ButtonBuilder::new()
+                    .variant(ButtonVariant::Destructive)
+                    .with_icon(assets.delete_icon.clone())
+                    .with_text("Delete Save")
+                    .add_marker(|cmd| {
+                        cmd.insert(DeleteSaveButton);
+                    })
+                    .spawn(button_parent, font_handle.clone(), &theme); // <<< Pass theme
 
-                    // Icon-only button
-                    let _ = ButtonBuilder::new()
-                        .size(ButtonSize::Icon)
+                // Outline Button with Callback
+                let _ = ButtonBuilder::new()
+                    .variant(ButtonVariant::Outline)
+                    .with_text("Options")
+                    .on_click(|| {
+                        println!("Options button clicked (direct callback)!");
+                    })
+                    .spawn(button_parent, font_handle.clone(), &theme); // <<< Pass theme
+
+                // Icon-only button
+                let _ = ButtonBuilder::new()
+                    .size(ButtonSize::Icon)
+                    .variant(ButtonVariant::Secondary)
+                    .with_icon(assets.settings_icon.clone())
+                    .add_marker(|cmd| {
+                        cmd.insert(SettingsButton);
+                    })
+                    .spawn(button_parent, font_handle.clone(), &theme); // <<< Pass theme
+
+                // Disabled button
+                let _ = ButtonBuilder::new()
+                    .with_text("Continue (Disabled)")
+                    .disabled(true)
+                    .spawn(button_parent, font_handle.clone(), &theme);
+
+                // <<< Pass theme
+            });
+        let _ = CardBuilder::new() // << CardBuilder starten
+            .width(Val::Px(380.0)) // Beispiel: Breite setzen
+            .with_header(vec![
+                // << Header definieren
+                NodeElement::Text {
+                    content: "Notifications".to_string(),
+                    style: ElementStyle::Title,
+                    font_size: None, // Verwendet Default-Größe für Title
+                },
+                NodeElement::Text {
+                    content: "You have 3 unread messages.".to_string(),
+                    style: ElementStyle::Description,
+                    font_size: None,
+                },
+            ])
+            .with_content(vec![
+                // << Content definieren
+                // Einfacher Text als Beispiel
+                NodeElement::Text {
+                    content: "Main card content area.".to_string(),
+                    style: ElementStyle::Normal,
+                    font_size: None,
+                },
+                // Button direkt im Content einfügen
+                NodeElement::Button(
+                    ButtonBuilder::new()
                         .variant(ButtonVariant::Secondary)
-                        .with_icon(assets.settings_icon.clone())
-                        .add_marker(|cmd| {
-                            cmd.insert(SettingsButton);
-                        })
-                        .spawn(button_parent, font_handle.clone(), &theme); // <<< Pass theme
+                        .with_icon(assets.settings_icon.clone()) // Beispiel-Icon verwenden
+                        .with_text("Manage Settings")
+                        .size(ButtonSize::Small),
+                ),
+            ])
+            .with_footer(vec![
+                // << Footer definieren
+                // Button direkt im Footer einfügen
+                NodeElement::Button(
+                    ButtonBuilder::new()
+                        .variant(ButtonVariant::Outline)
+                        .with_text("Cancel"),
+                ),
+                NodeElement::Button(
+                    ButtonBuilder::new()
+                        // Kein Variant -> Default-Button
+                        .with_text("Confirm"),
+                ),
+            ])
+            .spawn(parent, &theme, &font_handle);
 
-                    // Disabled button
-                    let _ = ButtonBuilder::new()
-                        .with_text("Continue (Disabled)")
-                        .disabled(true)
-                        .spawn(button_parent, font_handle.clone(), &theme);
+        // --- Checkbox-Beispiel mit Label ---
+        // Container für Checkbox + Label nebeneinander
+        parent
+            .spawn(Node {
+                display: Display::Flex,
+                flex_direction: FlexDirection::Row, // Nebeneinander
+                align_items: AlignItems::Center,    // Vertikal zentrieren
+                column_gap: Val::Px(8.0),           // Abstand dazwischen
+                margin: UiRect::top(Val::Px(20.0)), // Etwas Abstand nach oben
 
-                    // <<< Pass theme
-                });
-            let _ = CardBuilder::new() // << CardBuilder starten
-                .width(Val::Px(380.0)) // Beispiel: Breite setzen
-                .with_header(vec![
-                    // << Header definieren
-                    NodeElement::Text {
-                        content: "Notifications".to_string(),
-                        style: ElementStyle::Title,
-                        font_size: None, // Verwendet Default-Größe für Title
-                    },
-                    NodeElement::Text {
-                        content: "You have 3 unread messages.".to_string(),
-                        style: ElementStyle::Description,
-                        font_size: None,
-                    },
-                ])
-                .with_content(vec![
-                    // << Content definieren
-                    // Einfacher Text als Beispiel
-                    NodeElement::Text {
-                        content: "Main card content area.".to_string(),
-                        style: ElementStyle::Normal,
-                        font_size: None,
-                    },
-                    // Button direkt im Content einfügen
-                    NodeElement::Button(
-                        ButtonBuilder::new()
-                            .variant(ButtonVariant::Secondary)
-                            .with_icon(assets.settings_icon.clone()) // Beispiel-Icon verwenden
-                            .with_text("Manage Settings")
-                            .size(ButtonSize::Small),
-                    ),
-                ])
-                .with_footer(vec![
-                    // << Footer definieren
-                    // Button direkt im Footer einfügen
-                    NodeElement::Button(
-                        ButtonBuilder::new()
-                            .variant(ButtonVariant::Outline)
-                            .with_text("Cancel"),
-                    ),
-                    NodeElement::Button(
-                        ButtonBuilder::new()
-                            // Kein Variant -> Default-Button
-                            .with_text("Confirm"),
-                    ),
-                ])
-                .spawn(parent, &theme, &font_handle);
+                ..default()
+            })
+            .with_children(|cb_row| {
+                // Checkbox spawnen
+                let _ = CheckboxBuilder::new()
+                    .checked(true) // Startet ausgewählt
+                    .spawn(cb_row, &theme, &assets.checkmark_icon)
+                    // Marker für spezifische Reaktion
+                    .insert(TermsCheckbox) // Eigener Marker
+                    .id(); // Die Entity ID speichern, falls wir sie brauchen
 
-            // --- Checkbox-Beispiel mit Label ---
-            // Container für Checkbox + Label nebeneinander
-            parent
-                .spawn(Node {
-                    display: Display::Flex,
-                    flex_direction: FlexDirection::Row, // Nebeneinander
-                    align_items: AlignItems::Center,    // Vertikal zentrieren
-                    column_gap: Val::Px(8.0),           // Abstand dazwischen
-                    margin: UiRect::top(Val::Px(20.0)), // Etwas Abstand nach oben
+                // Zugehöriges Label spawnen
+                let _ = LabelBuilder::new("Accept terms and conditions")
+                    // Optional: Verknüpfung (in Bevy nicht direkt wie htmlFor, aber als Hinweis)
+                    // .id("terms-label") // Weniger sinnvoll in Bevy
+                    .spawn(cb_row, &theme, &font_handle);
 
-                    ..default()
-                })
-                .with_children(|cb_row| {
-                    // Checkbox spawnen
-                    let _ = CheckboxBuilder::new()
-                        .checked(true) // Startet ausgewählt
-                        .spawn(cb_row, &theme, &assets.checkmark_icon)
-                        // Marker für spezifische Reaktion
-                        .insert(TermsCheckbox) // Eigener Marker
-                        .id(); // Die Entity ID speichern, falls wir sie brauchen
+                // -- Beispiel für disabled Checkbox --
+                let _ = CheckboxBuilder::new().disabled(true).spawn(
+                    cb_row,
+                    &theme,
+                    &assets.checkmark_icon,
+                );
+                let _ = LabelBuilder::new("Disabled Checkbox")
+                    .color(theme.muted_foreground) // Ausgegraut
+                    .spawn(cb_row, &theme, &font_handle);
+            });
+        parent
+            .spawn(Node {
+                margin: UiRect::top(Val::Px(20.0)),
+                // Breite für das Tabs-Widget festlegen
+                width: Val::Px(400.0),
 
-                    // Zugehöriges Label spawnen
-                    let _ = LabelBuilder::new("Accept terms and conditions")
-                        // Optional: Verknüpfung (in Bevy nicht direkt wie htmlFor, aber als Hinweis)
-                        // .id("terms-label") // Weniger sinnvoll in Bevy
-                        .spawn(cb_row, &theme, &font_handle);
+                ..default()
+            })
+            .with_children(|tabs_parent| {
+                // Tabs mit String-Werten erstellen
 
-                    // -- Beispiel für disabled Checkbox --
-                    let _ = CheckboxBuilder::new().disabled(true).spawn(
-                        cb_row,
-                        &theme,
-                        &assets.checkmark_icon,
-                    );
-                    let _ = LabelBuilder::new("Disabled Checkbox")
-                        .color(theme.muted_foreground) // Ausgegraut
-                        .spawn(cb_row, &theme, &font_handle);
-                });
-            parent
-                .spawn(Node {
-                    margin: UiRect::top(Val::Px(20.0)),
-                    // Breite für das Tabs-Widget festlegen
-                    width: Val::Px(400.0),
-
-                    ..default()
-                })
-                .with_children(|tabs_parent| {
-                    // Tabs mit String-Werten erstellen
-
-                    let _ = TabsBuilder::<TabId>::new(TabId("account".to_string())) // Default-Tab 'account'
-                        .add_tab(
-                            TabId("account".to_string()), // Wert dieses Tabs
-                            "Account",                    // Label für den Trigger
-                            |content_parent, theme, font_handle| {
-                                // Closure für den Content
-                                // Inhalt für den Account-Tab (z.B. eine Karte)
-                                let _ = CardBuilder::new()
-                                    .with_header(vec![
-                                        NodeElement::Text {
-                                            content: "Account Settings".into(),
-                                            style: ElementStyle::Title,
-                                            font_size: None,
-                                        },
-                                        NodeElement::Text {
-                                            content: "Manage your account details.".into(),
-                                            style: ElementStyle::Description,
-                                            font_size: None,
-                                        },
-                                    ])
-                                    .with_content(vec![
-                                        NodeElement::Text {
-                                            content: "Username: Placeholder".into(),
-                                            style: ElementStyle::Normal,
-                                            font_size: None,
-                                        },
-                                        // Hier könnten Inputs etc. hin
-                                    ])
-                                    .with_footer(vec![NodeElement::Button(
-                                        ButtonBuilder::new().with_text("Save Account"),
-                                    )])
-                                    .spawn(content_parent, theme, font_handle);
-                            },
-                        )
-                        .add_tab(
-                            TabId("password".to_string()), // Wert dieses Tabs
-                            "Password",                    // Label für den Trigger
-                            |content_parent, theme, font_handle| {
-                                // Closure für den Content
-                                // Inhalt für den Password-Tab
-                                let _ = CardBuilder::new()
-                                    .with_header(vec![NodeElement::Text {
-                                        content: "Change Password".into(),
+                let _ = TabsBuilder::<TabId>::new(TabId("account".to_string())) // Default-Tab 'account'
+                    .add_tab(
+                        TabId("account".to_string()), // Wert dieses Tabs
+                        "Account",                    // Label für den Trigger
+                        |content_parent, theme, font_handle| {
+                            // Closure für den Content
+                            // Inhalt für den Account-Tab (z.B. eine Karte)
+                            let _ = CardBuilder::new()
+                                .with_header(vec![
+                                    NodeElement::Text {
+                                        content: "Account Settings".into(),
                                         style: ElementStyle::Title,
                                         font_size: None,
-                                    }])
-                                    .with_content(vec![
-                                        NodeElement::Text {
-                                            content: "Current Password: ***".into(),
-                                            style: ElementStyle::Normal,
-                                            font_size: None,
-                                        },
-                                        NodeElement::Text {
-                                            content: "New Password: ***".into(),
-                                            style: ElementStyle::Normal,
-                                            font_size: None,
-                                        },
-                                    ])
-                                    .with_footer(vec![NodeElement::Button(
-                                        ButtonBuilder::new().with_text("Save Password"),
-                                    )])
-                                    .spawn(content_parent, theme, font_handle);
-                            },
-                        )
-                        .add_disabled_tab(
-                            TabId("security".to_string()), // Wert des deaktivierten Tabs
-                            "Security",                    // Label des deaktivierten Tabs
-                        )
-                        .spawn(tabs_parent, &theme, &font_handle); // Das ganze Tabs-Widget spawnen
-                }); // Ende Tabs Parent Children
-        });
+                                    },
+                                    NodeElement::Text {
+                                        content: "Manage your account details.".into(),
+                                        style: ElementStyle::Description,
+                                        font_size: None,
+                                    },
+                                ])
+                                .with_content(vec![
+                                    NodeElement::Text {
+                                        content: "Username: Placeholder".into(),
+                                        style: ElementStyle::Normal,
+                                        font_size: None,
+                                    },
+                                    // Hier könnten Inputs etc. hin
+                                ])
+                                .with_footer(vec![NodeElement::Button(
+                                    ButtonBuilder::new().with_text("Save Account"),
+                                )])
+                                .spawn(content_parent, theme, font_handle);
+                        },
+                    )
+                    .add_tab(
+                        TabId("password".to_string()), // Wert dieses Tabs
+                        "Password",                    // Label für den Trigger
+                        |content_parent, theme, font_handle| {
+                            // Closure für den Content
+                            // Inhalt für den Password-Tab
+                            let _ = CardBuilder::new()
+                                .with_header(vec![NodeElement::Text {
+                                    content: "Change Password".into(),
+                                    style: ElementStyle::Title,
+                                    font_size: None,
+                                }])
+                                .with_content(vec![
+                                    NodeElement::Text {
+                                        content: "Current Password: ***".into(),
+                                        style: ElementStyle::Normal,
+                                        font_size: None,
+                                    },
+                                    NodeElement::Text {
+                                        content: "New Password: ***".into(),
+                                        style: ElementStyle::Normal,
+                                        font_size: None,
+                                    },
+                                ])
+                                .with_footer(vec![NodeElement::Button(
+                                    ButtonBuilder::new().with_text("Save Password"),
+                                )])
+                                .spawn(content_parent, theme, font_handle);
+                        },
+                    )
+                    .add_disabled_tab(
+                        TabId("security".to_string()), // Wert des deaktivierten Tabs
+                        "Security",                    // Label des deaktivierten Tabs
+                    )
+                    .spawn(tabs_parent, &theme, &font_handle); // Das ganze Tabs-Widget spawnen
+            }); // Ende Tabs Parent Children
+                // --- Trigger-Button für den Dialog ---
+        let profile_dialog_id = DialogId::new_unique(); // Eindeutige ID erstellen
+
+        let _ = ButtonBuilder::new()
+            .with_text("Open Profile")
+            .add_marker(move |cmd| {
+                // Closure, um ID und Event zu verknüpfen
+                cmd.insert(OpenProfileButton {
+                    dialog_id_to_open: profile_dialog_id.clone(),
+                });
+            })
+            .spawn(parent, font_handle.clone(), &theme);
+    });
+    // --- Dialog spawnen (auf oberster Ebene, NICHT in main_ui_parent!) ---
+    let profile_dialog_id = DialogId::new_unique(); // Dieselbe ID verwenden oder neu generieren und im Button speichern
+    let dialog_font_handle = font_handle.clone();
+    let _ = DialogBuilder::new(profile_dialog_id.clone()) // Verwende die vorher erstellte ID
+        .title("Edit Profile")
+        .description("Make changes to your profile here. Click save when you're done.")
+        .width(Val::Px(450.0))
+        // Default close button verwenden (X oben rechts)
+        .with_content(|content_builder, theme, font_handle| {
+            // Inhalt des Dialogs definieren
+            // Beispiel: Label + Text (Input fehlt noch)
+            let _ = LabelBuilder::new("Name:").spawn(content_builder, theme, font_handle);
+            // TODO: Input-Feld ersetzen
+            content_builder.spawn((
+                Node {
+                    width: Val::Percent(100.),
+                    height: Val::Px(30.),
+                    border: UiRect::all(Val::Px(1.)),
+                    ..default()
+                },
+                BorderColor(theme.input),
+            ));
+
+            let _ = LabelBuilder::new("Username:").spawn(content_builder, theme, font_handle);
+            content_builder.spawn((
+                Node {
+                    width: Val::Percent(100.),
+                    height: Val::Px(30.),
+                    border: UiRect::all(Val::Px(1.)),
+                    ..default()
+                },
+                BorderColor(theme.input),
+            ));
+
+            // Beispiel: Eigener Schließen-Button im Footer
+            content_builder
+                .spawn(Node {
+                    justify_content: JustifyContent::FlexEnd,
+                    width: Val::Percent(100.),
+                    margin: UiRect::top(Val::Px(20.)),
+
+                    ..default()
+                })
+                .with_children(|footer| {
+                    let _ = ButtonBuilder::new()
+                        .with_text("Save Changes")
+                        .add_marker(|cmd| {
+                            cmd.insert(DialogCloseTrigger);
+                        }) // <-- Schließt Dialog
+                        .spawn(footer, font_handle.clone(), theme);
+                });
+        })
+        .spawn(
+            &mut commands,
+            &theme,
+            &dialog_font_handle,
+            Some(&assets.checkmark_icon.clone()),
+            Some(root_ui_entity),
+        );
+
     info!("Main menu UI setup complete.");
 }
 
@@ -661,6 +738,28 @@ fn handle_checkbox_changes(
                 "Another checkbox (Entity {:?}) changed to {}",
                 event.checkbox_entity, event.is_checked
             );
+        }
+    }
+}
+
+// --- Marker + Zustand für den Trigger-Button ---
+#[derive(Component)]
+struct OpenProfileButton {
+    dialog_id_to_open: DialogId,
+}
+
+// --- System, das auf den Trigger-Button reagiert ---
+fn handle_dialog_trigger_buttons(
+    mut interactions: Query<
+        (&Interaction, &OpenProfileButton),
+        (Changed<Interaction>, With<Button>),
+    >,
+    mut ev_open_dialog: EventWriter<OpenDialogEvent>,
+) {
+    for (interaction, button_data) in interactions.iter_mut() {
+        if *interaction == Interaction::Pressed {
+            info!("Opening dialog: {:?}", button_data.dialog_id_to_open);
+            ev_open_dialog.send(OpenDialogEvent(button_data.dialog_id_to_open.clone()));
         }
     }
 }
