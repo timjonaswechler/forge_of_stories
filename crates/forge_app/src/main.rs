@@ -17,6 +17,7 @@ use forge_ui::{
     checkbox::{CheckboxBuilder, CheckboxChangedEvent}, // << Builder und Helfer importieren
     dialog::{CloseDialogEvent, DialogBuilder, DialogCloseTrigger, DialogId, OpenDialogEvent},
     label::LabelBuilder,
+    layout::{HorizontalStackBuilder, UiRoot, VerticalStackBuilder},
     tabs::handle_tab_triggers,
     tabs::{TabId, TabsBuilder},
     theme::UiTheme,
@@ -339,24 +340,9 @@ fn setup_main_menu(
     let profile_dialog_id_for_button = profile_dialog_id.clone(); // ID für den Dialog
 
     // Create root UI nodre
-    let root_ui_entity = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                display: Display::Flex,
-                flex_direction: FlexDirection::Column,
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                row_gap: Val::Px(10.0),
-                ..default()
-            },
-            BackgroundColor(theme.background),
-            // BackgroundColor(Color::srgba(0.0, 1.0, 0.0, 1.0)), // Hintergrund aus Theme
-        ))
-        .id();
+    let ui_root_entity = UiRoot::spawn(&mut commands, &theme);
 
-    commands.entity(root_ui_entity).with_children(|parent| {
+    commands.entity(ui_root_entity).with_children(|parent| {
         // --- Badges Gruppe ---
         parent
             .spawn(Node {
@@ -684,7 +670,7 @@ fn setup_main_menu(
             &theme,
             &dialog_font_handle,
             Some(&assets.checkmark_icon.clone()),
-            Some(root_ui_entity),
+            Some(ui_root_entity),
         );
 
     info!("Main menu UI setup complete.");

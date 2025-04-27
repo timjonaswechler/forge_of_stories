@@ -52,6 +52,13 @@ pub use dialog::{
     OpenDialogEvent, // Event zum Öffnen
 };
 
+pub mod layout;
+pub use layout::{
+    HorizontalStackBuilder, // Builder für horizontale Stacks
+    UiRoot,                 // Marker für die Wurzel (falls benötigt)
+    VerticalStackBuilder,   // Builder für vertikale Stacks
+};
+
 pub mod theme; // Theme-Management für UI-Elemente
 
 use bevy::prelude::*;
