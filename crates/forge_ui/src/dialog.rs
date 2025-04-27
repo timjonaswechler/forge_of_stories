@@ -3,6 +3,7 @@
 use bevy::audio::*;
 use bevy::ecs::system::EntityCommands;
 use bevy::prelude::*;
+use bevy::ui::FocusPolicy;
 use uuid::Uuid;
 
 use std::hash::Hash;
@@ -266,7 +267,7 @@ impl DialogBuilder {
                     BackgroundColor(overlay_bg),
                     // Overlay bekommt niedrigeren Z-Index als Content
                     GlobalZIndex(9),
-                    // Hier könnte ein System Klicks abfangen und CloseDialogEvent senden
+                    FocusPolicy::Block,
                 ));
             }
 
