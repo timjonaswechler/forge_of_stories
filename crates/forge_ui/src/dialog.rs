@@ -190,8 +190,9 @@ impl DialogBuilder {
                     Val::Px(r) => UiRect::all(Val::Px(r + 6.0)),
                     other => UiRect::all(other), // fallback: just use theme.radius if not Px
                 },
-
-                row_gap: Val::Px(12.0), // Abstand zwischen Elementen im Dialog
+                width: self.width.unwrap_or(Val::Px(400.0)), // Direkt setzen
+                height: self.height.unwrap_or_default(),     // Direkt setzen
+                row_gap: Val::Px(12.0),                      // Abstand zwischen Elementen im Dialog
 
                 ..default()
             },
@@ -210,7 +211,7 @@ impl DialogBuilder {
 
         let mut root_node_visibility = Visibility::Hidden; // Standardmäßig versteckt
         if self.initially_open {
-            root_node_visibility = Visibility::Inherited;
+            root_node_visibility = Visibility::Visible;
             // TODO: Muss beim Start in ActiveDialogs registriert werden (in einem System?)
         }
 

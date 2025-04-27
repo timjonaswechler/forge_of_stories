@@ -334,7 +334,11 @@ fn setup_main_menu(
         .clone()
         .unwrap_or_else(|| assets.main_font.clone()); // Fallback, falls Theme keine Font hat
 
-    // Create root UI node
+    // --- Trigger-Button für den Dialog ---
+    let profile_dialog_id = DialogId::new_unique();
+    let profile_dialog_id_for_button = profile_dialog_id.clone(); // ID für den Dialog
+
+    // Create root UI nodre
     let root_ui_entity = commands
         .spawn((
             Node {
@@ -353,6 +357,7 @@ fn setup_main_menu(
         .id();
 
     commands.entity(root_ui_entity).with_children(|parent| {
+        // --- Badges Gruppe ---
         parent
             .spawn(Node {
                 display: Display::Flex,
@@ -380,7 +385,9 @@ fn setup_main_menu(
                     .variant(BadgeVariant::Destructive)
                     .spawn(badge_row, &theme, &font_handle);
             }); // Ende Badge Row Children
-                // --- Button Gruppe (wie bisher) ---
+                // --- Badges ---
+
+        // --- Button Gruppe ---
         parent
             .spawn(Node {
                 display: Display::Flex,
@@ -608,21 +615,20 @@ fn setup_main_menu(
                     )
                     .spawn(tabs_parent, &theme, &font_handle); // Das ganze Tabs-Widget spawnen
             }); // Ende Tabs Parent Children
-                // --- Trigger-Button für den Dialog ---
-        let profile_dialog_id = DialogId::new_unique(); // Eindeutige ID erstellen
 
+        // Eindeutige ID erstellen
         let _ = ButtonBuilder::new()
             .with_text("Open Profile")
             .add_marker(move |cmd| {
                 // Closure, um ID und Event zu verknüpfen
                 cmd.insert(OpenProfileButton {
-                    dialog_id_to_open: profile_dialog_id.clone(),
+                    dialog_id_to_open: profile_dialog_id_for_button,
                 });
             })
             .spawn(parent, font_handle.clone(), &theme);
     });
     // --- Dialog spawnen (auf oberster Ebene, NICHT in main_ui_parent!) ---
-    let profile_dialog_id = DialogId::new_unique(); // Dieselbe ID verwenden oder neu generieren und im Button speichern
+    // let profile_dialog_id = DialogId::new_unique(); // Dieselbe ID verwenden oder neu generieren und im Button speichern
     let dialog_font_handle = font_handle.clone();
     let _ = DialogBuilder::new(profile_dialog_id.clone()) // Verwende die vorher erstellte ID
         .title("Edit Profile")
