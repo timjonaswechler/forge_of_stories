@@ -1,9 +1,7 @@
 // crates/forge_ui/src/label.rs
-
-use bevy::ecs::system::EntityCommands;
 use bevy::prelude::*; // Für den Rückgabetyp von spawn
 
-use super::theme::UiTheme; // Theme für Styling
+use crate::theme::UiTheme; // Theme für Styling
 
 // --- Marker Komponente ---
 /// Marker-Komponente für UI-Labels.

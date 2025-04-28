@@ -9,7 +9,7 @@ use uuid::Uuid;
 use std::hash::Hash;
 
 use super::button::{ButtonBuilder, ButtonSize, ButtonVariant};
-use super::theme::UiTheme; // Für Schließen-Button
+use crate::theme::UiTheme; // Für Schließen-Button
 
 // --- Ressourcen (ggf. global definieren) ---
 #[derive(Resource, Default, Debug)]

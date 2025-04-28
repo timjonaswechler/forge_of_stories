@@ -1,79 +1,24 @@
-// crates/forge_app/src/ui/theme.rs
+// crates/forge_ui/src/theme/runtime.rs
 use bevy::{color::Srgba, prelude::*, reflect::TypePath}; // <<< TypePath hinzufügen
-use serde::{Deserialize, Serialize};
 
 const REM: f32 = 16.0;
 const SPACING: f32 = 4.0;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Debug, Clone, Asset, TypePath, Resource)]
+pub struct UiTheme {
+    pub ui_scaling: f32,
+    pub font: UiTypography,
+    pub layout: UiLayout,
+    pub color: UiColors,
+}
+
+#[derive(Debug, Clone)]
 pub struct UiTypography {
     pub font_size: UiFontSize,
     pub font_family: UiFontFamilies,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct UiFontSize {
-    pub xs: f32,
-    pub sm: f32,
-    pub base: f32,
-    pub lg: f32,
-    pub xl: f32,
-    pub x2l: f32,
-    pub x3l: f32,
-    pub x4l: f32,
-    pub x5l: f32,
-    pub x6l: f32,
-    pub x7l: f32,
-    pub x8l: f32,
-    pub x9l: f32,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct UiFontFamilies {
-    pub default: String,
-    pub sans: FontVariants,
-    pub serif: FontVariants,
-    pub mono: FontVariants,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct FontVariants {
-    pub light: String,
-    pub light_italic: String,
-    pub regular: String,
-    pub regular_italic: String,
-    pub medium: String,
-    pub medium_italic: String,
-    pub bold: String,
-    pub bold_italic: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct UiSpacing {
-    pub xs: f32,
-    pub sm: f32,
-    pub base: f32,
-    pub lg: f32,
-    pub xl: f32,
-    pub x2l: f32,
-    pub x3l: f32,
-    pub x4l: f32,
-    pub x5l: f32,
-}
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct UiRadius {
-    pub xs: f32,
-    pub sm: f32,
-    pub base: f32,
-    pub lg: f32,
-    pub xl: f32,
-    pub x2l: f32,
-    pub x3l: f32,
-    pub x4l: f32,
-    pub full: f32,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct UiLayout {
     pub spacing: f32,
     pub padding: UiSpacing,
@@ -82,27 +27,7 @@ pub struct UiLayout {
     pub radius: UiRadius,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct UiColor {
-    pub background_primary: Color,
-    pub background_secondary: Color,
-
-    pub interaction_primary: Color,
-    pub interaction_secondary: Color,
-    pub interaction_tertiary: Color,
-
-    pub border_primary: Color,
-    pub border_secondary: Color,
-    pub border_tertiary: Color,
-
-    pub solid_primary: Color,
-    pub solid_secondary: Color,
-
-    pub text_primary: Color,
-    pub text_secondary: Color,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct UiColors {
     pub white: UiColor,
     pub black: UiColor,
@@ -139,16 +64,97 @@ pub struct UiColors {
     pub sky: UiColor,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Asset, TypePath)]
-pub struct UiTheme {
-    pub ui_scaling: f32,
-    pub font: UiTypography,
-    pub layout: UiLayout,
-    pub color: UiColors,
+#[derive(Debug, Clone)]
+pub struct UiFontSize {
+    pub xs: f32,
+    pub sm: f32,
+    pub base: f32,
+    pub lg: f32,
+    pub xl: f32,
+    pub x2l: f32,
+    pub x3l: f32,
+    pub x4l: f32,
+    pub x5l: f32,
+    pub x6l: f32,
+    pub x7l: f32,
+    pub x8l: f32,
+    pub x9l: f32,
 }
 
+#[derive(Debug, Clone)]
+pub struct UiFontFamilies {
+    pub default: Handle<Font>,
+    pub sans: FontVariants,
+    pub serif: FontVariants,
+    pub mono: FontVariants,
+}
+
+#[derive(Debug, Clone)]
+pub struct FontVariants {
+    pub light: Handle<Font>,
+    pub light_italic: Handle<Font>,
+    pub regular: Handle<Font>,
+    pub regular_italic: Handle<Font>,
+    pub medium: Handle<Font>,
+    pub medium_italic: Handle<Font>,
+    pub bold: Handle<Font>,
+    pub bold_italic: Handle<Font>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UiSpacing {
+    pub xs: f32,
+    pub sm: f32,
+    pub base: f32,
+    pub lg: f32,
+    pub xl: f32,
+    pub x2l: f32,
+    pub x3l: f32,
+    pub x4l: f32,
+    pub x5l: f32,
+}
+#[derive(Debug, Clone)]
+pub struct UiRadius {
+    pub xs: f32,
+    pub sm: f32,
+    pub base: f32,
+    pub lg: f32,
+    pub xl: f32,
+    pub x2l: f32,
+    pub x3l: f32,
+    pub x4l: f32,
+    pub full: f32,
+}
+
+#[derive(Debug, Clone)]
+pub struct UiColor {
+    pub background_primary: Color,
+    pub background_secondary: Color,
+
+    pub interaction_primary: Color,
+    pub interaction_secondary: Color,
+    pub interaction_tertiary: Color,
+
+    pub border_primary: Color,
+    pub border_secondary: Color,
+    pub border_tertiary: Color,
+
+    pub solid_primary: Color,
+    pub solid_secondary: Color,
+
+    pub text_primary: Color,
+    pub text_secondary: Color,
+}
+
+// Default implementation remains mostly the same, but needs to provide default Handles
+// Note: Providing valid default Handles here is tricky. This default might panic
+// if used before assets are loaded properly. It's better practice to load from
+// file and ensure the resource exists before using it.
 impl Default for UiTheme {
     fn default() -> Self {
+        // Placeholder handles - these WILL NOT WORK unless assets with these exact IDs exist!
+        let placeholder_font = Handle::default(); // Use default handle as placeholder
+
         Self {
             ui_scaling: 1.0,
             color: UiColors {
@@ -679,36 +685,36 @@ impl Default for UiTheme {
                     x9l: 8.0 * REM,
                 },
                 font_family: UiFontFamilies {
-                    default: "fonts/Roboto-Regular.ttf".to_string(),
+                    default: placeholder_font.clone(),
                     sans: FontVariants {
-                        light: "fonts/Roboto-Light.ttf".to_string(),
-                        light_italic: "fonts/Roboto-LightItalic.ttf".to_string(),
-                        regular: "fonts/Roboto-Regular.ttf".to_string(),
-                        regular_italic: "fonts/Roboto-RegularItalic.ttf".to_string(),
-                        medium: "fonts/Roboto-Medium.ttf".to_string(),
-                        medium_italic: "fonts/Roboto-MediumItalic.ttf".to_string(),
-                        bold: "fonts/Roboto-Bold.ttf".to_string(),
-                        bold_italic: "fonts/Roboto-BoldItalic.ttf".to_string(),
+                        light: placeholder_font.clone(),
+                        light_italic: placeholder_font.clone(),
+                        regular: placeholder_font.clone(),
+                        regular_italic: placeholder_font.clone(),
+                        medium: placeholder_font.clone(),
+                        medium_italic: placeholder_font.clone(),
+                        bold: placeholder_font.clone(),
+                        bold_italic: placeholder_font.clone(),
                     },
                     serif: FontVariants {
-                        light: "fonts/NotoSerif-Light.ttf".to_string(),
-                        light_italic: "fonts/NotoSerif-LightItalic.ttf".to_string(),
-                        regular: "fonts/NotoSerif-Regular.ttf".to_string(),
-                        regular_italic: "fonts/NotoSerif-RegularItalic.ttf".to_string(),
-                        medium: "fonts/NotoSerif-Medium.ttf".to_string(),
-                        medium_italic: "fonts/NotoSerif-MediumItalic.ttf".to_string(),
-                        bold: "fonts/NotoSerif-Bold.ttf".to_string(),
-                        bold_italic: "fonts/NotoSerif-BoldItalic.ttf".to_string(),
+                        light: placeholder_font.clone(),
+                        light_italic: placeholder_font.clone(),
+                        regular: placeholder_font.clone(),
+                        regular_italic: placeholder_font.clone(),
+                        medium: placeholder_font.clone(),
+                        medium_italic: placeholder_font.clone(),
+                        bold: placeholder_font.clone(),
+                        bold_italic: placeholder_font.clone(),
                     },
                     mono: FontVariants {
-                        light: "fonts/RobotoMono-Ligh.ttf".to_string(),
-                        light_italic: "fonts/RobotoMono-LightItalic.ttf".to_string(),
-                        regular: "fonts/RobotoMono-Regular.ttf".to_string(),
-                        regular_italic: "fonts/RobotoMono-RegularItalic.ttf".to_string(),
-                        medium: "fonts/RobotoMono-Medium.ttf".to_string(),
-                        medium_italic: "fonts/RobotoMono-MediumItalic.ttf".to_string(),
-                        bold: "fonts/RobotoMono-Bold.ttf".to_string(),
-                        bold_italic: "fonts/RobotoMono-BoldItalic.ttf".to_string(),
+                        light: placeholder_font.clone(),
+                        light_italic: placeholder_font.clone(),
+                        regular: placeholder_font.clone(),
+                        regular_italic: placeholder_font.clone(),
+                        medium: placeholder_font.clone(),
+                        medium_italic: placeholder_font.clone(),
+                        bold: placeholder_font.clone(),
+                        bold_italic: placeholder_font.clone(),
                     },
                 },
             },

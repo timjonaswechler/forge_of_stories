@@ -1,6 +1,6 @@
 // crates/forge_ui/src/checkbox.rs
 
-use super::theme::UiTheme;
+use crate::theme::UiTheme;
 use bevy::{ecs::system::EntityCommands, prelude::*, ui::FocusPolicy};
 
 // --- Komponenten ---
@@ -190,7 +190,7 @@ impl CheckboxBuilder {
 
 /// Aktualisiert das Aussehen der Checkbox basierend auf Zustand und Interaktion.
 pub fn update_checkbox_visuals(
-    theme: Res<UiTheme>,
+    theme_opt: Option<Res<UiTheme>>,
     mut checkbox_query: Query<
         (
             &Interaction,
@@ -205,6 +205,14 @@ pub fn update_checkbox_visuals(
         ), // Reaktion auf Klick oder Statusänderung
     >,
 ) {
+    // --- ADD THIS GUARD ---
+    let Some(theme) = theme_opt else {
+        // Theme not loaded yet, skip this update cycle
+        // Optionally add a warn! log here if it happens frequently after startup
+        warn!("UiTheme not available for update_checkbox_visuals, skipping frame.");
+        return;
+    };
+    // --- END GUARD ---
     for (interaction, state, mut bg_color, mut border_color) in checkbox_query.iter_mut() {
         // Basis-Styling basierend auf checked/disabled
         let base_bg_color = theme.color.gray.background_secondary; // Oder theme.input / theme.background ?

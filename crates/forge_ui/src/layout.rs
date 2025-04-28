@@ -1,6 +1,6 @@
 // crates/forge_ui/src/layout.rs
 
-use super::theme::UiTheme;
+use crate::theme::UiTheme;
 use bevy::ecs::system::EntityCommands;
 use bevy::prelude::*; // Optional, falls Theme Styling beeinflusst
 

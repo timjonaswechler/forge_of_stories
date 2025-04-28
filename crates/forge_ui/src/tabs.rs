@@ -1,12 +1,11 @@
 // crates/forge_ui/src/tabs.rs
 use bevy::ecs::system::EntityCommands;
 use bevy::prelude::*;
-use serde::de;
 use std::collections::HashMap; // Für Content-Bereiche
 use std::hash::Hash; // Für generischen Wert-Typ
 
 use super::button::{ButtonBuilder, ButtonSize, ButtonVariant};
-use super::theme::UiTheme; // Nutzen Button als Basis für Trigger
+use crate::theme::UiTheme; // Nutzen Button als Basis für Trigger
 
 // --- Komponenten ---
 
@@ -192,7 +191,7 @@ impl<T: Component + PartialEq + Eq + Hash + Clone + Send + Sync + 'static> TabsB
                         let is_initially_active = item.value == default_value;
 
                         // Wir verwenden ButtonBuilder für den Trigger
-                        let mut trigger_builder = ButtonBuilder::new()
+                        let trigger_builder = ButtonBuilder::new()
                             .variant(ButtonVariant::Ghost) // Basis: Ghost (kein BG/Border)
                             .size(ButtonSize::Small) // Passt gut zur h-10 Liste
                             .with_text(&item.trigger_label)

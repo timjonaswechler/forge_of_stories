@@ -14,8 +14,6 @@
     "species.human": File( path: "species/human.species.ron" ),
     "species.ork": File( path: "species/ork.species.ron" ),
 
-    // === Theme ===
-    "theme.default": File( path: "theme/default.theme.ron" ),
 
     // Optional: Loading Icon (falls verwendet)
      "texture.loading_icon": File( path:"game-icons/PNG/Black/2x/return.png" ), // Prüfen ob Textures-Ordner existiert

@@ -1,7 +1,7 @@
 // crates/forge_ui/src/badge.rs
 
-use super::theme::UiTheme;
-use bevy::ecs::system::EntityCommands;
+use crate::theme::UiTheme;
+
 use bevy::prelude::*;
 
 // --- Komponenten ---

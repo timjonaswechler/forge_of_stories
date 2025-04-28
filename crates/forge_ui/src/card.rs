@@ -2,7 +2,7 @@
 
 use bevy::{ecs::system::EntityCommands, prelude::*};
 
-use super::theme::UiTheme;
+use crate::theme::UiTheme;
 // Wichtig: ButtonBuilder importieren, falls er im Footer verwendet wird
 use super::button::ButtonBuilder;
 

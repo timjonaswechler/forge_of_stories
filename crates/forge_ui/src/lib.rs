@@ -59,8 +59,8 @@ pub use layout::{
     VerticalStackBuilder,   // Builder für vertikale Stacks
 };
 
-pub mod theme; // Theme-Management für UI-Elemente
-
+pub mod theme;
+// Theme-Management für UI-Elemente
 use bevy::prelude::*;
 use button::{handle_button_clicks_event, update_button_visuals};
 use checkbox::{
@@ -71,6 +71,7 @@ use dialog::{
     register_initially_open_dialogs, ActiveDialogs,
 };
 use tabs::{handle_tab_triggers, populate_initial_tab_content, update_tabs_visuals};
+pub use theme::plugin::ThemePlugin;
 // Später: use tabs::{handle_tab_activation};
 
 /// Plugin für die Kernfunktionalität der Forge UI Widgets.
@@ -99,6 +100,12 @@ impl Plugin for ForgeUiPlugin {
             .add_systems(
                 Update,
                 (
+                    handle_button_clicks_event,
+                    update_button_visuals,
+                    register_initially_open_dialogs,
+                    update_checkbox_visuals, // <<< Uses Option<Res<UiTheme>> now
+                    handle_checkbox_clicks,
+                    update_checkmark_visibility_on_state_change,
                     open_dialog_system,                 // Öffnet Dialoge per Event
                     close_dialog_system, // Schließt Dialoge (ESC, Event, Close Button)
                     handle_overlay_click_system, // Schließt bei Klick aufs Overlay
