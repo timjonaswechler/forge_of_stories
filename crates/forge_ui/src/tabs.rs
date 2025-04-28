@@ -176,14 +176,14 @@ impl<T: Component + PartialEq + Eq + Hash + Clone + Send + Sync + 'static> TabsB
 
                     ..default()
                 },
-                border_radius: BorderRadius::all(theme.radius * 0.8), // 'rounded-md'
+                border_radius: BorderRadius::all(Val::Px(theme.layout.radius.sm)), // 'rounded-md'
             });
 
             builder
                 .spawn((
                     TabsList,
                     list_node_style,
-                    BackgroundColor(theme.muted), // Hintergrund für Liste
+                    BackgroundColor(theme.color.white.border_tertiary), // Hintergrund für Liste
                 ))
                 .with_children(|list_builder| {
                     // 2. TabsTrigger Buttons spawnen
@@ -436,16 +436,16 @@ pub fn update_tabs_visuals<
                 // Setze das Aussehen des Triggers
                 if trigger.is_active && !trigger.disabled {
                     // Aktiver Stil: Heller Hintergrund, "echte" Textfarbe
-                    *bg_color = BackgroundColor(theme.background); // Hintergrund aus dem *Haupt*-Theme
+                    *bg_color = BackgroundColor(Color::NONE); // Hintergrund aus dem *Haupt*-Theme
                     *border_color = BorderColor(Color::NONE); // Kein expliziter Rand im aktiven Zustand
-                    target_text_color = theme.foreground; // Helle/normale Textfarbe
+                    target_text_color = theme.color.gray.text_primary; // Helle/normale Textfarbe
 
                 // Optional: Shadow-Effekt (schwierig in Bevy UI nativ)
                 } else {
                     // Inaktiver Stil (wie Ghost Button)
                     *bg_color = BackgroundColor(Color::NONE); // Kein Hintergrund
                     *border_color = BorderColor(Color::NONE); // Kein Rand
-                    target_text_color = theme.muted_foreground; // Gedämpfte Textfarbe
+                    target_text_color = theme.color.gray.solid_primary; // Gedämpfte Textfarbe
                 }
 
                 // Farbe des Trigger-Texts aktualisieren

@@ -187,18 +187,15 @@ impl DialogBuilder {
                 // Innere Gestaltung
                 display: Display::Flex,
                 flex_direction: FlexDirection::Column,
-                padding: match theme.radius {
-                    Val::Px(r) => UiRect::all(Val::Px(r + 6.0)),
-                    other => UiRect::all(other), // fallback: just use theme.radius if not Px
-                },
-                width: self.width.unwrap_or(Val::Px(400.0)), // Direkt setzen
-                height: self.height.unwrap_or_default(),     // Direkt setzen
-                row_gap: Val::Px(12.0),                      // Abstand zwischen Elementen im Dialog
+                padding: UiRect::all(Val::Px(theme.layout.padding.base)), // Padding für den Content
+                width: self.width.unwrap_or(Val::Px(400.0)),              // Direkt setzen
+                height: self.height.unwrap_or_default(),                  // Direkt setzen
+                row_gap: Val::Px(12.0), // Abstand zwischen Elementen im Dialog
 
                 ..default()
             },
-            border_radius: BorderRadius::all(theme.radius),
-            background_color: BackgroundColor(theme.popover), // Popover-Farbe für Content
+            border_radius: BorderRadius::all(Val::Px(theme.layout.radius.base)),
+            background_color: BackgroundColor(theme.color.gray.background_secondary), // Popover-Farbe für Content
             // Transform zum Zentrieren verwenden
             // Verschiebe um -50% der *eigenen* Breite/Höhe nach links/oben
             transform: Transform::from_translation(Vec3::new(-50., -50., 0.)),
@@ -285,7 +282,7 @@ impl DialogBuilder {
                             font_size: 18.0, // Titelgröße
                             ..default()
                         },
-                        TextColor(theme.popover_foreground), // Popover-Farbe
+                        TextColor(theme.color.white.text_primary), // Popover-Farbe
                     ));
                     // .insert(DialogTitle); // Optional Marker hinzufügen
                 }
@@ -298,7 +295,7 @@ impl DialogBuilder {
                                 font_size: 14.0,
                                 ..default()
                             },
-                            TextColor(theme.muted_foreground), // Gedämpft
+                            TextColor(theme.color.white.solid_primary), // Gedämpft
                         ))
                         .insert(Node {
                             margin: UiRect::bottom(Val::Px(10.0)),
@@ -318,8 +315,8 @@ impl DialogBuilder {
                     content_builder
                         .spawn(Node {
                             position_type: PositionType::Absolute,
-                            top: theme.radius * 0.5, // Kleiner Abstand zum Rand
-                            right: theme.radius * 0.5,
+                            top: Val::Px(theme.layout.spacing), // Kleiner Abstand zum Rand
+                            right: Val::Px(theme.layout.spacing),
 
                             ..default()
                         })

@@ -8,6 +8,7 @@ description.workspace = true
 [dependencies]
 forge_ui = { path = "../forge_ui" }
 bevy = { workspace = true }
+serde = { workspace = true }
 bevy_common_assets = { version = "0.12.0" }
 bevy_asset_loader = { version = "0.22.0", features = [
     "standard_dynamic_assets",
@@ -20,9 +21,8 @@ rand = "0.8.5"
 rand_distr = "0.4.3"
 strum = "0.27"
 strum_macros = "0.27"
-serde = { version = "1.0", features = ["derive"] }
 ron = "0.10.1"
-
+anyhow = "1.0"
 
 [features]
 default = [] # Standardmäßig keine optionalen Features aktiv

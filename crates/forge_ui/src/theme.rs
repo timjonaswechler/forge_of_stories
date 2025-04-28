@@ -1,93 +1,717 @@
 // crates/forge_app/src/ui/theme.rs
-use bevy::prelude::*;
+use bevy::{color::Srgba, prelude::*, reflect::TypePath}; // <<< TypePath hinzufügen
+use serde::{Deserialize, Serialize};
 
-#[derive(Resource, Debug, Clone)]
+const REM: f32 = 16.0;
+const SPACING: f32 = 4.0;
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct UiTypography {
+    pub font_size: UiFontSize,
+    pub font_family: UiFontFamilies,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct UiFontSize {
+    pub xs: f32,
+    pub sm: f32,
+    pub base: f32,
+    pub lg: f32,
+    pub xl: f32,
+    pub x2l: f32,
+    pub x3l: f32,
+    pub x4l: f32,
+    pub x5l: f32,
+    pub x6l: f32,
+    pub x7l: f32,
+    pub x8l: f32,
+    pub x9l: f32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct UiFontFamilies {
+    pub default: String,
+    pub sans: FontVariants,
+    pub serif: FontVariants,
+    pub mono: FontVariants,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct FontVariants {
+    pub light: String,
+    pub light_italic: String,
+    pub regular: String,
+    pub regular_italic: String,
+    pub medium: String,
+    pub medium_italic: String,
+    pub bold: String,
+    pub bold_italic: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct UiSpacing {
+    pub xs: f32,
+    pub sm: f32,
+    pub base: f32,
+    pub lg: f32,
+    pub xl: f32,
+    pub x2l: f32,
+    pub x3l: f32,
+    pub x4l: f32,
+    pub x5l: f32,
+}
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct UiRadius {
+    pub xs: f32,
+    pub sm: f32,
+    pub base: f32,
+    pub lg: f32,
+    pub xl: f32,
+    pub x2l: f32,
+    pub x3l: f32,
+    pub x4l: f32,
+    pub full: f32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct UiLayout {
+    pub spacing: f32,
+    pub padding: UiSpacing,
+    pub margin: UiSpacing,
+    pub gap: UiSpacing,
+    pub radius: UiRadius,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct UiColor {
+    pub background_primary: Color,
+    pub background_secondary: Color,
+
+    pub interaction_primary: Color,
+    pub interaction_secondary: Color,
+    pub interaction_tertiary: Color,
+
+    pub border_primary: Color,
+    pub border_secondary: Color,
+    pub border_tertiary: Color,
+
+    pub solid_primary: Color,
+    pub solid_secondary: Color,
+
+    pub text_primary: Color,
+    pub text_secondary: Color,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct UiColors {
+    pub white: UiColor,
+    pub black: UiColor,
+    pub gray: UiColor,
+    pub mauve: UiColor,
+    pub slate: UiColor,
+    pub sage: UiColor,
+    pub olive: UiColor,
+    pub sand: UiColor,
+    pub tomato: UiColor,
+    pub red: UiColor,
+    pub ruby: UiColor,
+    pub crimson: UiColor,
+    pub pink: UiColor,
+    pub plum: UiColor,
+    pub purple: UiColor,
+    pub violet: UiColor,
+    pub iris: UiColor,
+    pub indigo: UiColor,
+    pub blue: UiColor,
+    pub cyan: UiColor,
+    pub teal: UiColor,
+    pub jade: UiColor,
+    pub green: UiColor,
+    pub grass: UiColor,
+    pub bronze: UiColor,
+    pub gold: UiColor,
+    pub brown: UiColor,
+    pub orange: UiColor,
+    pub amber: UiColor,
+    pub yellow: UiColor,
+    pub lime: UiColor,
+    pub mint: UiColor,
+    pub sky: UiColor,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Asset, TypePath)]
 pub struct UiTheme {
-    // === Kernfarben ===
-    /// Haupt-Hintergrundfarbe der Anwendung oder Bereiche.
-    pub background: Color,
-    /// Standard-Vordergrundfarbe (z.B. für Text auf `background`).
-    pub foreground: Color,
-    /// Hintergrundfarbe für Card-ähnliche Elemente.
-    pub card: Color,
-    /// Vordergrundfarbe (Text) auf Card-Elementen.
-    pub card_foreground: Color,
-    /// Hintergrundfarbe für Popover-Elemente (Tooltips, Menüs etc.).
-    pub popover: Color,
-    /// Vordergrundfarbe (Text) auf Popover-Elementen.
-    pub popover_foreground: Color,
-
-    // === Semantische Paletten ===
-    /// Primäre Akzentfarbe (z.B. für Standard-Buttons, Links).
-    pub primary: Color,
-    /// Farbe für Text/Icons auf `primary`-Hintergrund.
-    pub primary_foreground: Color,
-    /// Sekundäre Akzentfarbe (z.B. für weniger wichtige Buttons, Hintergründe).
-    pub secondary: Color,
-    /// Farbe für Text/Icons auf `secondary`-Hintergrund.
-    pub secondary_foreground: Color,
-    /// Farbe für dezente Hintergründe oder inaktive Elemente.
-    pub muted: Color,
-    /// Farbe für Text/Icons auf `muted`-Hintergrund (oft grau).
-    pub muted_foreground: Color,
-    /// Farbe für Hover-Effekte oder spezielle Hervorhebungen.
-    pub accent: Color,
-    /// Farbe für Text/Icons auf `accent`-Hintergrund.
-    pub accent_foreground: Color,
-    /// Farbe für destruktive Aktionen (Löschen, Fehler).
-    pub destructive: Color,
-    /// Farbe für Text/Icons auf `destructive`-Hintergrund.
-    pub destructive_foreground: Color,
-
-    // === Ränder & Eingabe ===
-    /// Standardfarbe für Ränder/Linien.
-    pub border: Color,
-    /// Farbe für Eingabefeld-Ränder oder -Hintergründe.
-    pub input: Color,
-    /// Farbe für den Fokus-Indikator (z.B. um Buttons/Inputs).
-    pub ring: Color,
-
-    // === Layout ===
-    /// Standard-Eckenradius für Buttons, Cards etc.
-    pub radius: Val, // Verwende Val für Flexibilität (Px, Percent, etc.)
-
-    // === Schriftarten ===
-    /// Handle zur Standard-Schriftart. Wird vom Asset-System gesetzt.
-    pub default_font: Option<Handle<Font>>,
-    // Optional: pub heading_font: Option<Handle<Font>>,
+    pub ui_scaling: f32,
+    pub font: UiTypography,
+    pub layout: UiLayout,
+    pub color: UiColors,
 }
 
 impl Default for UiTheme {
     fn default() -> Self {
-        // Starten wir mit einem dunklen Theme, das sich an Shadcn's "Zinc" Palette orientiert.
-        // Hinweis: Konvertierung von OKLCH zu sRGB ist nicht trivial. Dies sind Annäherungen.
         Self {
-            // Dunkles Zink-ähnliches Theme
-            background: Color::srgba_u8(12, 12, 12, 255), // Zinc 950
-            foreground: Color::srgba_u8(250, 250, 250, 255), // Zinc 50
-            card: Color::srgba_u8(39, 39, 39, 255),       // Zinc 900
-            card_foreground: Color::srgba_u8(250, 250, 250, 255), // Zinc 50
-            popover: Color::srgba_u8(39, 39, 39, 255),    // Zinc 900
-            popover_foreground: Color::srgba_u8(250, 250, 250, 255), // Zinc 50
-
-            primary: Color::srgba_u8(250, 250, 250, 255), // Zinc 50 (Hell für primäre Buttons)
-            primary_foreground: Color::srgba_u8(24, 24, 27, 255), // Zinc 950 (Dunkler Text darauf)
-            secondary: Color::srgba_u8(63, 63, 70, 255),  // Zinc 700
-            secondary_foreground: Color::srgba_u8(250, 250, 250, 255), // Zinc 50
-            muted: Color::srgba_u8(63, 63, 70, 255),      // Zinc 700
-            muted_foreground: Color::srgba_u8(161, 161, 170, 255), // Zinc 400 (Gedämpfter Text)
-            accent: Color::srgba_u8(63, 63, 70, 255),     // Zinc 700 (Kann oft wie secondary sein)
-            accent_foreground: Color::srgba_u8(250, 250, 250, 255), // Zinc 50
-            destructive: Color::srgba_u8(220, 38, 38, 255), // Red 600
-            destructive_foreground: Color::srgba_u8(250, 250, 250, 255), // Zinc 50
-
-            border: Color::srgba_u8(63, 63, 70, 255), // Zinc 700 / 800 -> Shadcn oft transparenter Rand (.dark)
-            input: Color::srgba_u8(63, 63, 70, 255), // Zinc 700 / 800 -> Shadcn oft transparenter Rand (.dark)
-            ring: Color::srgba_u8(161, 161, 170, 255), // Zinc 400 (oder Primary)
-
-            radius: Val::Px(8.0), // Shadcn oft 0.5rem -> 8px
-
-            default_font: None, // Wird später vom Asset Loader gesetzt
+            ui_scaling: 1.0,
+            color: UiColors {
+                white: UiColor {
+                    background_primary: Color::WHITE.with_alpha(0.05),
+                    background_secondary: Color::WHITE.with_alpha(0.1),
+                    interaction_primary: Color::WHITE.with_alpha(0.15),
+                    interaction_secondary: Color::WHITE.with_alpha(0.2),
+                    interaction_tertiary: Color::WHITE.with_alpha(0.3),
+                    border_primary: Color::WHITE.with_alpha(0.4),
+                    border_secondary: Color::WHITE.with_alpha(0.5),
+                    border_tertiary: Color::WHITE.with_alpha(0.6),
+                    solid_primary: Color::WHITE.with_alpha(0.7),
+                    solid_secondary: Color::WHITE.with_alpha(0.8),
+                    text_primary: Color::WHITE.with_alpha(0.9),
+                    text_secondary: Color::WHITE.with_alpha(0.95),
+                },
+                black: UiColor {
+                    background_primary: Color::BLACK.with_alpha(0.05),
+                    background_secondary: Color::BLACK.with_alpha(0.1),
+                    interaction_primary: Color::BLACK.with_alpha(0.15),
+                    interaction_secondary: Color::BLACK.with_alpha(0.2),
+                    interaction_tertiary: Color::BLACK.with_alpha(0.3),
+                    border_primary: Color::BLACK.with_alpha(0.4),
+                    border_secondary: Color::BLACK.with_alpha(0.5),
+                    border_tertiary: Color::BLACK.with_alpha(0.6),
+                    solid_primary: Color::BLACK.with_alpha(0.7),
+                    solid_secondary: Color::BLACK.with_alpha(0.8),
+                    text_primary: Color::BLACK.with_alpha(0.9),
+                    text_secondary: Color::BLACK.with_alpha(0.95),
+                },
+                gray: UiColor {
+                    background_primary: Srgba::hex("111111").unwrap().into(),
+                    background_secondary: Srgba::hex("191919").unwrap().into(),
+                    interaction_primary: Srgba::hex("222222").unwrap().into(),
+                    interaction_secondary: Srgba::hex("2A2A2A").unwrap().into(),
+                    interaction_tertiary: Srgba::hex("313131").unwrap().into(),
+                    border_primary: Srgba::hex("3A3A3A").unwrap().into(),
+                    border_secondary: Srgba::hex("484848").unwrap().into(),
+                    border_tertiary: Srgba::hex("606060").unwrap().into(),
+                    solid_primary: Srgba::hex("6E6E6E").unwrap().into(),
+                    solid_secondary: Srgba::hex("7B7B7B").unwrap().into(),
+                    text_primary: Srgba::hex("B4B4B4").unwrap().into(),
+                    text_secondary: Srgba::hex("EEEEEE").unwrap().into(),
+                },
+                mauve: UiColor {
+                    background_primary: Srgba::hex("111111").unwrap().into(),
+                    background_secondary: Srgba::hex("191919").unwrap().into(),
+                    interaction_primary: Srgba::hex("222222").unwrap().into(),
+                    interaction_secondary: Srgba::hex("2A2A2A").unwrap().into(),
+                    interaction_tertiary: Srgba::hex("313131").unwrap().into(),
+                    border_primary: Srgba::hex("3A3A3A").unwrap().into(),
+                    border_secondary: Srgba::hex("484848").unwrap().into(),
+                    border_tertiary: Srgba::hex("606060").unwrap().into(),
+                    solid_primary: Srgba::hex("6E6E6E").unwrap().into(),
+                    solid_secondary: Srgba::hex("7B7B7B").unwrap().into(),
+                    text_primary: Srgba::hex("B4B4B4").unwrap().into(),
+                    text_secondary: Srgba::hex("EEEEEE").unwrap().into(),
+                },
+                slate: UiColor {
+                    background_primary: Srgba::hex("111111").unwrap().into(),
+                    background_secondary: Srgba::hex("191919").unwrap().into(),
+                    interaction_primary: Srgba::hex("222222").unwrap().into(),
+                    interaction_secondary: Srgba::hex("2A2A2A").unwrap().into(),
+                    interaction_tertiary: Srgba::hex("313131").unwrap().into(),
+                    border_primary: Srgba::hex("3A3A3A").unwrap().into(),
+                    border_secondary: Srgba::hex("484848").unwrap().into(),
+                    border_tertiary: Srgba::hex("606060").unwrap().into(),
+                    solid_primary: Srgba::hex("6E6E6E").unwrap().into(),
+                    solid_secondary: Srgba::hex("7B7B7B").unwrap().into(),
+                    text_primary: Srgba::hex("B4B4B4").unwrap().into(),
+                    text_secondary: Srgba::hex("EEEEEE").unwrap().into(),
+                },
+                sage: UiColor {
+                    background_primary: Srgba::hex("111111").unwrap().into(),
+                    background_secondary: Srgba::hex("191919").unwrap().into(),
+                    interaction_primary: Srgba::hex("222222").unwrap().into(),
+                    interaction_secondary: Srgba::hex("2A2A2A").unwrap().into(),
+                    interaction_tertiary: Srgba::hex("313131").unwrap().into(),
+                    border_primary: Srgba::hex("3A3A3A").unwrap().into(),
+                    border_secondary: Srgba::hex("484848").unwrap().into(),
+                    border_tertiary: Srgba::hex("606060").unwrap().into(),
+                    solid_primary: Srgba::hex("6E6E6E").unwrap().into(),
+                    solid_secondary: Srgba::hex("7B7B7B").unwrap().into(),
+                    text_primary: Srgba::hex("B4B4B4").unwrap().into(),
+                    text_secondary: Srgba::hex("EEEEEE").unwrap().into(),
+                },
+                olive: UiColor {
+                    background_primary: Srgba::hex("111111").unwrap().into(),
+                    background_secondary: Srgba::hex("191919").unwrap().into(),
+                    interaction_primary: Srgba::hex("222222").unwrap().into(),
+                    interaction_secondary: Srgba::hex("2A2A2A").unwrap().into(),
+                    interaction_tertiary: Srgba::hex("313131").unwrap().into(),
+                    border_primary: Srgba::hex("3A3A3A").unwrap().into(),
+                    border_secondary: Srgba::hex("484848").unwrap().into(),
+                    border_tertiary: Srgba::hex("606060").unwrap().into(),
+                    solid_primary: Srgba::hex("6E6E6E").unwrap().into(),
+                    solid_secondary: Srgba::hex("7B7B7B").unwrap().into(),
+                    text_primary: Srgba::hex("B4B4B4").unwrap().into(),
+                    text_secondary: Srgba::hex("EEEEEE").unwrap().into(),
+                },
+                sand: UiColor {
+                    background_primary: Srgba::hex("111111").unwrap().into(),
+                    background_secondary: Srgba::hex("191919").unwrap().into(),
+                    interaction_primary: Srgba::hex("222222").unwrap().into(),
+                    interaction_secondary: Srgba::hex("2A2A2A").unwrap().into(),
+                    interaction_tertiary: Srgba::hex("313131").unwrap().into(),
+                    border_primary: Srgba::hex("3A3A3A").unwrap().into(),
+                    border_secondary: Srgba::hex("484848").unwrap().into(),
+                    border_tertiary: Srgba::hex("606060").unwrap().into(),
+                    solid_primary: Srgba::hex("6E6E6E").unwrap().into(),
+                    solid_secondary: Srgba::hex("7B7B7B").unwrap().into(),
+                    text_primary: Srgba::hex("B4B4B4").unwrap().into(),
+                    text_secondary: Srgba::hex("EEEEEE").unwrap().into(),
+                },
+                tomato: UiColor {
+                    background_primary: Srgba::hex("181111").unwrap().into(),
+                    background_secondary: Srgba::hex("1F1513").unwrap().into(),
+                    interaction_primary: Srgba::hex("391714").unwrap().into(),
+                    interaction_secondary: Srgba::hex("4E1511").unwrap().into(),
+                    interaction_tertiary: Srgba::hex("5E1C16").unwrap().into(),
+                    border_primary: Srgba::hex("6E2920").unwrap().into(),
+                    border_secondary: Srgba::hex("853A2D").unwrap().into(),
+                    border_tertiary: Srgba::hex("AC4D39").unwrap().into(),
+                    solid_primary: Srgba::hex("E54D2E").unwrap().into(),
+                    solid_secondary: Srgba::hex("EC6142").unwrap().into(),
+                    text_primary: Srgba::hex("FF977D").unwrap().into(),
+                    text_secondary: Srgba::hex("FBD3CB").unwrap().into(),
+                },
+                red: UiColor {
+                    background_primary: Srgba::hex("111111").unwrap().into(),
+                    background_secondary: Srgba::hex("191919").unwrap().into(),
+                    interaction_primary: Srgba::hex("222222").unwrap().into(),
+                    interaction_secondary: Srgba::hex("2A2A2A").unwrap().into(),
+                    interaction_tertiary: Srgba::hex("313131").unwrap().into(),
+                    border_primary: Srgba::hex("3A3A3A").unwrap().into(),
+                    border_secondary: Srgba::hex("484848").unwrap().into(),
+                    border_tertiary: Srgba::hex("606060").unwrap().into(),
+                    solid_primary: Srgba::hex("6E6E6E").unwrap().into(),
+                    solid_secondary: Srgba::hex("7B7B7B").unwrap().into(),
+                    text_primary: Srgba::hex("B4B4B4").unwrap().into(),
+                    text_secondary: Srgba::hex("EEEEEE").unwrap().into(),
+                },
+                ruby: UiColor {
+                    background_primary: Srgba::hex("111111").unwrap().into(),
+                    background_secondary: Srgba::hex("191919").unwrap().into(),
+                    interaction_primary: Srgba::hex("222222").unwrap().into(),
+                    interaction_secondary: Srgba::hex("2A2A2A").unwrap().into(),
+                    interaction_tertiary: Srgba::hex("313131").unwrap().into(),
+                    border_primary: Srgba::hex("3A3A3A").unwrap().into(),
+                    border_secondary: Srgba::hex("484848").unwrap().into(),
+                    border_tertiary: Srgba::hex("606060").unwrap().into(),
+                    solid_primary: Srgba::hex("6E6E6E").unwrap().into(),
+                    solid_secondary: Srgba::hex("7B7B7B").unwrap().into(),
+                    text_primary: Srgba::hex("B4B4B4").unwrap().into(),
+                    text_secondary: Srgba::hex("EEEEEE").unwrap().into(),
+                },
+                crimson: UiColor {
+                    background_primary: Srgba::hex("111111").unwrap().into(),
+                    background_secondary: Srgba::hex("191919").unwrap().into(),
+                    interaction_primary: Srgba::hex("222222").unwrap().into(),
+                    interaction_secondary: Srgba::hex("2A2A2A").unwrap().into(),
+                    interaction_tertiary: Srgba::hex("313131").unwrap().into(),
+                    border_primary: Srgba::hex("3A3A3A").unwrap().into(),
+                    border_secondary: Srgba::hex("484848").unwrap().into(),
+                    border_tertiary: Srgba::hex("606060").unwrap().into(),
+                    solid_primary: Srgba::hex("6E6E6E").unwrap().into(),
+                    solid_secondary: Srgba::hex("7B7B7B").unwrap().into(),
+                    text_primary: Srgba::hex("B4B4B4").unwrap().into(),
+                    text_secondary: Srgba::hex("EEEEEE").unwrap().into(),
+                },
+                pink: UiColor {
+                    background_primary: Srgba::hex("111111").unwrap().into(),
+                    background_secondary: Srgba::hex("191919").unwrap().into(),
+                    interaction_primary: Srgba::hex("222222").unwrap().into(),
+                    interaction_secondary: Srgba::hex("2A2A2A").unwrap().into(),
+                    interaction_tertiary: Srgba::hex("313131").unwrap().into(),
+                    border_primary: Srgba::hex("3A3A3A").unwrap().into(),
+                    border_secondary: Srgba::hex("484848").unwrap().into(),
+                    border_tertiary: Srgba::hex("606060").unwrap().into(),
+                    solid_primary: Srgba::hex("6E6E6E").unwrap().into(),
+                    solid_secondary: Srgba::hex("7B7B7B").unwrap().into(),
+                    text_primary: Srgba::hex("B4B4B4").unwrap().into(),
+                    text_secondary: Srgba::hex("EEEEEE").unwrap().into(),
+                },
+                plum: UiColor {
+                    background_primary: Srgba::hex("111111").unwrap().into(),
+                    background_secondary: Srgba::hex("191919").unwrap().into(),
+                    interaction_primary: Srgba::hex("222222").unwrap().into(),
+                    interaction_secondary: Srgba::hex("2A2A2A").unwrap().into(),
+                    interaction_tertiary: Srgba::hex("313131").unwrap().into(),
+                    border_primary: Srgba::hex("3A3A3A").unwrap().into(),
+                    border_secondary: Srgba::hex("484848").unwrap().into(),
+                    border_tertiary: Srgba::hex("606060").unwrap().into(),
+                    solid_primary: Srgba::hex("6E6E6E").unwrap().into(),
+                    solid_secondary: Srgba::hex("7B7B7B").unwrap().into(),
+                    text_primary: Srgba::hex("B4B4B4").unwrap().into(),
+                    text_secondary: Srgba::hex("EEEEEE").unwrap().into(),
+                },
+                purple: UiColor {
+                    background_primary: Srgba::hex("111111").unwrap().into(),
+                    background_secondary: Srgba::hex("191919").unwrap().into(),
+                    interaction_primary: Srgba::hex("222222").unwrap().into(),
+                    interaction_secondary: Srgba::hex("2A2A2A").unwrap().into(),
+                    interaction_tertiary: Srgba::hex("313131").unwrap().into(),
+                    border_primary: Srgba::hex("3A3A3A").unwrap().into(),
+                    border_secondary: Srgba::hex("484848").unwrap().into(),
+                    border_tertiary: Srgba::hex("606060").unwrap().into(),
+                    solid_primary: Srgba::hex("6E6E6E").unwrap().into(),
+                    solid_secondary: Srgba::hex("7B7B7B").unwrap().into(),
+                    text_primary: Srgba::hex("B4B4B4").unwrap().into(),
+                    text_secondary: Srgba::hex("EEEEEE").unwrap().into(),
+                },
+                violet: UiColor {
+                    background_primary: Srgba::hex("111111").unwrap().into(),
+                    background_secondary: Srgba::hex("191919").unwrap().into(),
+                    interaction_primary: Srgba::hex("222222").unwrap().into(),
+                    interaction_secondary: Srgba::hex("2A2A2A").unwrap().into(),
+                    interaction_tertiary: Srgba::hex("313131").unwrap().into(),
+                    border_primary: Srgba::hex("3A3A3A").unwrap().into(),
+                    border_secondary: Srgba::hex("484848").unwrap().into(),
+                    border_tertiary: Srgba::hex("606060").unwrap().into(),
+                    solid_primary: Srgba::hex("6E6E6E").unwrap().into(),
+                    solid_secondary: Srgba::hex("7B7B7B").unwrap().into(),
+                    text_primary: Srgba::hex("B4B4B4").unwrap().into(),
+                    text_secondary: Srgba::hex("EEEEEE").unwrap().into(),
+                },
+                iris: UiColor {
+                    background_primary: Srgba::hex("111111").unwrap().into(),
+                    background_secondary: Srgba::hex("191919").unwrap().into(),
+                    interaction_primary: Srgba::hex("222222").unwrap().into(),
+                    interaction_secondary: Srgba::hex("2A2A2A").unwrap().into(),
+                    interaction_tertiary: Srgba::hex("313131").unwrap().into(),
+                    border_primary: Srgba::hex("3A3A3A").unwrap().into(),
+                    border_secondary: Srgba::hex("484848").unwrap().into(),
+                    border_tertiary: Srgba::hex("606060").unwrap().into(),
+                    solid_primary: Srgba::hex("6E6E6E").unwrap().into(),
+                    solid_secondary: Srgba::hex("7B7B7B").unwrap().into(),
+                    text_primary: Srgba::hex("B4B4B4").unwrap().into(),
+                    text_secondary: Srgba::hex("EEEEEE").unwrap().into(),
+                },
+                indigo: UiColor {
+                    background_primary: Srgba::hex("111111").unwrap().into(),
+                    background_secondary: Srgba::hex("191919").unwrap().into(),
+                    interaction_primary: Srgba::hex("222222").unwrap().into(),
+                    interaction_secondary: Srgba::hex("2A2A2A").unwrap().into(),
+                    interaction_tertiary: Srgba::hex("313131").unwrap().into(),
+                    border_primary: Srgba::hex("3A3A3A").unwrap().into(),
+                    border_secondary: Srgba::hex("484848").unwrap().into(),
+                    border_tertiary: Srgba::hex("606060").unwrap().into(),
+                    solid_primary: Srgba::hex("6E6E6E").unwrap().into(),
+                    solid_secondary: Srgba::hex("7B7B7B").unwrap().into(),
+                    text_primary: Srgba::hex("B4B4B4").unwrap().into(),
+                    text_secondary: Srgba::hex("EEEEEE").unwrap().into(),
+                },
+                blue: UiColor {
+                    background_primary: Srgba::hex("111111").unwrap().into(),
+                    background_secondary: Srgba::hex("191919").unwrap().into(),
+                    interaction_primary: Srgba::hex("222222").unwrap().into(),
+                    interaction_secondary: Srgba::hex("2A2A2A").unwrap().into(),
+                    interaction_tertiary: Srgba::hex("313131").unwrap().into(),
+                    border_primary: Srgba::hex("3A3A3A").unwrap().into(),
+                    border_secondary: Srgba::hex("484848").unwrap().into(),
+                    border_tertiary: Srgba::hex("606060").unwrap().into(),
+                    solid_primary: Srgba::hex("6E6E6E").unwrap().into(),
+                    solid_secondary: Srgba::hex("7B7B7B").unwrap().into(),
+                    text_primary: Srgba::hex("B4B4B4").unwrap().into(),
+                    text_secondary: Srgba::hex("EEEEEE").unwrap().into(),
+                },
+                cyan: UiColor {
+                    background_primary: Srgba::hex("111111").unwrap().into(),
+                    background_secondary: Srgba::hex("191919").unwrap().into(),
+                    interaction_primary: Srgba::hex("222222").unwrap().into(),
+                    interaction_secondary: Srgba::hex("2A2A2A").unwrap().into(),
+                    interaction_tertiary: Srgba::hex("313131").unwrap().into(),
+                    border_primary: Srgba::hex("3A3A3A").unwrap().into(),
+                    border_secondary: Srgba::hex("484848").unwrap().into(),
+                    border_tertiary: Srgba::hex("606060").unwrap().into(),
+                    solid_primary: Srgba::hex("6E6E6E").unwrap().into(),
+                    solid_secondary: Srgba::hex("7B7B7B").unwrap().into(),
+                    text_primary: Srgba::hex("B4B4B4").unwrap().into(),
+                    text_secondary: Srgba::hex("EEEEEE").unwrap().into(),
+                },
+                teal: UiColor {
+                    background_primary: Srgba::hex("111111").unwrap().into(),
+                    background_secondary: Srgba::hex("191919").unwrap().into(),
+                    interaction_primary: Srgba::hex("222222").unwrap().into(),
+                    interaction_secondary: Srgba::hex("2A2A2A").unwrap().into(),
+                    interaction_tertiary: Srgba::hex("313131").unwrap().into(),
+                    border_primary: Srgba::hex("3A3A3A").unwrap().into(),
+                    border_secondary: Srgba::hex("484848").unwrap().into(),
+                    border_tertiary: Srgba::hex("606060").unwrap().into(),
+                    solid_primary: Srgba::hex("6E6E6E").unwrap().into(),
+                    solid_secondary: Srgba::hex("7B7B7B").unwrap().into(),
+                    text_primary: Srgba::hex("B4B4B4").unwrap().into(),
+                    text_secondary: Srgba::hex("EEEEEE").unwrap().into(),
+                },
+                jade: UiColor {
+                    background_primary: Srgba::hex("111111").unwrap().into(),
+                    background_secondary: Srgba::hex("191919").unwrap().into(),
+                    interaction_primary: Srgba::hex("222222").unwrap().into(),
+                    interaction_secondary: Srgba::hex("2A2A2A").unwrap().into(),
+                    interaction_tertiary: Srgba::hex("313131").unwrap().into(),
+                    border_primary: Srgba::hex("3A3A3A").unwrap().into(),
+                    border_secondary: Srgba::hex("484848").unwrap().into(),
+                    border_tertiary: Srgba::hex("606060").unwrap().into(),
+                    solid_primary: Srgba::hex("6E6E6E").unwrap().into(),
+                    solid_secondary: Srgba::hex("7B7B7B").unwrap().into(),
+                    text_primary: Srgba::hex("B4B4B4").unwrap().into(),
+                    text_secondary: Srgba::hex("EEEEEE").unwrap().into(),
+                },
+                green: UiColor {
+                    background_primary: Srgba::hex("111111").unwrap().into(),
+                    background_secondary: Srgba::hex("191919").unwrap().into(),
+                    interaction_primary: Srgba::hex("222222").unwrap().into(),
+                    interaction_secondary: Srgba::hex("2A2A2A").unwrap().into(),
+                    interaction_tertiary: Srgba::hex("313131").unwrap().into(),
+                    border_primary: Srgba::hex("3A3A3A").unwrap().into(),
+                    border_secondary: Srgba::hex("484848").unwrap().into(),
+                    border_tertiary: Srgba::hex("606060").unwrap().into(),
+                    solid_primary: Srgba::hex("6E6E6E").unwrap().into(),
+                    solid_secondary: Srgba::hex("7B7B7B").unwrap().into(),
+                    text_primary: Srgba::hex("B4B4B4").unwrap().into(),
+                    text_secondary: Srgba::hex("EEEEEE").unwrap().into(),
+                },
+                grass: UiColor {
+                    background_primary: Srgba::hex("111111").unwrap().into(),
+                    background_secondary: Srgba::hex("191919").unwrap().into(),
+                    interaction_primary: Srgba::hex("222222").unwrap().into(),
+                    interaction_secondary: Srgba::hex("2A2A2A").unwrap().into(),
+                    interaction_tertiary: Srgba::hex("313131").unwrap().into(),
+                    border_primary: Srgba::hex("3A3A3A").unwrap().into(),
+                    border_secondary: Srgba::hex("484848").unwrap().into(),
+                    border_tertiary: Srgba::hex("606060").unwrap().into(),
+                    solid_primary: Srgba::hex("6E6E6E").unwrap().into(),
+                    solid_secondary: Srgba::hex("7B7B7B").unwrap().into(),
+                    text_primary: Srgba::hex("B4B4B4").unwrap().into(),
+                    text_secondary: Srgba::hex("EEEEEE").unwrap().into(),
+                },
+                bronze: UiColor {
+                    background_primary: Srgba::hex("111111").unwrap().into(),
+                    background_secondary: Srgba::hex("191919").unwrap().into(),
+                    interaction_primary: Srgba::hex("222222").unwrap().into(),
+                    interaction_secondary: Srgba::hex("2A2A2A").unwrap().into(),
+                    interaction_tertiary: Srgba::hex("313131").unwrap().into(),
+                    border_primary: Srgba::hex("3A3A3A").unwrap().into(),
+                    border_secondary: Srgba::hex("484848").unwrap().into(),
+                    border_tertiary: Srgba::hex("606060").unwrap().into(),
+                    solid_primary: Srgba::hex("6E6E6E").unwrap().into(),
+                    solid_secondary: Srgba::hex("7B7B7B").unwrap().into(),
+                    text_primary: Srgba::hex("B4B4B4").unwrap().into(),
+                    text_secondary: Srgba::hex("EEEEEE").unwrap().into(),
+                },
+                gold: UiColor {
+                    background_primary: Srgba::hex("111111").unwrap().into(),
+                    background_secondary: Srgba::hex("191919").unwrap().into(),
+                    interaction_primary: Srgba::hex("222222").unwrap().into(),
+                    interaction_secondary: Srgba::hex("2A2A2A").unwrap().into(),
+                    interaction_tertiary: Srgba::hex("313131").unwrap().into(),
+                    border_primary: Srgba::hex("3A3A3A").unwrap().into(),
+                    border_secondary: Srgba::hex("484848").unwrap().into(),
+                    border_tertiary: Srgba::hex("606060").unwrap().into(),
+                    solid_primary: Srgba::hex("6E6E6E").unwrap().into(),
+                    solid_secondary: Srgba::hex("7B7B7B").unwrap().into(),
+                    text_primary: Srgba::hex("B4B4B4").unwrap().into(),
+                    text_secondary: Srgba::hex("EEEEEE").unwrap().into(),
+                },
+                brown: UiColor {
+                    background_primary: Srgba::hex("111111").unwrap().into(),
+                    background_secondary: Srgba::hex("191919").unwrap().into(),
+                    interaction_primary: Srgba::hex("222222").unwrap().into(),
+                    interaction_secondary: Srgba::hex("2A2A2A").unwrap().into(),
+                    interaction_tertiary: Srgba::hex("313131").unwrap().into(),
+                    border_primary: Srgba::hex("3A3A3A").unwrap().into(),
+                    border_secondary: Srgba::hex("484848").unwrap().into(),
+                    border_tertiary: Srgba::hex("606060").unwrap().into(),
+                    solid_primary: Srgba::hex("6E6E6E").unwrap().into(),
+                    solid_secondary: Srgba::hex("7B7B7B").unwrap().into(),
+                    text_primary: Srgba::hex("B4B4B4").unwrap().into(),
+                    text_secondary: Srgba::hex("EEEEEE").unwrap().into(),
+                },
+                orange: UiColor {
+                    background_primary: Srgba::hex("111111").unwrap().into(),
+                    background_secondary: Srgba::hex("191919").unwrap().into(),
+                    interaction_primary: Srgba::hex("222222").unwrap().into(),
+                    interaction_secondary: Srgba::hex("2A2A2A").unwrap().into(),
+                    interaction_tertiary: Srgba::hex("313131").unwrap().into(),
+                    border_primary: Srgba::hex("3A3A3A").unwrap().into(),
+                    border_secondary: Srgba::hex("484848").unwrap().into(),
+                    border_tertiary: Srgba::hex("606060").unwrap().into(),
+                    solid_primary: Srgba::hex("6E6E6E").unwrap().into(),
+                    solid_secondary: Srgba::hex("7B7B7B").unwrap().into(),
+                    text_primary: Srgba::hex("B4B4B4").unwrap().into(),
+                    text_secondary: Srgba::hex("EEEEEE").unwrap().into(),
+                },
+                amber: UiColor {
+                    background_primary: Srgba::hex("111111").unwrap().into(),
+                    background_secondary: Srgba::hex("191919").unwrap().into(),
+                    interaction_primary: Srgba::hex("222222").unwrap().into(),
+                    interaction_secondary: Srgba::hex("2A2A2A").unwrap().into(),
+                    interaction_tertiary: Srgba::hex("313131").unwrap().into(),
+                    border_primary: Srgba::hex("3A3A3A").unwrap().into(),
+                    border_secondary: Srgba::hex("484848").unwrap().into(),
+                    border_tertiary: Srgba::hex("606060").unwrap().into(),
+                    solid_primary: Srgba::hex("6E6E6E").unwrap().into(),
+                    solid_secondary: Srgba::hex("7B7B7B").unwrap().into(),
+                    text_primary: Srgba::hex("B4B4B4").unwrap().into(),
+                    text_secondary: Srgba::hex("EEEEEE").unwrap().into(),
+                },
+                yellow: UiColor {
+                    background_primary: Srgba::hex("111111").unwrap().into(),
+                    background_secondary: Srgba::hex("191919").unwrap().into(),
+                    interaction_primary: Srgba::hex("222222").unwrap().into(),
+                    interaction_secondary: Srgba::hex("2A2A2A").unwrap().into(),
+                    interaction_tertiary: Srgba::hex("313131").unwrap().into(),
+                    border_primary: Srgba::hex("3A3A3A").unwrap().into(),
+                    border_secondary: Srgba::hex("484848").unwrap().into(),
+                    border_tertiary: Srgba::hex("606060").unwrap().into(),
+                    solid_primary: Srgba::hex("6E6E6E").unwrap().into(),
+                    solid_secondary: Srgba::hex("7B7B7B").unwrap().into(),
+                    text_primary: Srgba::hex("B4B4B4").unwrap().into(),
+                    text_secondary: Srgba::hex("EEEEEE").unwrap().into(),
+                },
+                lime: UiColor {
+                    background_primary: Srgba::hex("111111").unwrap().into(),
+                    background_secondary: Srgba::hex("191919").unwrap().into(),
+                    interaction_primary: Srgba::hex("222222").unwrap().into(),
+                    interaction_secondary: Srgba::hex("2A2A2A").unwrap().into(),
+                    interaction_tertiary: Srgba::hex("313131").unwrap().into(),
+                    border_primary: Srgba::hex("3A3A3A").unwrap().into(),
+                    border_secondary: Srgba::hex("484848").unwrap().into(),
+                    border_tertiary: Srgba::hex("606060").unwrap().into(),
+                    solid_primary: Srgba::hex("6E6E6E").unwrap().into(),
+                    solid_secondary: Srgba::hex("7B7B7B").unwrap().into(),
+                    text_primary: Srgba::hex("B4B4B4").unwrap().into(),
+                    text_secondary: Srgba::hex("EEEEEE").unwrap().into(),
+                },
+                mint: UiColor {
+                    background_primary: Srgba::hex("111111").unwrap().into(),
+                    background_secondary: Srgba::hex("191919").unwrap().into(),
+                    interaction_primary: Srgba::hex("222222").unwrap().into(),
+                    interaction_secondary: Srgba::hex("2A2A2A").unwrap().into(),
+                    interaction_tertiary: Srgba::hex("313131").unwrap().into(),
+                    border_primary: Srgba::hex("3A3A3A").unwrap().into(),
+                    border_secondary: Srgba::hex("484848").unwrap().into(),
+                    border_tertiary: Srgba::hex("606060").unwrap().into(),
+                    solid_primary: Srgba::hex("6E6E6E").unwrap().into(),
+                    solid_secondary: Srgba::hex("7B7B7B").unwrap().into(),
+                    text_primary: Srgba::hex("B4B4B4").unwrap().into(),
+                    text_secondary: Srgba::hex("EEEEEE").unwrap().into(),
+                },
+                sky: UiColor {
+                    background_primary: Srgba::hex("111111").unwrap().into(),
+                    background_secondary: Srgba::hex("191919").unwrap().into(),
+                    interaction_primary: Srgba::hex("222222").unwrap().into(),
+                    interaction_secondary: Srgba::hex("2A2A2A").unwrap().into(),
+                    interaction_tertiary: Srgba::hex("313131").unwrap().into(),
+                    border_primary: Srgba::hex("3A3A3A").unwrap().into(),
+                    border_secondary: Srgba::hex("484848").unwrap().into(),
+                    border_tertiary: Srgba::hex("606060").unwrap().into(),
+                    solid_primary: Srgba::hex("6E6E6E").unwrap().into(),
+                    solid_secondary: Srgba::hex("7B7B7B").unwrap().into(),
+                    text_primary: Srgba::hex("B4B4B4").unwrap().into(),
+                    text_secondary: Srgba::hex("EEEEEE").unwrap().into(),
+                },
+            },
+            layout: UiLayout {
+                spacing: SPACING,
+                padding: UiSpacing {
+                    xs: 1.0 * SPACING,
+                    sm: 2.0 * SPACING,
+                    base: 3.0 * SPACING,
+                    lg: 4.0 * SPACING,
+                    xl: 5.0 * SPACING,
+                    x2l: 6.0 * SPACING,
+                    x3l: 7.0 * SPACING,
+                    x4l: 8.0 * SPACING,
+                    x5l: 9.0 * SPACING,
+                },
+                margin: UiSpacing {
+                    xs: 1.0 * SPACING,
+                    sm: 2.0 * SPACING,
+                    base: 3.0 * SPACING,
+                    lg: 4.0 * SPACING,
+                    xl: 5.0 * SPACING,
+                    x2l: 6.0 * SPACING,
+                    x3l: 7.0 * SPACING,
+                    x4l: 8.0 * SPACING,
+                    x5l: 9.0 * SPACING,
+                },
+                gap: UiSpacing {
+                    xs: 1.0 * SPACING,
+                    sm: 2.0 * SPACING,
+                    base: 3.0 * SPACING,
+                    lg: 4.0 * SPACING,
+                    xl: 5.0 * SPACING,
+                    x2l: 6.0 * SPACING,
+                    x3l: 7.0 * SPACING,
+                    x4l: 8.0 * SPACING,
+                    x5l: 9.0 * SPACING,
+                },
+                radius: UiRadius {
+                    xs: 0.125 * REM,
+                    sm: 0.25 * REM,
+                    base: 0.375 * REM,
+                    lg: 0.5 * REM,
+                    xl: 0.75 * REM,
+                    x2l: 1.0 * REM,
+                    x3l: 1.5 * REM,
+                    x4l: 2.0 * REM,
+                    full: f32::MAX,
+                },
+            },
+            font: UiTypography {
+                font_size: UiFontSize {
+                    xs: 0.75 * REM,
+                    sm: 0.875 * REM,
+                    base: 1.0 * REM,
+                    lg: 1.125 * REM,
+                    xl: 1.25 * REM,
+                    x2l: 1.5 * REM,
+                    x3l: 1.875 * REM,
+                    x4l: 2.25 * REM,
+                    x5l: 3.0 * REM,
+                    x6l: 3.75 * REM,
+                    x7l: 4.5 * REM,
+                    x8l: 6.0 * REM,
+                    x9l: 8.0 * REM,
+                },
+                font_family: UiFontFamilies {
+                    default: "fonts/Roboto-Regular.ttf".to_string(),
+                    sans: FontVariants {
+                        light: "fonts/Roboto-Light.ttf".to_string(),
+                        light_italic: "fonts/Roboto-LightItalic.ttf".to_string(),
+                        regular: "fonts/Roboto-Regular.ttf".to_string(),
+                        regular_italic: "fonts/Roboto-RegularItalic.ttf".to_string(),
+                        medium: "fonts/Roboto-Medium.ttf".to_string(),
+                        medium_italic: "fonts/Roboto-MediumItalic.ttf".to_string(),
+                        bold: "fonts/Roboto-Bold.ttf".to_string(),
+                        bold_italic: "fonts/Roboto-BoldItalic.ttf".to_string(),
+                    },
+                    serif: FontVariants {
+                        light: "fonts/NotoSerif-Light.ttf".to_string(),
+                        light_italic: "fonts/NotoSerif-LightItalic.ttf".to_string(),
+                        regular: "fonts/NotoSerif-Regular.ttf".to_string(),
+                        regular_italic: "fonts/NotoSerif-RegularItalic.ttf".to_string(),
+                        medium: "fonts/NotoSerif-Medium.ttf".to_string(),
+                        medium_italic: "fonts/NotoSerif-MediumItalic.ttf".to_string(),
+                        bold: "fonts/NotoSerif-Bold.ttf".to_string(),
+                        bold_italic: "fonts/NotoSerif-BoldItalic.ttf".to_string(),
+                    },
+                    mono: FontVariants {
+                        light: "fonts/RobotoMono-Ligh.ttf".to_string(),
+                        light_italic: "fonts/RobotoMono-LightItalic.ttf".to_string(),
+                        regular: "fonts/RobotoMono-Regular.ttf".to_string(),
+                        regular_italic: "fonts/RobotoMono-RegularItalic.ttf".to_string(),
+                        medium: "fonts/RobotoMono-Medium.ttf".to_string(),
+                        medium_italic: "fonts/RobotoMono-MediumItalic.ttf".to_string(),
+                        bold: "fonts/RobotoMono-Bold.ttf".to_string(),
+                        bold_italic: "fonts/RobotoMono-BoldItalic.ttf".to_string(),
+                    },
+                },
+            },
         }
     }
 }

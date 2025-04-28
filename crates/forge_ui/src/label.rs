@@ -79,7 +79,7 @@ impl LabelBuilder {
         font_handle: &Handle<Font>,
     ) -> Entity {
         // Bestimme Farbe und Größe basierend auf Builder-Optionen und Theme
-        let final_color = self.color.unwrap_or(theme.foreground); // Standard: Normale Vordergrundfarbe
+        let final_color = self.color.unwrap_or(theme.color.gray.text_primary); // Standard: Normale Vordergrundfarbe
         let final_font_size = self.font_size.unwrap_or(14.0); // Standardgröße für Labels
 
         // Optional: Farbe basierend auf LabelStyle anpassen

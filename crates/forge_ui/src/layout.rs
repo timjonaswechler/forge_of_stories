@@ -313,10 +313,10 @@ impl UiRoot {
                     flex_direction: FlexDirection::Column,
                     justify_content: JustifyContent::Center,
                     align_items: AlignItems::Center,
-                    padding: UiRect::all(theme.radius),
+                    padding: UiRect::all(Val::Px(theme.layout.padding.base)),
                     ..default()
                 },
-                BackgroundColor(theme.background),
+                BackgroundColor(theme.color.tomato.solid_primary), // Beispielhintergrundfarbe
             ))
             .id() // Gibt die Entity ID der Wurzel zurück
     }

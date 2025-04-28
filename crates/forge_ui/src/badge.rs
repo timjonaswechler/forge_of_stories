@@ -106,7 +106,7 @@ impl BadgeBuilder {
                     TextFont {
                         font: font_handle.clone(),
                         // Kleinere Schrift für Badges ('text-xs')
-                        font_size: 12.0,
+                        font_size: theme.font.font_size.base,
                         ..default()
                     },
                     TextColor(text_color), // Textfarbe
@@ -123,20 +123,24 @@ fn get_badge_colors(variant: &BadgeVariant, theme: &UiTheme) -> (Color, Color, C
     // Gibt zurück: (Hintergrund, Text, Rand)
     match variant {
         BadgeVariant::Default => (
-            theme.primary,            // Hintergrund: Primär
-            theme.primary_foreground, // Text: Passend zu Primär
-            theme.primary,            // Rand: Gleich wie Hintergrund (wirkt transparent)
+            theme.color.gray.background_primary, // Hintergrund: Primär
+            theme.color.gray.text_primary,       // Text: Passend zu Primär
+            theme.color.gray.border_primary,     // Rand: Gleich wie Hintergrund (wirkt transparent)
         ),
-        BadgeVariant::Secondary => (theme.secondary, theme.secondary_foreground, theme.secondary),
+        BadgeVariant::Secondary => (
+            theme.color.gray.background_secondary,
+            theme.color.gray.text_secondary,
+            theme.color.gray.border_secondary, // Rand: Gleich wie Hintergrund (wirkt transparent)
+        ),
         BadgeVariant::Destructive => (
-            theme.destructive,
-            theme.destructive_foreground,
-            theme.destructive,
+            theme.color.tomato.background_primary,
+            theme.color.tomato.text_primary,
+            theme.color.tomato.border_primary,
         ),
         BadgeVariant::Outline => (
-            Color::NONE,      // Kein Hintergrund
-            theme.foreground, // Normale Textfarbe
-            theme.border,     // Sichtbarer Rand
+            Color::NONE,                     // Kein Hintergrund
+            theme.color.gray.text_primary,   // Text: Passend zu Primär
+            theme.color.gray.border_primary, // Sichtbarer Rand
         ),
     }
 }

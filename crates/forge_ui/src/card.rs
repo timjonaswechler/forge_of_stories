@@ -121,9 +121,9 @@ impl CardBuilder {
         let mut card_entity_commands = parent.spawn((
             Card, // Marker
             Node { ..card_style },
-            BackgroundColor(theme.card),
-            BorderColor(theme.border),
-            BorderRadius::all(theme.radius), // Bevy 0.15+
+            BackgroundColor(theme.color.gray.background_secondary),
+            BorderColor(theme.color.gray.border_secondary),
+            BorderRadius::all(Val::Px(theme.layout.radius.base)), // Bevy 0.15+
         ));
 
         card_entity_commands.with_children(|card_body| {
@@ -203,10 +203,10 @@ fn spawn_element<'w, 'a>(
             font_size,
         } => {
             let (text_color, default_size) = match style {
-                ElementStyle::Normal => (theme.card_foreground, 14.0),
-                ElementStyle::Title => (theme.card_foreground, 18.0), // Größer für Titel
-                ElementStyle::Description => (theme.muted_foreground, 14.0), // Gedämpft für Beschreibung
-                ElementStyle::Muted => (theme.muted_foreground, 14.0),
+                ElementStyle::Normal => (theme.color.gray.text_primary, 14.0),
+                ElementStyle::Title => (theme.color.gray.text_primary, 18.0), // Größer für Titel
+                ElementStyle::Description => (theme.color.gray.text_primary, 14.0), // Gedämpft für Beschreibung
+                ElementStyle::Muted => (theme.color.gray.solid_primary, 14.0),
             };
 
             parent.spawn((
@@ -231,7 +231,7 @@ fn spawn_element<'w, 'a>(
                     image: handle,
                     ..default()
                 },
-                BackgroundColor(theme.card_foreground),
+                BackgroundColor(theme.color.tomato.solid_primary),
                 Visibility::Inherited,
             ));
         }
@@ -246,29 +246,21 @@ fn spawn_element<'w, 'a>(
 // --- Styling-Funktionen für die Sektionen ---
 
 fn header_style(theme: &UiTheme) -> Node {
-    let padding_val = match theme.radius {
-        Val::Px(radius) => Val::Px(radius + 6.0),
-        other => other,
-    };
     Node {
         display: Display::Flex,
         flex_direction: FlexDirection::Column,
-        padding: UiRect::all(padding_val), // Etwas Padding basierend auf Radius
-        row_gap: Val::Px(6.0),             // Platz zwischen Titel/Beschreibung
+        padding: UiRect::all(Val::Px(theme.layout.padding.base)), // Etwas Padding basierend auf Radius
+        row_gap: Val::Px(6.0), // Platz zwischen Titel/Beschreibung
         ..default()
     }
 }
 fn content_style(theme: &UiTheme) -> Node {
-    let padding_val = match theme.radius {
-        Val::Px(radius) => Val::Px(radius + 6.0),
-        other => other,
-    };
     Node {
         padding: UiRect {
-            left: padding_val,
-            right: padding_val,
+            left: Val::Px(theme.layout.padding.base),
+            right: Val::Px(theme.layout.padding.base),
             top: Val::Px(0.0), // Kein Top-Padding, wie bei Shadcn oft üblich
-            bottom: padding_val,
+            bottom: Val::Px(theme.layout.padding.base),
         },
         display: Display::Flex,
         flex_direction: FlexDirection::Column,
@@ -277,16 +269,12 @@ fn content_style(theme: &UiTheme) -> Node {
     }
 }
 fn footer_style(theme: &UiTheme) -> Node {
-    let padding_val = match theme.radius {
-        Val::Px(radius) => Val::Px(radius + 6.0),
-        other => other,
-    };
     Node {
         padding: UiRect {
-            left: padding_val,
-            right: padding_val,
+            left: Val::Px(theme.layout.padding.base),
+            right: Val::Px(theme.layout.padding.base),
             top: Val::Px(0.0), // Kein Top-Padding
-            bottom: padding_val,
+            bottom: Val::Px(theme.layout.padding.base),
         },
         display: Display::Flex,
         align_items: AlignItems::Center,

@@ -114,18 +114,18 @@ fn get_button_style_def(variant: ButtonVariant, theme: &UiTheme) -> ButtonStyleD
     match variant {
         ButtonVariant::Default => ButtonStyleDef {
             // Example using direct colors - replace with theme.primary, theme.primary_foreground etc.
-            background_color: theme.primary, // Replace with theme.primary
-            text_color: theme.primary_foreground, // Replace with theme.primary_foreground
-            border_color: theme.border,      // Replace with theme.border (or NONE)
-            hovered_background_factor: 0.15, // Lighter
+            background_color: theme.color.gray.background_primary, // Replace with theme.primary
+            text_color: theme.color.gray.text_primary, // Replace with theme.primary_foreground
+            border_color: theme.color.gray.border_primary, // Replace with theme.border (or NONE)
+            hovered_background_factor: 0.15, // //TODO: ändern mit White und oder Black overlay
             pressed_background_factor: -0.05, // Slightly darker
             hovered_border_factor: 0.0,
             pressed_border_factor: 0.0,
         },
         ButtonVariant::Destructive => ButtonStyleDef {
-            background_color: theme.destructive, // Replace with theme.destructive
-            text_color: theme.destructive_foreground, // Replace with theme.destructive_foreground
-            border_color: theme.border,          // Replace with theme.border (or NONE)
+            background_color: theme.color.tomato.background_primary, // Replace with theme.destructive
+            text_color: theme.color.tomato.text_primary, // Replace with theme.destructive_foreground
+            border_color: theme.color.tomato.border_primary, // Replace with theme.border (or NONE)
             hovered_background_factor: 0.15,
             pressed_background_factor: -0.05,
             hovered_border_factor: 0.0,
@@ -133,16 +133,16 @@ fn get_button_style_def(variant: ButtonVariant, theme: &UiTheme) -> ButtonStyleD
         },
         ButtonVariant::Outline => ButtonStyleDef {
             background_color: Color::NONE, // Replace with theme.background or theme.card
-            text_color: theme.primary_foreground, // Replace with theme.foreground or theme.card_foreground
-            border_color: theme.border,           // Replace with theme.border
-            hovered_background_factor: -0.8,      // Makes a transparent BG slightly opaque gray
-            pressed_background_factor: -0.7,      // Slightly more opaque gray
-            hovered_border_factor: 0.3,           // Lighter border
-            pressed_border_factor: -0.1,          // Darker border
+            text_color: theme.color.gray.text_primary, // Replace with theme.foreground or theme.card_foreground
+            border_color: theme.color.gray.background_primary, // Replace with theme.border
+            hovered_background_factor: -0.8, // Makes a transparent BG slightly opaque gray
+            pressed_background_factor: -0.7, // Slightly more opaque gray
+            hovered_border_factor: 0.3,      // Lighter border
+            pressed_border_factor: -0.1,     // Darker border
         },
         ButtonVariant::Secondary => ButtonStyleDef {
-            background_color: theme.secondary, // Replace with theme.secondary
-            text_color: theme.secondary_foreground, // Replace with theme.secondary_foreground
+            background_color: theme.color.gray.background_secondary, // Replace with theme.secondary
+            text_color: theme.color.gray.text_primary, // Replace with theme.secondary_foreground
             border_color: Color::NONE,
             hovered_background_factor: 0.15,
             pressed_background_factor: -0.05,
@@ -151,7 +151,7 @@ fn get_button_style_def(variant: ButtonVariant, theme: &UiTheme) -> ButtonStyleD
         },
         ButtonVariant::Ghost => ButtonStyleDef {
             background_color: Color::NONE, // Replace with theme.background / card
-            text_color: theme.primary_foreground,
+            text_color: theme.color.gray.text_primary,
             border_color: Color::NONE,
             hovered_background_factor: -0.9, // Very subtle background hover
             pressed_background_factor: -0.85, // Slightly more background on press
@@ -160,7 +160,7 @@ fn get_button_style_def(variant: ButtonVariant, theme: &UiTheme) -> ButtonStyleD
         },
         ButtonVariant::Link => ButtonStyleDef {
             background_color: Color::NONE,
-            text_color: theme.primary_foreground,
+            text_color: theme.color.gray.text_primary, // Replace with theme.link_foreground
             border_color: Color::NONE,
             hovered_background_factor: 0.0, // Link hover is usually text decoration
             pressed_background_factor: 0.0,
