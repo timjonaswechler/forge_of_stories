@@ -19,7 +19,7 @@
             x9l: 128.0,
         ),
         font_family: (
-            default: "fonts/NotoSerif-Light.ttf",
+            default: "fonts/Roboto-Regular.ttf",
             sans: (
                 light: "fonts/Roboto-Light.ttf",
                 light_italic: "fonts/Roboto-LightItalic.ttf",
