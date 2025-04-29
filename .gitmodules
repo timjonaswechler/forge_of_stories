@@ -1,0 +1,3 @@
+[submodule "crates/forge_ui"]
+	path = crates/forge_ui
+	url = git@github.com:timjonaswechler/forge_ui.git
