@@ -1,16 +1,30 @@
+
+# crates/forge_ui/cargo.toml
+
 [package]
 name = "forge_ui"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
 description.workspace = true
+license.workspace = true
 
-[lib] # Wichtig: Das ist eine Bibliothek
+[lib]
+path = "src/lib.rs"
 
 [dependencies]
-bevy = { workspace = true }
-bevy_common_assets = { workspace = true }
-uuid = { workspace = true }
+# Core Dependencies
+bevy = { workspace = true, features = [] }
+serde = { workspace = true }
 ron = { workspace = true }
-serde = { version = "1.0", features = ["derive"] } # Für Theme Deserialisierung
-log = "0.4"                                        # Für Logging
+uuid = { workspace = true }
+log = { workspace = true }
+bevy_common_assets = { workspace = true }
+
+[features]
+default = []
+# UI-spezifische Features
+fancy_ui = []
+minimal_ui = []
+# Integration mit Debug-Tools
+debug_inspector = ["bevy/bevy_dev_tools"]

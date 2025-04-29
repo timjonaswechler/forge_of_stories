@@ -1,29 +1,83 @@
-# cargo.toml
+# Hauptkonfigurationsdatei für den Rust Workspace
+
 [workspace]
-resolver = "2"
-members = ["crates/*"]
+resolver = "2" # Empfohlene Version für moderne Rust-Projekte
+members = [
+    "crates/*", # Alle Unterverzeichnisse in 'crates/' sind Teil des Workspaces
+]
 
-
+# ==============================================================================
+#  Gemeinsame Metadaten (von Crates im Workspace geerbt)
+# ==============================================================================
 [workspace.package]
-
 authors = ["Tim-Jonas Wechler"]
-version = "0.1.0"
+version = "0.1.0" # Initiale Entwicklungsversion
 edition = "2021"
-description = "A game engine for creating interactive stories"
+description = "Eine Game Engine zur Erstellung interaktiver Geschichten"
+repository = "" # URL des Code-Repositories (z.B. GitHub)
+license = ""    # Lizenz des Projekts (z.B. "MIT OR Apache-2.0")
 
+# ==============================================================================
+#  Gemeinsame Abhängigkeiten (zentral definierte Versionen)
+# ==============================================================================
 [workspace.dependencies]
-bevy = { version = "0.15.3", features = ["dynamic_linking", "file_watcher"] }
-serde = { version = "1.0", features = ["derive"] }
-bevy_common_assets = { version = "0.12.0" }
-ron = "0.10.1"
-uuid = "1.12.0"
+# --- Kern-Engine & Logging ---
+bevy = { version = "0.15.3", features = [
+    "dynamic_linking", # Beschleunigt inkrementelle Kompilierung während der Entwicklung (WARNUNG: Kann Deployment erschweren)
+    "file_watcher",    # Automatisches Neuladen von Assets bei Änderungen
+    "multi_threaded",  # Aktiviert parallele Verarbeitung für bessere Leistung (Standard-Scheduler)
+] }
+bevy_common_assets = { version = "0.12.0" } # Hilfsmittel für gängige Asset-Typen (JSON, RON, etc.) mit Bevy
+bevy_asset_loader = { version = "0.22.0" } # Vereinfacht das Laden von Assets in Bevy
+log = "0.4" # Standard Logging-Fassade für Rust
 
-# Enable a small amount of optimization in debug mode
+# --- Serialisierung & Datenformate ---
+serde = { version = "1.0", features = ["derive"] } # Framework für (De-)Serialisierung
+ron = "0.10.1"                                   # Rusty Object Notation (lesbares Datenformat)
+uuid = { version = "=1.12.0", features = ["v4", "serde"] } # Eindeutige IDs; feste Version (=) für Stabilität/Kompatibilität
+
+
+
+# --- Entwicklungswerkzeuge ---
+# WICHTIG: Version muss exakt zur Bevy-Version passen!
+bevy-inspector-egui = "=0.30.0" # UI zur Inspektion von Bevy-Entitäten und -Ressourcen
+
+# --- Zufallszahlen ---
+# WICHTIG: bevy_rand Version muss zur Bevy-Version passen!
+bevy_rand = { version = "=0.9.0" } # Integration von Zufallszahlengeneratoren in Bevy
+rand = "0.8.5"                     # Kernbibliothek für Zufallszahlen
+rand_distr = "0.4.3"               # Zusätzliche Wahrscheinlichkeitsverteilungen
+
+# --- Hilfsprogramme & Makros ---
+strum = { version = "0.27", features = ["derive"] } # Hilfsmittel für Enums (z.B. Iteration, String-Konvertierung)
+strum_macros = "0.27"
+anyhow = "1.0"             # Flexible Fehlerbehandlung
+derivative = "2.2.0"       # Ermöglicht das Ableiten zusätzlicher Traits (z.B. Debug für generische Typen)
+
+
+# Hinweis: Workspace-Features werden von Cargo nicht direkt unterstützt.
+# Features müssen pro Crate in deren eigenem `Cargo.toml` aktiviert werden,
+# auch wenn die Abhängigkeit hier zentral definiert ist.
+
+# ==============================================================================
+#  Kompilierungs-Profile
+# ==============================================================================
+
+# --- Entwicklungsprofil (cargo build) ---
 [profile.dev]
-opt-level = 1
+opt-level = 1 # Leichte Optimierung für schnellere Build-Zeiten als opt-level=0, aber langsamer als opt-level=3
+# lto = false    # Standard
+# codegen-units = 256 # Standard (viele Units -> schnellere inkrementelle Builds, langsamerer Code)
 
-# Enable high optimizations for dependencies (incl. Bevy), but not for our code
+# Höhere Optimierungsstufe für Abhängigkeiten (auch im Debug-Build),
+# da diese sich selten ändern und die Laufzeit des Gesamtprojekts beeinflussen.
 [profile.dev.package."*"]
 opt-level = 3
 
-# --- NEU: Features Definition ---
+# --- Release-Profil (cargo build --release) ---
+[profile.release]
+opt-level = 3     # Maximale Optimierung für beste Laufzeitleistung
+lto = "thin"      # Thin Link-Time Optimization (guter Kompromiss zwischen Build-Zeit und Laufzeitleistung)
+codegen-units = 1 # Eine Codegen-Unit -> langsamere Build-Zeit, aber potenziell schnellere Laufzeit durch mehr Optimierungsmöglichkeiten
+strip = true      # Entfernt Debug-Symbole aus dem finalen Binary (kleinere Dateigröße)
+
