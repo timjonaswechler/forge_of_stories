@@ -61,6 +61,7 @@ pub struct UiLayoutData {
     pub margin: UiSpacingData,
     pub gap: UiSpacingData,
     pub radius: UiRadiusData,
+    pub border: UiSpacingData,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

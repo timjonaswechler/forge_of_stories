@@ -1,10 +1,8 @@
 // forge_ui/src/lib.rs
-
-pub mod button;
-pub use button::{
-    ButtonBuilder, ButtonClickedEvent, ButtonMarker, ButtonSize, ButtonVariant, OnClick,
+pub mod ui_elements;
+pub use ui_elements::button::{
+    handle_button_clicks_event, handle_button_clicks_fn, update_button_visuals, ButtonClickedEvent,
 };
-
 pub mod card;
 pub use card::{
     // -- Builder Pattern --
@@ -62,7 +60,16 @@ pub use layout::{
 pub mod theme;
 // Theme-Management für UI-Elemente
 use bevy::prelude::*;
-use button::{handle_button_clicks_event, update_button_visuals};
+
+use crate::theme::{
+    data::*,
+    runtime::*,
+    // We will move the setup logic into a loading state system
+    // systems::{hot_reload_theme_system, setup_theme_resource},
+    systems::{hot_reload_theme_system, save_theme_system}, // Keep hot reload system
+};
+
+use bevy_common_assets::ron::RonAssetPlugin;
 use checkbox::{
     handle_checkbox_clicks, update_checkbox_visuals, update_checkmark_visibility_on_state_change,
 };
@@ -71,8 +78,6 @@ use dialog::{
     register_initially_open_dialogs, ActiveDialogs,
 };
 use tabs::{handle_tab_triggers, populate_initial_tab_content, update_tabs_visuals};
-pub use theme::plugin::ThemePlugin;
-// Später: use tabs::{handle_tab_activation};
 
 /// Plugin für die Kernfunktionalität der Forge UI Widgets.
 /// Fügt Interaktionssysteme und Events hinzu.
@@ -81,7 +86,25 @@ pub struct ForgeUiPlugin;
 impl Plugin for ForgeUiPlugin {
     fn build(&self, app: &mut App) {
         // Nur Events registrieren
-        app.add_event::<button::ButtonClickedEvent>()
+        app.add_plugins(RonAssetPlugin::<UiThemeData>::new(&["theme.ron"]))
+            // --- Asset Loading Logic ---
+            // 1. Load the asset during PreStartup and store the handle
+            .add_systems(PreStartup, theme::systems::load_theme_asset)
+            // 2. Add a system to check loading state *during* your app's loading phase.
+            //    Replace 'AppState::Loading' with your actual loading state enum variant.
+            //    This system will insert the UiTheme resource once loading is done.
+            //    If your app doesn't have a loading state, you might need to add one
+            //    or run this check repeatedly in Update until the resource is inserted.
+            .add_systems(
+                Update,
+                theme::systems::check_theme_asset_readiness
+                    .run_if(resource_exists::<theme::systems::ThemeAssetHandle>) // Only run if handle exists
+                    .run_if(not(resource_exists::<UiTheme>)), // Only run if UiTheme not yet inserted
+                                                              // Optional: Run only during a specific loading state
+                                                              // .run_if(in_state(AppState::Loading)) // Replace AppState::Loading with your state
+            )
+            // --- End Asset Loading Logic ---
+            .add_systems(Update, hot_reload_theme_system) // Keep hot reload
             .add_event::<checkbox::CheckboxChangedEvent>()
             // --- NEU: Tabs spezifisch (Generisch über Typ T) ---
             // Man muss das Event und die Systeme für JEDEN verwendeten Wert-Typ T registrieren.
@@ -90,6 +113,7 @@ impl Plugin for ForgeUiPlugin {
             .init_resource::<ActiveDialogs>() // WICHTIG: Ressource initialisieren
             .add_event::<OpenDialogEvent>()
             .add_event::<CloseDialogEvent>()
+            .add_event::<ButtonClickedEvent>()
             .add_systems(
                 PostUpdate,
                 (
@@ -100,8 +124,10 @@ impl Plugin for ForgeUiPlugin {
             .add_systems(
                 Update,
                 (
-                    handle_button_clicks_event,
+                    // Button Systems
                     update_button_visuals,
+                    handle_button_clicks_event,
+                    handle_button_clicks_fn, // Optional
                     register_initially_open_dialogs,
                     update_checkbox_visuals, // <<< Uses Option<Res<UiTheme>> now
                     handle_checkbox_clicks,
@@ -113,6 +139,13 @@ impl Plugin for ForgeUiPlugin {
                     update_tabs_visuals::<tabs::TabId>, // <-- Beispiel mit TabId
                 ),
             );
+        #[cfg(debug_assertions)]
+        app.add_systems(
+            Update,
+            save_theme_system.run_if(bevy::input::common_conditions::input_just_pressed(
+                KeyCode::KeyS,
+            )),
+        );
         // ----------------------------------------------------
         // TODO: Wenn Sie andere Typen als Tab-Werte verwenden (z.B. Enums),
         //       müssen Sie das Event und die Systeme dafür separat hinzufügen!

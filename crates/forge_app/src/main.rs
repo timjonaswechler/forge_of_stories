@@ -8,8 +8,7 @@ use forge_of_stories::*; // Importieren Sie Ihr attributes Modul
                          // Ihr attributes Modul
 use forge_ui::{
     badge::{BadgeBuilder, BadgeVariant}, // Importieren Sie den TabBuilder
-    button::{handle_button_clicks_event, update_button_visuals},
-    button::{ButtonBuilder, ButtonSize, ButtonVariant}, // Nur Button-Sachen die wir brauchen
+
     card::{CardBuilder, ElementStyle, NodeElement},
     checkbox::{
         handle_checkbox_clicks, update_checkbox_visuals,
@@ -22,7 +21,11 @@ use forge_ui::{
     tabs::handle_tab_triggers,
     tabs::{TabId, TabsBuilder},
     theme::*,
-    ButtonClickedEvent, // Event bleibt wichtig
+    ui_elements::button::{
+        handle_button_clicks_event, update_button_visuals, ButtonBuilder, ButtonClickedEvent,
+        ButtonSize, ButtonVariant,
+    },
+    // Event bleibt wichtig
     ForgeUiPlugin,
 }; // Ihre UI Elemente
 
@@ -70,7 +73,7 @@ fn main() {
         )
         // --- Your Game Plugins ---
         // --- UI Plugin ---
-        .add_plugins((ThemePlugin, ForgeUiPlugin)) // Add the UI plugin HERE
+        .add_plugins(ForgeUiPlugin) // Add the UI plugin HERE
         // --- Game Setup & Systems ---
         .add_systems(
             OnEnter(AppState::MainMenu),
