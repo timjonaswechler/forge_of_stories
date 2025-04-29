@@ -4,8 +4,8 @@ use bevy::prelude::*;
 use std::collections::HashMap; // Für Content-Bereiche
 use std::hash::Hash; // Für generischen Wert-Typ
 
-use super::button::{ButtonBuilder, ButtonSize, ButtonVariant};
-use crate::theme::UiTheme; // Nutzen Button als Basis für Trigger
+use crate::theme::UiTheme;
+use crate::ui_elements::button::{ButtonBuilder, ButtonSize, ButtonVariant}; // Nutzen Button als Basis für Trigger
 
 // --- Komponenten ---
 
@@ -204,7 +204,7 @@ impl<T: Component + PartialEq + Eq + Hash + Clone + Send + Sync + 'static> TabsB
 
                         // Button spawnen und Trigger-Komponente hinzufügen
                         let _ = trigger_builder
-                            .spawn(list_builder, font_handle.clone(), theme)
+                            .spawn(list_builder, theme, font_handle)
                             .insert(TabsTrigger {
                                 value: item.value.clone(),
                                 parent_tabs: tabs_entity,

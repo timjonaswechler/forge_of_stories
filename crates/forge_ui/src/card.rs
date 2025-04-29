@@ -4,7 +4,7 @@ use bevy::{ecs::system::EntityCommands, prelude::*};
 
 use crate::theme::UiTheme;
 // Wichtig: ButtonBuilder importieren, falls er im Footer verwendet wird
-use super::button::ButtonBuilder;
+use crate::ui_elements::button::ButtonBuilder;
 
 // --- Marker Komponenten (bleiben gleich) ---
 #[derive(Component, Default, Debug, Clone, Copy)]
@@ -238,7 +238,7 @@ fn spawn_element<'w, 'a>(
 
         NodeElement::Button(builder) => {
             // Spawnen des Buttons direkt mit dem übergebenen Builder
-            let _ = builder.spawn(parent, font_handle.clone(), theme);
+            let _ = builder.spawn(parent, theme, font_handle);
         } // Hier würden weitere Element-Typen (Input, Select, Layouts...) behandelt werden
     }
 }

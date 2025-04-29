@@ -211,8 +211,9 @@ fn setup_main_menu(
                 // Default Button
                 let _ = ButtonBuilder::new()
                     .with_text("Play Game")
-                    .size(ButtonSize::Large)
-                    .spawn(button_parent, font_handle.clone(), &theme); // <<< Pass theme
+                    .size(ButtonSize::Default)
+                    .border_radius(theme.layout.radius.xs) // Beispiel: BorderRadius aus Theme
+                    .spawn(button_parent, &theme, &font_handle); // <<< Pass theme
 
                 // Destructive Button with Icon
                 let _ = ButtonBuilder::new()
@@ -222,7 +223,7 @@ fn setup_main_menu(
                     .add_marker(|cmd| {
                         cmd.insert(DeleteSaveButton);
                     })
-                    .spawn(button_parent, font_handle.clone(), &theme); // <<< Pass theme
+                    .spawn(button_parent, &theme, &font_handle); // <<< Pass theme
 
                 // Outline Button with Callback
                 let _ = ButtonBuilder::new()
@@ -231,7 +232,7 @@ fn setup_main_menu(
                     .on_click(|| {
                         println!("Options button clicked (direct callback)!");
                     })
-                    .spawn(button_parent, font_handle.clone(), &theme); // <<< Pass theme
+                    .spawn(button_parent, &theme, &font_handle); // <<< Pass theme
 
                 // Icon-only button
                 let _ = ButtonBuilder::new()
@@ -241,13 +242,13 @@ fn setup_main_menu(
                     .add_marker(|cmd| {
                         cmd.insert(SettingsButton);
                     })
-                    .spawn(button_parent, font_handle.clone(), &theme); // <<< Pass theme
+                    .spawn(button_parent, &theme, &font_handle); // <<< Pass theme
 
                 // Disabled button
                 let _ = ButtonBuilder::new()
                     .with_text("Continue (Disabled)")
                     .disabled(true)
-                    .spawn(button_parent, font_handle.clone(), &theme);
+                    .spawn(button_parent, &theme, &font_handle); // <<< Pass theme
 
                 // <<< Pass theme
             });
@@ -427,7 +428,7 @@ fn setup_main_menu(
                     dialog_id_to_open: profile_dialog_id_for_button,
                 });
             })
-            .spawn(parent, font_handle.clone(), &theme);
+            .spawn(parent, &theme, &font_handle);
     });
     // --- Dialog spawnen (auf oberster Ebene, NICHT in main_ui_parent!) ---
     // let profile_dialog_id = DialogId::new_unique(); // Dieselbe ID verwenden oder neu generieren und im Button speichern
@@ -478,7 +479,7 @@ fn setup_main_menu(
                         .add_marker(|cmd| {
                             cmd.insert(DialogCloseTrigger);
                         }) // <-- Schließt Dialog
-                        .spawn(footer, font_handle.clone(), theme);
+                        .spawn(footer, theme, &font_handle);
                 });
         })
         .spawn(

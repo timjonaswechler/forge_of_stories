@@ -8,8 +8,8 @@ use uuid::Uuid;
 
 use std::hash::Hash;
 
-use super::button::{ButtonBuilder, ButtonSize, ButtonVariant};
-use crate::theme::UiTheme; // Für Schließen-Button
+use crate::theme::UiTheme;
+use crate::ui_elements::button::{ButtonBuilder, ButtonSize, ButtonVariant}; // Für Schließen-Button
 
 // --- Ressourcen (ggf. global definieren) ---
 #[derive(Resource, Default, Debug)]
@@ -338,8 +338,7 @@ impl DialogBuilder {
                             }
 
                             // Button final spawnen
-                            let _ =
-                                close_button_builder.spawn(btn_parent, font_handle.clone(), theme);
+                            let _ = close_button_builder.spawn(btn_parent, theme, font_handle);
                         });
                 }
             });

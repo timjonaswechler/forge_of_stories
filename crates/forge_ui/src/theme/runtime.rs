@@ -25,6 +25,7 @@ pub struct UiLayout {
     pub margin: UiSpacing,
     pub gap: UiSpacing,
     pub radius: UiRadius,
+    pub border: UiSpacing,
 }
 
 #[derive(Debug, Clone)]
@@ -666,6 +667,17 @@ impl Default for UiTheme {
                     x3l: 1.5 * REM,
                     x4l: 2.0 * REM,
                     full: f32::MAX,
+                },
+                border: UiSpacing {
+                    xs: 1.0,
+                    sm: 2.0,
+                    base: 3.0,
+                    lg: 5.0,
+                    xl: 7.0,
+                    x2l: 9.0,
+                    x3l: 12.0,
+                    x4l: 15.0,
+                    x5l: 19.0,
                 },
             },
             font: UiTypography {
