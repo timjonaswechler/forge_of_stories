@@ -15,16 +15,16 @@ use forge_ui::{
         update_checkmark_visibility_on_state_change,
     },
     checkbox::{CheckboxBuilder, CheckboxChangedEvent}, // << Builder und Helfer importieren
+    components::button::{
+        handle_button_clicks_event, update_button_visuals, ButtonBuilder, ButtonClickedEvent,
+        ButtonSize, ButtonVariant,
+    },
     dialog::{DialogBuilder, DialogCloseTrigger, DialogId, OpenDialogEvent},
     label::LabelBuilder,
     layout::UiRoot,
     tabs::handle_tab_triggers,
     tabs::{TabId, TabsBuilder},
     theme::*,
-    ui_elements::button::{
-        handle_button_clicks_event, update_button_visuals, ButtonBuilder, ButtonClickedEvent,
-        ButtonSize, ButtonVariant,
-    },
     // Event bleibt wichtig
     ForgeUiPlugin,
 }; // Ihre UI Elemente
