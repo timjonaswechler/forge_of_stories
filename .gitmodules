@@ -2,6 +2,3 @@
 	path = crates/forge_ui
 	url = git@github.com:timjonaswechler/forge_ui.git
 
-[submodule "crates/forge_loader"]
-	path = crates/forge_loader
-	url = git@github.com:timjonaswechler/forge_loader.git
