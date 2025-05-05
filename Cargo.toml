@@ -22,7 +22,7 @@ license = ""    # Lizenz des Projekts (z.B. "MIT OR Apache-2.0")
 # ==============================================================================
 [workspace.dependencies]
 # --- Kern-Engine & Logging ---
-bevy = { version = "0.15.3", features = [
+bevy = { version = "0.16.0", features = [
     "dynamic_linking", # Beschleunigt inkrementelle Kompilierung während der Entwicklung (WARNUNG: Kann Deployment erschweren)
     "file_watcher",    # Automatisches Neuladen von Assets bei Änderungen
     "multi_threaded",  # Aktiviert parallele Verarbeitung für bessere Leistung (Standard-Scheduler)
@@ -40,13 +40,13 @@ uuid = { version = "=1.12.0", features = ["v4", "serde"] } # Eindeutige IDs; fes
 
 # --- Entwicklungswerkzeuge ---
 # WICHTIG: Version muss exakt zur Bevy-Version passen!
-bevy-inspector-egui = "=0.30.0" # UI zur Inspektion von Bevy-Entitäten und -Ressourcen
+bevy-inspector-egui = "0.31.0" # UI zur Inspektion von Bevy-Entitäten und -Ressourcen
 
 # --- Zufallszahlen ---
 # WICHTIG: bevy_rand Version muss zur Bevy-Version passen!
-bevy_rand = { version = "=0.9.0" } # Integration von Zufallszahlengeneratoren in Bevy
-rand = "0.8.5"                     # Kernbibliothek für Zufallszahlen
-rand_distr = "0.4.3"               # Zusätzliche Wahrscheinlichkeitsverteilungen
+bevy_rand = { version = "0.10.0" } # Integration von Zufallszahlengeneratoren in Bevy
+rand = "0.9.1"                     # Kernbibliothek für Zufallszahlen
+rand_distr = "0.5.1"               # Zusätzliche Wahrscheinlichkeitsverteilungen
 
 # --- Hilfsprogramme & Makros ---
 strum = { version = "0.27", features = ["derive"] } # Hilfsmittel für Enums (z.B. Iteration, String-Konvertierung)

@@ -64,7 +64,7 @@ fn main() {
         )
         // --- Your Game Plugins ---
         // --- UI Plugin ---
-        .add_plugins(ForgeUiPlugin) // Add the UI plugin HERE
+        .add_plugins(ForgeUiPlugin::new()) // Add the UI plugin HERE
         // --- Game Setup & Systems ---
         .add_systems(
             OnEnter(AppState::MainMenu),

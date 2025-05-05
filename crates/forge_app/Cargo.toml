@@ -11,6 +11,7 @@ license.workspace = true
 [dependencies]
 # Interne Crates
 forge_ui = { path = "../forge_ui" }
+# forge_loader = { path = "../forge_loader" }
 
 # Core Dependencies
 bevy = { workspace = true, features = ["dynamic_linking", "file_watcher"] }
