@@ -37,6 +37,7 @@ strum = { version = "0.27.1", features = ["derive"] }
 strum_macros = "0.27.1"
 anyhow = "1.0.98"
 derivative = "2.2.0"
+thiserror = "2.0.12"
 
 [package]
 name = "forge_of_stories"
@@ -64,6 +65,7 @@ strum.workspace = true
 strum_macros.workspace = true
 anyhow.workspace = true
 derivative.workspace = true
+
 
 [features]
 default = []

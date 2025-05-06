@@ -1,40 +1,42 @@
 // ############ crates/forge_app/src/main.rs (NEU) ############
-use bevy::prelude::*; // <-- Import für RonAssetPlugin von Bevy selbst
-use bevy_asset_loader::prelude::StandardDynamicAssetCollection;
+use bevy::prelude::*;
 use bevy_asset_loader::prelude::*;
-use bevy_common_assets::ron::RonAssetPlugin; // <-- Import für RonAssetPlugin
-use std::collections::HashMap; // <-- Import für HashMap
+use std::collections::HashMap;
 
-use forge_of_stories::*; // Importieren Sie Ihr attributes Modul
-                         // Ihr attributes Modul
+use forge_of_stories::*;
+
 use forge_ui::{
-    components::{
-        button::{
-            handle_button_clicks_event, update_button_visuals, ButtonBuilder, ButtonClickedEvent,
-            ButtonSize,
-        },
-        label::LabelBuilder,
-    },
-
+    components::{button::ButtonBuilder, label::LabelBuilder},
     layout::UiRoot,
-
     theme::*,
-    // Event bleibt wichtig
-    ForgeUiPlugin,
-}; // Ihre UI Elemente
+    ForgeUiPlugin, UiState,
+};
+
+fn transition_to_main_menu_when_ui_ready(
+    ui_state: Res<State<UiState>>,
+    mut next_app_state: ResMut<NextState<AppState>>,
+) {
+    // wenn die UI-Plugin-State Ready ist, schalte in MainMenu
+    if ui_state.get() == &UiState::Ready {
+        next_app_state.set(AppState::MainMenu);
+    }
+}
 
 // Define States for Loading etc.
-#[derive(States, Debug, Clone, PartialEq, Eq, Hash, Default)]
-enum AppState {
+#[derive(States, Debug, Clone, Eq, PartialEq, Hash, Default)]
+pub enum AppState {
     #[default]
-    Loading, // Start in loading state
-    MainMenu, // Example game state
-    SettingsMenu,
-    // Settings, // Optional: Example für anderen State
+    Loading,
+    MainMenu,
+    InGame,
+    Paused,
+    Cleanup,
+    Ready,
 }
 
 fn main() {
     App::new()
+        // --- Game-State initialisieren ---
         .add_plugins(
             DefaultPlugins
                 .set(WindowPlugin {
@@ -51,46 +53,21 @@ fn main() {
                     ..Default::default()
                 }),
         )
-        // --- Asset Loading Setup ---
-        .init_state::<AppState>() // Manage game states
-        // Add RonAssetPlugin FÜR JEDEN Typ, den Sie aus .ron/.species.ron/.theme.ron laden wollen
-        .add_plugins((
-            RonAssetPlugin::<SpeciesData>::new(&["species.ron"]),
-            // Aktivieren, wenn Sie Theme laden
-        ))
-        .add_loading_state(
-            LoadingState::new(AppState::Loading)
-                .continue_to_state(AppState::MainMenu)
-                .with_dynamic_assets_file::<StandardDynamicAssetCollection>(
-                    "game_assets.assets.ron",
-                ) // Transition after loading
-                .load_collection::<GameAssets>(), // Load our defined assets
-        )
-        // --- Your Game Plugins ---
-        // --- UI Plugin ---
-        .add_plugins(ForgeUiPlugin::new()) // Add the UI plugin HERE
-        // --- Game Setup & Systems ---
-        .add_systems(
-            OnEnter(AppState::MainMenu),
-            (
-                ApplyDeferred, // Stellt sicher, dass Ressource vor nächstem System da ist
-                setup_main_menu.run_if(resource_exists::<UiTheme>), // <<< Baut das UI MIT Theme auf
-            )
-                .chain(), // Sorgt für korrekte Reihenfolge
-        )
+        .init_state::<AppState>()
+        // --- UI Plugin mit eigener UiState-Zustandsmaschine ---
+        .add_plugins(ForgeUiPlugin::new())
+        // --- Brücke zwischen UiState und AppState ---
         .add_systems(
             Update,
-            (
-                // Button Systeme
-                update_button_visuals,
-                handle_button_clicks_event,
-                handle_button_clicks, // <- Ihr Button-Event-Handler
-            )
-                .run_if(in_state(AppState::MainMenu)), // << Bedingung HIER setzen
+            transition_to_main_menu_when_ui_ready.run_if(in_state(AppState::Loading)), // nur solange wir noch laden
         )
-        // Optional: Wenn Sie den fn-Callback-Handler brauchen:
-        // .add_systems(Update, forge_ui::button::handle_button_clicks_fn.run_if(in_state(AppState::MainMenu)))
-        // Add other game systems...
+        // --- Wenn wir in MainMenu landen, baue das UI auf ---
+        .add_systems(
+            OnEnter(AppState::MainMenu),
+            (ApplyDeferred, setup_main_menu)
+                .chain()
+                .run_if(|res: Option<Res<UiTheme>>| resource_exists(res)), // optional: warte auf Theme
+        )
         .run();
 }
 
@@ -180,32 +157,3 @@ struct DeleteSaveButton;
 
 #[derive(Component, Default)] // Default hinzugefügt für .mark()
 struct SettingsButton;
-
-// --- Event Handling System ---
-fn handle_button_clicks(
-    // mut commands: Commands, // Nur wenn nötig, z.B. um State zu ändern
-    mut events: EventReader<ButtonClickedEvent>,
-    // Query for markers to identify which button was clicked
-    delete_button_query: Query<(), With<DeleteSaveButton>>,
-    settings_button_query: Query<(), With<SettingsButton>>,
-    // Query für andere Buttons, falls sie keine speziellen Marker haben
-    // button_query: Query<&ButtonMarker>,
-    // Optional: Zugriff auf andere Ressourcen
-    // mut next_state: ResMut<NextState<AppState>>,
-) {
-    for event in events.read() {
-        info!("-> Button Clicked Event: {:?}", event.button_entity);
-
-        if delete_button_query.get(event.button_entity).is_ok() {
-            warn!("--> Delete Save button pressed!");
-            // Implement save deletion logic here
-        } else if settings_button_query.get(event.button_entity).is_ok() {
-            info!("--> Settings button pressed!");
-            // Navigate to settings menu, e.g.:
-            // next_state.set(AppState::Settings);
-        } else {
-            // Handle other buttons if necessary
-            info!("--> A generic button was pressed (no specific marker found).");
-        }
-    }
-}

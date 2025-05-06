@@ -2563,10 +2563,12 @@ name = "forge_ui"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "bevy_asset_loader",
  "bevy_common_assets",
  "log",
  "ron 0.10.1",
  "serde",
+ "thiserror 2.0.12",
  "uuid",
 ]
 
