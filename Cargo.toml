@@ -1,83 +1,44 @@
-# Hauptkonfigurationsdatei für den Rust Workspace
-
 [workspace]
-resolver = "2" # Empfohlene Version für moderne Rust-Projekte
-members = [
-    "crates/*", # Alle Unterverzeichnisse in 'crates/' sind Teil des Workspaces
-]
+resolver = "2"
+members = ["crates/*"]
 
-# ==============================================================================
-#  Gemeinsame Metadaten (von Crates im Workspace geerbt)
-# ==============================================================================
 [workspace.package]
-authors = ["Tim-Jonas Wechler"]
-version = "0.1.0" # Initiale Entwicklungsversion
+version = "0.1.0"
 edition = "2021"
+authors = ["Tim-Jonas Wechler"]
 description = "Eine Game Engine zur Erstellung interaktiver Geschichten"
-repository = "" # URL des Code-Repositories (z.B. GitHub)
-license = ""    # Lizenz des Projekts (z.B. "MIT OR Apache-2.0")
+license = "MIT OR Apache-2.0"                                            # 🚨 Bitte Lizenz angeben!
+repository = ""                                                          # 🚨 Repository-URL eintragen
 
-# ==============================================================================
-#  Gemeinsame Abhängigkeiten (zentral definierte Versionen)
-# ==============================================================================
+# 🔄 Gemeinsame Abhängigkeiten (alle auf Bevy 0.16.0 abgestimmt)
 [workspace.dependencies]
-# --- Kern-Engine & Logging ---
+# --- Bevy Core ---
 bevy = { version = "0.16.0", features = [
-    "dynamic_linking", # Beschleunigt inkrementelle Kompilierung während der Entwicklung (WARNUNG: Kann Deployment erschweren)
-    "file_watcher",    # Automatisches Neuladen von Assets bei Änderungen
-    "multi_threaded",  # Aktiviert parallele Verarbeitung für bessere Leistung (Standard-Scheduler)
+    "dynamic_linking",
+    "file_watcher",
+    "multi_threaded",
 ] }
-bevy_common_assets = { version = "0.12.0" } # Hilfsmittel für gängige Asset-Typen (JSON, RON, etc.) mit Bevy
-bevy_asset_loader = { version = "0.22.0" } # Vereinfacht das Laden von Assets in Bevy
-log = "0.4" # Standard Logging-Fassade für Rust
+bevy_common_assets = "0.13.0" # ⬆️ Aktualisiert für Bevy 0.16
+bevy_asset_loader = { version = "0.23.0-rc.3", features = [
+    "standard_dynamic_assets",
+] }
 
-# --- Serialisierung & Datenformate ---
-serde = { version = "1.0", features = ["derive"] } # Framework für (De-)Serialisierung
-ron = "0.10.1"                                   # Rusty Object Notation (lesbares Datenformat)
-uuid = { version = "=1.12.0", features = ["v4", "serde"] } # Eindeutige IDs; feste Version (=) für Stabilität/Kompatibilität
+# --- Serialisierung ---
+serde = { version = "1.0.219", features = ["derive"] }
+ron = "0.10.1"
+uuid = { version = "1.16.0", features = ["v4", "serde"] }
 
-
-
-# --- Entwicklungswerkzeuge ---
-# WICHTIG: Version muss exakt zur Bevy-Version passen!
-bevy-inspector-egui = "0.31.0" # UI zur Inspektion von Bevy-Entitäten und -Ressourcen
+# --- Entwicklungstools ---
+bevy-inspector-egui = "0.31.0" # ⬆️ Kompatibel mit Bevy 0.16
+log = "0.4.27"
 
 # --- Zufallszahlen ---
-# WICHTIG: bevy_rand Version muss zur Bevy-Version passen!
-bevy_rand = { version = "0.10.0" } # Integration von Zufallszahlengeneratoren in Bevy
-rand = "0.9.1"                     # Kernbibliothek für Zufallszahlen
-rand_distr = "0.5.1"               # Zusätzliche Wahrscheinlichkeitsverteilungen
+bevy_rand = "0.10.0" # ⬆️ Kompatibel mit Bevy 0.16
+rand = "0.9.1"
+rand_distr = "0.5.1"
 
-# --- Hilfsprogramme & Makros ---
-strum = { version = "0.27", features = ["derive"] } # Hilfsmittel für Enums (z.B. Iteration, String-Konvertierung)
-strum_macros = "0.27"
-anyhow = "1.0"             # Flexible Fehlerbehandlung
-derivative = "2.2.0"       # Ermöglicht das Ableiten zusätzlicher Traits (z.B. Debug für generische Typen)
-
-
-# Hinweis: Workspace-Features werden von Cargo nicht direkt unterstützt.
-# Features müssen pro Crate in deren eigenem `Cargo.toml` aktiviert werden,
-# auch wenn die Abhängigkeit hier zentral definiert ist.
-
-# ==============================================================================
-#  Kompilierungs-Profile
-# ==============================================================================
-
-# --- Entwicklungsprofil (cargo build) ---
-[profile.dev]
-opt-level = 1 # Leichte Optimierung für schnellere Build-Zeiten als opt-level=0, aber langsamer als opt-level=3
-# lto = false    # Standard
-# codegen-units = 256 # Standard (viele Units -> schnellere inkrementelle Builds, langsamerer Code)
-
-# Höhere Optimierungsstufe für Abhängigkeiten (auch im Debug-Build),
-# da diese sich selten ändern und die Laufzeit des Gesamtprojekts beeinflussen.
-[profile.dev.package."*"]
-opt-level = 3
-
-# --- Release-Profil (cargo build --release) ---
-[profile.release]
-opt-level = 3     # Maximale Optimierung für beste Laufzeitleistung
-lto = "thin"      # Thin Link-Time Optimization (guter Kompromiss zwischen Build-Zeit und Laufzeitleistung)
-codegen-units = 1 # Eine Codegen-Unit -> langsamere Build-Zeit, aber potenziell schnellere Laufzeit durch mehr Optimierungsmöglichkeiten
-strip = true      # Entfernt Debug-Symbole aus dem finalen Binary (kleinere Dateigröße)
-
+# --- Utilities ---
+strum = { version = "0.27.1", features = ["derive"] }
+strum_macros = "0.27.1"
+anyhow = "1.0.98"
+derivative = "2.2.0"

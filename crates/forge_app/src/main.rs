@@ -1,5 +1,6 @@
 // ############ crates/forge_app/src/main.rs (NEU) ############
 use bevy::prelude::*; // <-- Import für RonAssetPlugin von Bevy selbst
+use bevy_asset_loader::prelude::StandardDynamicAssetCollection;
 use bevy_asset_loader::prelude::*;
 use bevy_common_assets::ron::RonAssetPlugin; // <-- Import für RonAssetPlugin
 use std::collections::HashMap; // <-- Import für HashMap
@@ -7,11 +8,14 @@ use std::collections::HashMap; // <-- Import für HashMap
 use forge_of_stories::*; // Importieren Sie Ihr attributes Modul
                          // Ihr attributes Modul
 use forge_ui::{
-    components::button::{
-        handle_button_clicks_event, update_button_visuals, ButtonBuilder, ButtonClickedEvent,
-        ButtonSize,
+    components::{
+        button::{
+            handle_button_clicks_event, update_button_visuals, ButtonBuilder, ButtonClickedEvent,
+            ButtonSize,
+        },
+        label::LabelBuilder,
     },
-    label::LabelBuilder,
+
     layout::UiRoot,
 
     theme::*,
@@ -69,7 +73,7 @@ fn main() {
         .add_systems(
             OnEnter(AppState::MainMenu),
             (
-                apply_deferred, // Stellt sicher, dass Ressource vor nächstem System da ist
+                ApplyDeferred, // Stellt sicher, dass Ressource vor nächstem System da ist
                 setup_main_menu.run_if(resource_exists::<UiTheme>), // <<< Baut das UI MIT Theme auf
             )
                 .chain(), // Sorgt für korrekte Reihenfolge
@@ -93,26 +97,12 @@ fn main() {
 // --- Asset Collection Definition ---
 #[derive(AssetCollection, Resource)]
 pub struct GameAssets {
-    // #[asset(key = "font.main")] pub main_font: Handle<Font>, // Wenn über Key geladen
-    #[asset(path = "fonts/Roboto-Regular.ttf")]
-    pub main_font: Handle<Font>, // Fallback, wenn nicht im Theme/Key
-
-    #[asset(key = "icon.settings")]
-    pub settings_icon: Handle<Image>,
-    #[asset(key = "icon.delete")]
-    pub delete_icon: Handle<Image>,
-    #[asset(key = "icon.checkmark")]
-    pub checkmark_icon: Handle<Image>,
-
     #[asset(key = "species.elf", typed)] // 'typed' wichtig für RonAssetPlugin via Key
     pub elf_species: Handle<SpeciesData>,
     #[asset(key = "species.human", typed)]
     pub human_species: Handle<SpeciesData>,
     #[asset(key = "species.ork", typed)]
     pub ork_species: Handle<SpeciesData>,
-
-    #[asset(key = "texture.loading_icon")]
-    pub loading_icon: Handle<Image>,
 }
 
 // --- RON Data Structures ---

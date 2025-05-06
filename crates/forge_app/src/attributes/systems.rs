@@ -64,31 +64,22 @@ pub fn update_attribute_rust(time: Res<Time>, mut query: Query<&mut Attribute>) 
 // Platzhalter-System, korrigiert für Warnungen
 // T muss Component sein, damit Query funktioniert.
 // T muss AttributeGroup sein, um get_attribute_mut aufrufen zu können.
-pub fn apply_attributes<T: Component + AttributeGroup>(
-    // Die Query holt alle Entitäten, die sowohl die Komponente T (z.B. PhysicalAttributes)
-    // als auch eine (hypothetische) AttributeType-Komponente haben, die angibt,
-    // welches Attribut gerade relevant ist. Dieser Teil ist konzeptionell.
-    // Wahrscheinlicher ist, dass ein *Event* dieses System triggert und das AttributeType liefert,
-    // oder dass dieses System über *alle* Attribute in T iteriert.
-    // Lassen wir die Query vorerst so, als Beispiel für einen generischen Ansatz.
-    // In der Praxis braucht man hier oft spezifischere Logik.
-    mut query: Query<&mut T>, // <- Angepasst: Iteriert über die Gruppen
-                              // _commands: Commands, // Markiert als unbenutzt, wenn nichts gespawnt wird
-) {
-    for mut _attributes_group in query.iter_mut() { // <- Iteriert über die gefundene(n) Attributgruppe(n)
-         // Hier müsste die Logik stehen, die entscheidet, *welches* Attribut
-         // aus der Gruppe T angewendet werden soll und *wie*.
-         // Beispiel: Man könnte über alle Attribute in der Gruppe iterieren
-         // oder auf ein spezifisches Event reagieren.
+// Für Bevy-Queries müssen konkrete Typen verwendet werden, daher drei separate Systeme:
+pub fn apply_physical_attributes(mut query: Query<&mut PhysicalAttributes>) {
+    for mut _attributes_group in query.iter_mut() {
+        // Hier Logik für PhysicalAttributes einfügen
+    }
+}
 
-        // Platzhalter - Logik hier einfügen
-        // Beispiel:
-        // if let Some(strength_attr) = attributes_group.get_attribute_mut(AttributeType::Strength) {
-        //     if strength_attr.effective_value > 4000.0 {
-        //         info!("Entity has high strength!");
-        //         // Füge z.B. eine temporäre Komponente hinzu oder sende ein Event
-        //     }
-        // }
+pub fn apply_mental_attributes(mut query: Query<&mut MentalAttributes>) {
+    for mut _attributes_group in query.iter_mut() {
+        // Hier Logik für MentalAttributes einfügen
+    }
+}
+
+pub fn apply_social_attributes(mut query: Query<&mut SocialAttributes>) {
+    for mut _attributes_group in query.iter_mut() {
+        // Hier Logik für SocialAttributes einfügen
     }
 }
 

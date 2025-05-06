@@ -1,8 +1,9 @@
 // src/attributes/plugin.rs
 use super::{
-    components::*,              // Behalte Komponenten-Imports
-    events::AttributeUsedEvent, // <--- Importiere das Event
-    systems::*,                 // Behalte System-Imports
+    // Behalte Komponenten-Imports
+    events::AttributeUsedEvent,       // <--- Importiere das Event
+    systems::apply_mental_attributes, // Importiere apply_attributes explizit
+    systems::*,                       // Behalte System-Imports
 };
 
 use bevy::prelude::*;
@@ -20,9 +21,9 @@ impl Plugin for AttributesPlugin {
         app.add_systems(
             Update,
             (
-                apply_attributes::<PhysicalAttributes>,
-                apply_attributes::<MentalAttributes>,
-                apply_attributes::<SocialAttributes>,
+                apply_physical_attributes,
+                apply_mental_attributes,
+                apply_social_attributes,
             ),
         );
 
