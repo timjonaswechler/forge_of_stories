@@ -164,7 +164,6 @@ fn setup_main_menu(
                 // Default Button
                 let _ = ButtonBuilder::new()
                     .with_text("Play Game")
-                    .size(ButtonSize::Default)
                     .border_radius(theme.layout.radius.xs) // Beispiel: BorderRadius aus Theme
                     .spawn(button_parent, &theme, &font_handle); // <<< Pass theme
 
