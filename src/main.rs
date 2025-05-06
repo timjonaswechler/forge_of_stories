@@ -46,7 +46,7 @@ fn main() {
                 })
                 .set(AssetPlugin {
                     // Adjust this path if your assets folder is elsewhere relative to the executable
-                    file_path: "../../assets".into(),
+                    file_path: "assets".into(),
                     watch_for_changes_override: Some(true),
                     ..Default::default()
                 }),
