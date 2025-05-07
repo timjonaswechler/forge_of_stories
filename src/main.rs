@@ -1,12 +1,8 @@
-// ############ crates/forge_app/src/main.rs (NEU) ############
+// src/main.rs
 use bevy::prelude::*;
-use bevy_asset_loader::prelude::*;
-use std::collections::HashMap;
-
-use forge_of_stories::*;
 
 use forge_ui::{
-    components::{button::ButtonBuilder, label::LabelBuilder},
+    components::{button::ButtonBuilder, label::LabelBuilder, switch::ToggleSwitchBuilder},
     layout::UiRoot,
     theme::*,
     ForgeUiPlugin, UiState,
@@ -55,7 +51,7 @@ fn main() {
         )
         .init_state::<AppState>()
         // --- UI Plugin mit eigener UiState-Zustandsmaschine ---
-        .add_plugins(ForgeUiPlugin::new())
+        .add_plugins(ForgeUiPlugin::new().with_font_size(90.0))
         // --- Brücke zwischen UiState und AppState ---
         .add_systems(
             Update,
@@ -69,26 +65,6 @@ fn main() {
                 .run_if(|res: Option<Res<UiTheme>>| resource_exists(res)), // optional: warte auf Theme
         )
         .run();
-}
-
-// --- Asset Collection Definition ---
-#[derive(AssetCollection, Resource)]
-pub struct GameAssets {
-    #[asset(key = "species.elf", typed)] // 'typed' wichtig für RonAssetPlugin via Key
-    pub elf_species: Handle<SpeciesData>,
-    #[asset(key = "species.human", typed)]
-    pub human_species: Handle<SpeciesData>,
-    #[asset(key = "species.ork", typed)]
-    pub ork_species: Handle<SpeciesData>,
-}
-
-// --- RON Data Structures ---
-#[derive(serde::Deserialize, Asset, TypePath, Debug, Clone)]
-pub struct SpeciesData {
-    pub species_name: String,
-    // Verwenden Sie den tatsächlichen Typ aus Ihrem attributes-Modul
-    pub attribute_distributions:
-        HashMap<attributes::AttributeType, attributes::AttributeDistribution>,
 }
 
 // --- UI Setup System ---
@@ -133,8 +109,7 @@ fn setup_main_menu(
 
                 // --- Label hinzufügen ---
                 let _ = LabelBuilder::new("Main Menu Controls")
-                    .font_size(18.0) // Etwas größer
-                    .color(theme.color.gray.text_primary) // Andere Farbe zum Testen
+                    .color(theme.color.gray.step11) // Andere Farbe zum Testen
                     .align(JustifyText::Center) // Zentrieren
                     .spawn(button_parent, &theme, &font_handle);
 
@@ -146,6 +121,26 @@ fn setup_main_menu(
 
                 // <<< Pass theme
             });
+        let _ = ToggleSwitchBuilder::new().spawn(parent, &theme /*, &font_handle*/); // font_handle auskommentiert, da nicht direkt verwendet
+
+        // Anfangs aktivierter Switch
+        let _ = ToggleSwitchBuilder::new()
+            .checked(true)
+            .with_color(theme.color.green.step10)
+            .spawn(parent, &theme /*, &font_handle*/);
+
+        // Deaktivierter Switch
+        let _ = ToggleSwitchBuilder::new()
+            .disabled(true)
+            .spawn(parent, &theme /*, &font_handle*/);
+
+        // Deaktivierter und aktivierter Switch
+        let _ = ToggleSwitchBuilder::new()
+            .checked(true)
+            .disabled(true)
+            .with_radius(50.0)
+            .with_color(theme.color.red.step05) // Beispiel: Rote Farbe
+            .spawn(parent, &theme /*, &font_handle*/);
     });
 
     info!("Main menu UI setup complete.");
