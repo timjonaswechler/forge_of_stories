@@ -21,6 +21,8 @@ bevy_common_assets = "0.13.0"
 bevy_asset_loader = { version = "0.23.0-rc.3", features = [
     "standard_dynamic_assets",
 ] }
+bevy_tweening = "0.13.0"
+
 # --- Serialisierung ---
 serde = { version = "1.0.219", features = ["derive"] }
 ron = "0.10.1"
@@ -38,6 +40,7 @@ strum_macros = "0.27.1"
 anyhow = "1.0.98"
 derivative = "2.2.0"
 thiserror = "2.0.12"
+
 
 [package]
 name = "forge_of_stories"

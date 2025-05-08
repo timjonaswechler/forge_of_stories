@@ -138,7 +138,6 @@ fn setup_main_menu(
         let _ = ToggleSwitchBuilder::new()
             .checked(true)
             .disabled(true)
-            .with_radius(50.0)
             .with_color(theme.color.red.step05) // Beispiel: Rote Farbe
             .spawn(parent, &theme /*, &font_handle*/);
     });
