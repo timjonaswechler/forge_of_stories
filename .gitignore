@@ -35,3 +35,4 @@ target/
 *.pdb
 
 **/.DS_Store
+obsidian/
