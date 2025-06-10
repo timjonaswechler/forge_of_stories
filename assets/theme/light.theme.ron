@@ -1,6 +1,6 @@
 (
     font: (
-        font_size: (
+        size: (
             xs: 0.75,
             sm: 0.875,
             base: 1.0,
@@ -15,7 +15,7 @@
             x8l: 6.0,
             x9l: 8.0,
         ),
-        font_family: (
+        family: (
             default: "fonts/Roboto-Regular.ttf",
             sans: (
                 light: "fonts/Roboto-Light.ttf",

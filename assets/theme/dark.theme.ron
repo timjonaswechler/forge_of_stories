@@ -1,6 +1,6 @@
 (
     font: (
-        font_size: (
+        size: (
             xs: 0.75,
             sm: 0.875,
             base: 1.0,

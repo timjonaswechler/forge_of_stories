@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use bevy_inspector_egui::bevy_egui::EguiPlugin;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use forge_ui::prelude::*;
+use forge_ui::showcase::plugin::ShowcasePlugin;
 
 fn transition_to_main_menu_when_ui_ready(
     ui_state: Res<State<UiState>>,
@@ -33,12 +34,6 @@ pub enum MyGameAction {
     OpenSettings,
 }
 
-/// Wir speichern einfach eine numerische ID in der Action
-#[derive(Component, Clone, Debug)]
-pub struct MyActionComponent {
-    pub id: usize,
-}
-
 fn main() {
     App::new()
         // --- Game-State initialisieren ---
@@ -64,7 +59,8 @@ fn main() {
         .add_plugins(WorldInspectorPlugin::new())
         .init_state::<AppState>()
         // --- UI Plugin mit eigener UiState-Zustandsmaschine ---
-        .add_plugins(ForgeUiPlugin::new()) // --- Brücke zwischen UiState und AppState ---
+        .add_plugins(ForgeUiPlugin::new())
+        .add_plugins(ShowcasePlugin)
         .add_systems(
             Update,
             transition_to_main_menu_when_ui_ready.run_if(in_state(AppState::Loading)), // nur solange wir noch laden
@@ -72,9 +68,7 @@ fn main() {
         // --- Wenn wir in MainMenu landen, baue das UI auf ---
         .add_systems(
             OnEnter(AppState::MainMenu),
-            (ApplyDeferred, setup_main_menu)
-                .chain()
-                .run_if(|res: Option<Res<UiTheme>>| resource_exists(res)), // optional: warte auf Theme
+            setup_main_menu.run_if(|res: Option<Res<UiTheme>>| resource_exists(res)), // optional: warte auf Theme
         )
         .add_event::<ButtonClickedEvent<MyGameAction>>()
         .add_event::<ToggleGroupChangedEvent<SwitchMode>>()
@@ -83,7 +77,6 @@ fn main() {
             (
                 handle_button_press::<MyGameAction>.run_if(in_state(AppState::MainMenu)), // nur in MainMenu
                 handle_button_clicks.run_if(in_state(AppState::MainMenu)), // nur in MainMenu
-                handle_group_changed.run_if(in_state(AppState::MainMenu)), // nur in MainMenu
             ),
         )
         .run();
@@ -91,108 +84,40 @@ fn main() {
 
 // --- UI Setup System ---
 // Runs once when AppState::MainMenu is entered, AFTER setup_theme_resource
-fn setup_main_menu(
-    mut commands: Commands,
-    theme: Res<UiTheme>, // Theme Ressource wird hier benötigt
-    icons: Res<IconAssets>,
-    global_portal_root_opt: Option<Res<ForgeUiPortalRoot>>,
-) {
-    // Get the font handle (either from theme or fallback)
-    let font_handle = theme.font.font_family.default.clone(); // Fallback, falls Theme keine Font hat
-
-    // Create root UI nodre
+fn setup_main_menu(mut commands: Commands, theme: Res<UiTheme>, font: Res<FontAssets>) {
+    let font_handle = theme.font.family.default.clone();
     let ui_root_entity = UiRoot::spawn(&mut commands, &theme);
-    let dialog_id = DialogId::new_unique();
 
-    commands.entity(ui_root_entity).with_children(|parent| {
-        // --- Button Gruppe ---
-        let _ = VerticalStackBuilder::new()
-            .add_entity(
-                LabelBuilder::new("Main Menu Controls")
-                    .color(theme.color.gray.step11) // Andere Farbe zum Testen
-                    .align(JustifyText::Center) // Zentrieren
-                    .spawn(parent, &theme, &font_handle),
-            )
-            .add_entity(
-                ButtonBuilder::<MyGameAction>::new_for_action()
-                    .text("Spiel starten")
-                    .variant(ButtonVariant::Default) // Annahme: Primary ist eine Variante
-                    .action(MyGameAction::StartGame)
-                    .spawn(parent, &theme, &font_handle)
-                    .id(),
-            )
-            .add_entity(
-                DialogTriggerBuilder::new(dialog_id.clone())
-                    .text("Dialog öffnen")
-                    .variant(ButtonVariant::Default)
-                    .spawn(parent, &theme, &font_handle)
-                    .id(),
-            )
-            .gap(Val::Px(theme.layout.gap.sm))
-            .spawn(parent);
-        ToggleBuilder::<MyActionComponent>::new_with_action_type()
-            .variant(ToggleVariant::Primary)
-            .action(MyActionComponent { id: 42 })
-            .icon(icons.align_left.clone())
-            .spawn_into(parent, &theme);
+    commands
+        .entity(ui_root_entity)
+        .insert(Name::new("Main Menu UI Root"))
+        .with_children(|parent| {
+            // Wichtig: Zuerst den Entity-Wert des Vertical Stacks erhalten
+            let vertical_stack_entity = VerticalStackBuilder::new("Main Menu Stack")
+                .gap(Val::Px(theme.layout.gap.sm))
+                .spawn(parent)
+                .id(); // <-- Hier .id() verwenden, um die Entity-ID zu bekommen!
 
-        // let my_header = DialogHeaderBuilder::new()
-        //     .title("Wichtige Entscheidung")
-        //     .subtitle("Bitte wähle eine Option.")
-        //     .with_close_button(icons.cross_1.clone());
+            // Dann die Kinder zum Stack hinzufügen
+            parent
+                .commands()
+                .entity(vertical_stack_entity)
+                .with_children(|stack_parent| {
+                    LabelBuilder::new("Main Menu Controls")
+                        .color(theme.color.gray.step11)
+                        .align(JustifyText::Center)
+                        .spawn(stack_parent, &theme, &font_handle);
 
-        // let my_body = DialogBodyBuilder::new()
-        //     .add_content(|parent, theme, font_handle| {
-        //         parent.spawn((
-        //             Text::new("Dies ist der Haupttext des Dialogs. Überlege gut!"),
-        //             TextFont {
-        //                 font: font_handle.clone(),
-        //                 font_size: theme.font.font_size.base,
-        //                 ..default()
-        //             },
-        //             TextColor(theme.color.gray.step12),
-        //         ));
-        //     })
-        //     .add_content(|parent, theme, font_handle| {
-        //         // Beispiel: Button im Body hinzufügen
-        //         let _ = ButtonBuilder::<NoAction>::new().text("Zusatzinfo").spawn(
-        //             parent,
-        //             theme,
-        //             font_handle,
-        //         );
-        //     });
+                    ButtonBuilder::<MyGameAction>::new_for_action()
+                        .text("Spiel starten")
+                        .disabled(true)
+                        .variant(ButtonVariant::Solid)
+                        .color(theme.color.lime.clone())
+                        .action(MyGameAction::StartGame)
+                        .spawn(stack_parent, &theme, &font.default);
+                });
+        });
 
-        // let my_footer = DialogFooterBuilder::new()
-        //     .justify_content(JustifyContent::SpaceBetween) // Beispiel: Buttons verteilen
-        //     .add_custom_content(move |parent, theme, font_handle| {
-        //         let _ = ButtonBuilder::<DialogAction>::new_for_action()
-        //             .text("Abbrechen")
-        //             .action(DialogAction::Close(dialog_id.clone()))
-        //             .variant(ButtonVariant::Outline)
-        //             .spawn(parent, theme, font_handle);
-        //     })
-        //     .add_custom_content(move |parent, theme, font_handle| {
-        //         let _ = ButtonBuilder::<DialogAction>::new_for_action() // Hier ggf. eigene Action
-        //             .text("Bestätigen")
-        //             .action(DialogAction::Close(dialog_id.clone()))
-        //             .spawn(parent, theme, font_handle);
-        //     });
-        // let dialog_content = DialogContentBuilder::new()
-        //     .header(my_header)
-        //     .body(my_body)
-        //     .footer(my_footer);
-        // // Einzigartige ID für den Dialog
-        // // Dann den DialogBuilder verwenden
-        // let _ = DialogBuilder::new(dialog_id)
-        //     .content(dialog_content)
-        //     .width(Val::Px(400.0)) // Dialog-spezifische Einstellungen
-        //     .spawn(
-        //         &mut parent.commands(),
-        //         &theme,
-        //         &font_handle,
-        //         global_portal_root_opt,
-        //     );
-    });
     info!("Main menu UI setup complete.");
 }
 
@@ -219,14 +144,3 @@ pub enum Mode {
 
 #[derive(Component, Clone, Debug)]
 pub struct SwitchMode(pub Mode);
-
-fn handle_group_changed(mut events: EventReader<ToggleGroupChangedEvent<SwitchMode>>) {
-    for evt in events.read() {
-        if let Some(SwitchMode(mode)) = &evt.action_id {
-            info!(
-                "Gruppe {:?} schaltet auf {:?}, active_values={:?}",
-                evt.source_entity, mode, evt.active_values
-            );
-        }
-    }
-}
