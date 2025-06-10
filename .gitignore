@@ -35,5 +35,4 @@ target/
 *.pdb
 
 **/.DS_Store
-obsidian/**.*
-obsidian/.obsidian/*.json
+UI.md
