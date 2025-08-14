@@ -1,0 +1,14 @@
+[package]
+name = "shared"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde = { workspace = true }
+toml = { workspace = true }
+tree-sitter-toml = "0.20.0"
+tree-sitter = "0.20.10"
+anyhow = { workspace = true }

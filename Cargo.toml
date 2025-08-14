@@ -1,0 +1,57 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/network/server",
+    "crates/network/shared",
+    # "crates/network/client",
+    # "crates/settings",
+    # "crates/paths",
+    # "crates/utils",
+    # "crates/forge_of_stories",
+]
+default-members = ["crates/network/server"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+
+
+[workspace.dependencies]
+shared = { path = "crates/network/shared" }
+# client = { path = "crates/network/client" }
+server = { path = "crates/network/server" }
+# paths = { path = "crates/paths" }
+# settings = { path = "crates/settings" }
+# utils = { path = "crates/utils" }
+time = { version = "0.3.41", features = [
+    "formatting",
+    "macros",
+    "parsing",
+    "serde",
+] }
+# --- Assets ---
+toml = { version = "0.9.5" }
+serde = { version = "1", features = ["derive"] }
+dirs = "4.0"
+smallvec = { version = "1.6", features = ["union"] }
+
+
+# --- Certificate ---
+rustls = { version = "0.23", features = ["aws-lc-rs", "log"] }
+rcgen = { version = "0.14", features = [
+    "pem",
+    "aws_lc_rs",
+], default-features = false }
+
+
+# --- Server ---
+quinn = { version = "0.11.8" }
+tokio = { version = "1.34", features = ["full"] }
+
+
+# --- Web ---
+axum = { version = "0.8.4", features = ["json", "ws"] }
+
+
+# --- Error Handling ---
+anyhow = { version = "1.0.80" }

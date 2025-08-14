@@ -1,0 +1,42 @@
+[package]
+name = "client"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+# # Direkter Entry Point für Development/Testing
+# [[bin]]
+# name = "client_dev"
+# path = "src/bin.rs"
+
+[dependencies]
+shared = { workspace = true }
+
+bevy = { version = "0.16.1", default-features = false, features = [
+    "std",
+    "multi_threaded",
+    "bevy_remote",
+    "bevy_state",
+    "bevy_log",
+    "serialize",
+] }
+
+# --- Assets ---
+toml = { workspace = true }
+serde = { workspace = true }
+
+# --- CLI ---
+clap = { workspace = true }
+ratatui = { workspace = true }
+color-eyre = { workspace = true }
+crossterm = { workspace = true }
+
+# --- Certificate ---
+rustls = { workspace = true }
+rcgen = { workspace = true }
+
+# --- Server ---
+quinn = { workspace = true }
+tokio = { workspace = true }
