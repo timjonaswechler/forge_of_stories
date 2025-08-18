@@ -6,14 +6,10 @@ edition.workspace = true
 [lib]
 path = "src/lib.rs"
 
-# # Direkter Entry Point für Development/Testing
-# [[bin]]
-# name = "client_dev"
-# path = "src/bin.rs"
 
 [dependencies]
 shared = { workspace = true }
-
+settings = { workspace = true }
 bevy = { version = "0.16.1", default-features = false, features = [
     "std",
     "multi_threaded",

@@ -1,8 +1,17 @@
+use super::ui;
 use anyhow::anyhow;
-use ratatui::Terminal;
+use ratatui::{
+    Terminal,
+    backend::Backend,
+    crossterm::event::{self, Event, KeyEvent, KeyEventKind},
+};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
-use time::OffsetDateTime;
+use std::{
+    io,
+    time::{Duration, Instant},
+};
+use tui_textarea::TextArea;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Screen {
@@ -20,32 +29,10 @@ pub enum ActivePanel {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum SettingsCategory {
     Network,
-    Database,
     Security,
-    Storage,
-    Logging,
-    Performance,
+    World,
     Features,
-}
-
-#[allow(dead_code)]
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum ViewMode {
-    All,
-    Passwords,
-    Environment,
-    Notes,
-}
-
-impl ViewMode {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            ViewMode::All => "Items",
-            ViewMode::Passwords => "Passwords",
-            ViewMode::Environment => "Environment",
-            ViewMode::Notes => "Notes",
-        }
-    }
+    Finished,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -62,12 +49,10 @@ impl FromStr for SettingsCategory {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let result = match s.to_lowercase().as_str() {
             "network" => SettingsCategory::Network,
-            "database" => SettingsCategory::Database,
             "security" => SettingsCategory::Security,
-            "storage" => SettingsCategory::Storage,
-            "logging" => SettingsCategory::Logging,
-            "performance" => SettingsCategory::Performance,
+            "world" => SettingsCategory::World,
             "features" => SettingsCategory::Features,
+            "finished" => SettingsCategory::Finished,
             _ => return Err(anyhow!("Invalid category: '{}'", s)),
         };
         Ok(result)
@@ -79,12 +64,10 @@ impl SettingsCategory {
     pub const fn as_str(self) -> &'static str {
         match self {
             SettingsCategory::Network => "network",
-            SettingsCategory::Database => "database",
             SettingsCategory::Security => "security",
-            SettingsCategory::Storage => "storage",
-            SettingsCategory::Logging => "logging",
-            SettingsCategory::Performance => "performance",
+            SettingsCategory::World => "world",
             SettingsCategory::Features => "features",
+            SettingsCategory::Finished => "finished",
         }
     }
 
@@ -92,25 +75,25 @@ impl SettingsCategory {
     pub const fn all() -> &'static [SettingsCategory] {
         &[
             SettingsCategory::Network,
-            SettingsCategory::Database,
             SettingsCategory::Security,
-            SettingsCategory::Storage,
-            SettingsCategory::Logging,
-            SettingsCategory::Performance,
+            SettingsCategory::World,
             SettingsCategory::Features,
         ]
+    }
+
+    #[must_use]
+    pub const fn all_without_finished() -> &'static [SettingsCategory] {
+        Self::all()
     }
 
     #[must_use]
     pub const fn display_name(self) -> &'static str {
         match self {
             SettingsCategory::Network => "Network Configuration",
-            SettingsCategory::Database => "Database Settings",
             SettingsCategory::Security => "Security & Authentication",
-            SettingsCategory::Storage => "File Storage",
-            SettingsCategory::Logging => "Logging & Monitoring",
-            SettingsCategory::Performance => "Performance Tuning",
+            SettingsCategory::World => "World Settings",
             SettingsCategory::Features => "Feature Flags",
+            SettingsCategory::Finished => "✓ Fertig - Einstellungen Bestätigen",
         }
     }
 
@@ -118,16 +101,14 @@ impl SettingsCategory {
     pub const fn description(self) -> &'static str {
         match self {
             SettingsCategory::Network => "Configure server ports, SSL, and network protocols",
-            SettingsCategory::Database => "Database connection strings and migration settings",
             SettingsCategory::Security => {
                 "Authentication methods, encryption keys, and permissions"
             }
-            SettingsCategory::Storage => {
-                "File upload paths, storage backends, and cleanup policies"
-            }
-            SettingsCategory::Logging => "Log levels, output formats, and monitoring endpoints",
-            SettingsCategory::Performance => "Cache settings, worker processes, and memory limits",
+            SettingsCategory::World => "Settings for world generation, dimensions, and features",
             SettingsCategory::Features => "Enable or disable experimental features and modules",
+            SettingsCategory::Finished => {
+                "Alle Einstellungen abgeschlossen - Server starten und Konfiguration speichern"
+            }
         }
     }
 }
@@ -168,7 +149,7 @@ pub enum CategoryListItem {
     Subcategory(SettingsCategory, String, usize, usize, bool), // parent_category, name, completed, total, is_completed
 }
 
-pub struct App<'a> {
+pub struct WizardApp<'a> {
     pub title: &'a str,
     pub should_quit: bool,
     pub screen: Screen,
@@ -189,15 +170,54 @@ pub struct App<'a> {
     pub editing_setting: bool,
     pub edit_input: String,
     pub edit_cursor_position: usize,
+    pub edit_scroll_offset: u16,
+    // TextArea instance used while editing. When Some, TextArea holds the editor state.
+    pub edit_textarea: Option<TextArea<'a>>,
 }
 
-impl<'a> App<'a> {
-    pub fn new(title: &'a str, enhanced_graphics: bool) -> Self {
+impl<'a> WizardApp<'a> {
+    pub fn run<B: Backend>(
+        &mut self,
+        terminal: &mut Terminal<B>,
+        tick_duration: Duration,
+    ) -> io::Result<()> {
+        let mut last_tick = Instant::now();
+        loop {
+            // pass the mutable reference `self` (which is of type `&mut App<'a>`) directly to the UI draw fn
+            // (using `&mut self` would create a `&mut &mut App` which is incorrect).
+            let draw_result = terminal.draw(|frame| ui::draw(frame, self));
+            if let Err(e) = draw_result {
+                return Err(e);
+            }
+
+            let timeout = tick_duration.saturating_sub(last_tick.elapsed());
+            if let Ok(true) = event::poll(timeout) {
+                if let Ok(Event::Key(key)) = event::read() {
+                    if key.kind == KeyEventKind::Press {
+                        self.on_key(KeyEvent {
+                            kind: key.kind,
+                            state: key.state,
+                            code: key.code,
+                            modifiers: key.modifiers,
+                        });
+                    }
+                }
+            }
+            if last_tick.elapsed() >= tick_duration {
+                last_tick = Instant::now();
+            }
+            if self.should_quit {
+                return Ok(());
+            }
+        }
+    }
+
+    pub fn new(title: &'a str) -> Self {
         let settings_items = Self::create_default_settings();
         let categories = Self::calculate_category_progress(&settings_items);
         let category_list_items = Self::build_category_list(&categories);
 
-        App {
+        WizardApp {
             title,
             should_quit: false,
             screen: Screen::Setup,
@@ -218,6 +238,8 @@ impl<'a> App<'a> {
             editing_setting: false,
             edit_input: String::new(),
             edit_cursor_position: 0,
+            edit_scroll_offset: 0,
+            edit_textarea: None,
         }
     }
 
@@ -225,9 +247,20 @@ impl<'a> App<'a> {
         vec![
             // Network settings - Basic Configuration
             SettingsItem {
-                id: "server_port".to_string(),
-                name: "Server Port".to_string(),
-                description: "Port number for the HTTP server".to_string(),
+                id: "quic_port".to_string(),
+                name: "QUIC Gaming Port".to_string(),
+                description: "Port number for the QUIC server".to_string(),
+                category: SettingsCategory::Network,
+                subcategory: Some("Basic Configuration".to_string()),
+                value: None,
+                default_value: "8080".to_string(),
+                required: true,
+                completed: false,
+            },
+            SettingsItem {
+                id: "admin_port".to_string(),
+                name: "Admin Port".to_string(),
+                description: "Port number for the Administration of the server".to_string(),
                 category: SettingsCategory::Network,
                 subcategory: Some("Basic Configuration".to_string()),
                 value: None,
@@ -269,41 +302,6 @@ impl<'a> App<'a> {
                 required: false,
                 completed: false,
             },
-            // Database settings - Connection
-            SettingsItem {
-                id: "db_url".to_string(),
-                name: "Database URL".to_string(),
-                description: "Connection string for the database".to_string(),
-                category: SettingsCategory::Database,
-                subcategory: Some("Connection".to_string()),
-                value: None,
-                default_value: "sqlite://stories.db".to_string(),
-                required: true,
-                completed: false,
-            },
-            SettingsItem {
-                id: "db_pool_size".to_string(),
-                name: "Connection Pool Size".to_string(),
-                description: "Maximum number of database connections".to_string(),
-                category: SettingsCategory::Database,
-                subcategory: Some("Connection".to_string()),
-                value: None,
-                default_value: "10".to_string(),
-                required: false,
-                completed: false,
-            },
-            // Database settings - Migration
-            SettingsItem {
-                id: "auto_migrate".to_string(),
-                name: "Auto Migration".to_string(),
-                description: "Automatically run database migrations on startup".to_string(),
-                category: SettingsCategory::Database,
-                subcategory: Some("Migration".to_string()),
-                value: None,
-                default_value: "true".to_string(),
-                required: true,
-                completed: false,
-            },
             // Security settings - Authentication
             SettingsItem {
                 id: "jwt_secret".to_string(),
@@ -324,29 +322,6 @@ impl<'a> App<'a> {
                 subcategory: Some("Authentication".to_string()),
                 value: None,
                 default_value: "30".to_string(),
-                required: true,
-                completed: false,
-            },
-            // Storage settings - File Upload
-            SettingsItem {
-                id: "upload_path".to_string(),
-                name: "Upload Directory".to_string(),
-                description: "Directory for uploaded files".to_string(),
-                category: SettingsCategory::Storage,
-                subcategory: Some("File Upload".to_string()),
-                value: None,
-                default_value: "./uploads".to_string(),
-                required: true,
-                completed: false,
-            },
-            SettingsItem {
-                id: "max_file_size".to_string(),
-                name: "Max File Size".to_string(),
-                description: "Maximum file size in MB".to_string(),
-                category: SettingsCategory::Storage,
-                subcategory: Some("File Upload".to_string()),
-                value: None,
-                default_value: "10".to_string(),
                 required: true,
                 completed: false,
             },
@@ -403,6 +378,18 @@ impl<'a> App<'a> {
             });
         }
 
+        // Add "Finished" category only if all other settings are completed
+        let all_settings_completed = settings.iter().all(|s| s.completed);
+        if all_settings_completed {
+            progress.push(CategoryProgress {
+                category: SettingsCategory::Finished,
+                completed_count: 0,
+                total_count: 0,
+                is_completed: false,
+                subcategories: vec![],
+            });
+        }
+
         progress
     }
 
@@ -432,6 +419,7 @@ impl<'a> App<'a> {
 
         list_items
     }
+
     pub fn get_current_category_settings(&self) -> Vec<&SettingsItem> {
         if self.selected_category_item >= self.category_list_items.len() {
             return vec![];
@@ -439,11 +427,16 @@ impl<'a> App<'a> {
 
         match &self.category_list_items[self.selected_category_item] {
             CategoryListItem::Category(category, _, _, _) => {
-                // Return all settings for this category
-                self.settings_items
-                    .iter()
-                    .filter(|s| s.category == *category)
-                    .collect()
+                if *category == SettingsCategory::Finished {
+                    // Finished category has no settings
+                    vec![]
+                } else {
+                    // Return all settings for this category
+                    self.settings_items
+                        .iter()
+                        .filter(|s| s.category == *category)
+                        .collect()
+                }
             }
             CategoryListItem::Subcategory(category, subcategory_name, _, _, _) => {
                 // Return only settings for this specific subcategory
@@ -467,11 +460,22 @@ impl<'a> App<'a> {
         self.categories.iter().all(|c| c.is_completed)
     }
 
-    pub fn on_key(&mut self, key: ratatui::crossterm::event::KeyCode) {
+    // Now accepts the full KeyEvent so we can forward events to TextArea while editing.
+    pub fn on_key(&mut self, key_event: ratatui::crossterm::event::KeyEvent) {
         match (self.screen, self.active_panel) {
-            (Screen::Setup, ActivePanel::Categories) => self.handle_category_navigation(key),
-            (Screen::Setup, ActivePanel::Settings) => self.handle_settings_navigation(key),
-            (Screen::Overview, _) => self.handle_overview_navigation(key),
+            (Screen::Setup, ActivePanel::Categories) => {
+                // Category navigation still uses KeyCode only.
+                self.handle_category_navigation(key_event.code)
+            }
+            (Screen::Setup, ActivePanel::Settings) => {
+                if self.editing_setting {
+                    // While editing, forward whole KeyEvent to TextArea / edit handler.
+                    self.handle_edit_input(key_event);
+                } else {
+                    self.handle_settings_navigation(key_event.code);
+                }
+            }
+            (Screen::Overview, _) => self.handle_overview_navigation(key_event.code),
             _ => {}
         }
     }
@@ -493,6 +497,23 @@ impl<'a> App<'a> {
             KeyCode::Right | KeyCode::Enter => {
                 match &self.category_list_items[self.selected_category_item] {
                     CategoryListItem::Category(category, _, _, _) => {
+                        // Handle "Finished" category specially
+                        if *category == SettingsCategory::Finished {
+                            if self.is_wizard_completed() {
+                                self.mark_wizard_completed();
+                                self.should_quit = true;
+                                self.status_message = Some(
+                                    "✓ Alle Einstellungen bestätigt! Server wird gestartet..."
+                                        .to_string(),
+                                );
+                                return;
+                            } else {
+                                self.status_message = Some(
+                                    "⚠ Nicht alle Einstellungen sind abgeschlossen!".to_string(),
+                                );
+                                return;
+                            }
+                        }
                         // Check if this category has subcategories
                         let has_subcategories = self
                             .categories
@@ -580,7 +601,7 @@ impl<'a> App<'a> {
         use ratatui::crossterm::event::KeyCode;
 
         if self.editing_setting {
-            self.handle_edit_input(key);
+            self.handle_edit_input(key.into());
             return;
         }
 
@@ -763,10 +784,6 @@ impl<'a> App<'a> {
         }
     }
 
-    pub fn on_tick(&mut self) {
-        // Update progress
-    }
-
     pub fn is_wizard_completed(&self) -> bool {
         self.settings_items.iter().all(|item| item.completed)
     }
@@ -785,8 +802,17 @@ impl<'a> App<'a> {
                 .clone()
                 .unwrap_or_else(|| setting.default_value.clone());
 
-            self.edit_input = setting_value;
+            // Populate both the plain string and create a TextArea instance for editing.
+            self.edit_input = setting_value.clone();
             self.edit_cursor_position = self.edit_input.chars().count();
+
+            // Create a TextArea from current value; split by commas into lines so each list item appears on its own line.
+            // Use owned Strings to satisfy the TextArea::from iterator requirement.
+            let lines_iter = setting_value.split(',').map(|s| s.trim().to_string());
+            let mut textarea = TextArea::from(lines_iter);
+            // Optionally configure textarea (no special config here).
+            self.edit_textarea = Some(textarea);
+
             self.editing_setting = true;
             self.status_message = Some(format!(
                 "Editing '{}'. Press Enter to confirm, Esc to cancel.",
@@ -795,29 +821,46 @@ impl<'a> App<'a> {
         }
     }
 
-    fn handle_edit_input(&mut self, key: ratatui::crossterm::event::KeyCode) {
+    fn handle_edit_input(&mut self, key_event: ratatui::crossterm::event::KeyEvent) {
         use ratatui::crossterm::event::KeyCode;
 
-        match key {
+        // Intercept certain keys (Enter, Esc, comma) to implement the desired behavior.
+        // Otherwise, forward the event to the TextArea instance.
+        match key_event.code {
             KeyCode::Enter => {
+                // Confirm and close edit session
                 self.confirm_edit();
             }
             KeyCode::Esc => {
                 self.cancel_edit();
             }
-            KeyCode::Left => {
-                self.move_cursor_left();
+            KeyCode::Char(',') => {
+                // Insert comma into textarea and then convert it into a new list entry (newline).
+                if let Some(textarea) = &mut self.edit_textarea {
+                    // First let the textarea insert the comma character
+                    textarea.input(key_event);
+                    // Then insert a newline right after comma so next entry is on its own line.
+                    textarea.insert_newline();
+                } else {
+                    // Fallback: operate on raw edit_input
+                    self.enter_char(',');
+                }
             }
-            KeyCode::Right => {
-                self.move_cursor_right();
+            other => {
+                if let Some(textarea) = &mut self.edit_textarea {
+                    // Forward the entire KeyEvent to the TextArea for default behavior.
+                    textarea.input(key_event);
+                } else {
+                    // Fallback to legacy single-line editing helpers
+                    match other {
+                        KeyCode::Left => self.move_cursor_left(),
+                        KeyCode::Right => self.move_cursor_right(),
+                        KeyCode::Backspace => self.delete_char(),
+                        KeyCode::Char(c) => self.enter_char(c),
+                        _ => {}
+                    }
+                }
             }
-            KeyCode::Backspace => {
-                self.delete_char();
-            }
-            KeyCode::Char(c) => {
-                self.enter_char(c);
-            }
-            _ => {}
         }
     }
 
@@ -826,10 +869,24 @@ impl<'a> App<'a> {
         if self.selected_setting < settings.len() {
             let setting_id = settings[self.selected_setting].id.clone();
 
+            // Determine final value either from TextArea (preferred) or fallback to edit_input.
+            let final_value = if let Some(textarea) = self.edit_textarea.take() {
+                // consume textarea and join lines with commas (the app expects comma-separated values)
+                let lines: Vec<String> = textarea.into_lines();
+                lines
+                    .into_iter()
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            } else {
+                self.edit_input.clone()
+            };
+
             // Find and update the setting in settings_items
             for setting in &mut self.settings_items {
                 if setting.id == setting_id {
-                    setting.value = Some(self.edit_input.clone());
+                    setting.value = Some(final_value);
                     setting.completed = true;
                     break;
                 }
@@ -841,55 +898,206 @@ impl<'a> App<'a> {
         self.editing_setting = false;
         self.edit_input.clear();
         self.edit_cursor_position = 0;
+        self.edit_scroll_offset = 0;
+        self.edit_textarea = None;
         self.status_message = Some("Setting updated successfully!".to_string());
     }
 
     fn cancel_edit(&mut self) {
+        // Discard textarea state and revert to empty edit state
         self.editing_setting = false;
         self.edit_input.clear();
         self.edit_cursor_position = 0;
+        self.edit_scroll_offset = 0;
+        self.edit_textarea = None;
         self.status_message = Some("Edit cancelled.".to_string());
     }
 
     fn move_cursor_left(&mut self) {
-        let cursor_moved_left = self.edit_cursor_position.saturating_sub(1);
-        self.edit_cursor_position = self.clamp_cursor(cursor_moved_left);
+        if self.edit_cursor_position > 0 {
+            self.edit_cursor_position = self.edit_cursor_position.saturating_sub(1);
+            self.update_edit_scroll(5);
+        }
     }
 
     fn move_cursor_right(&mut self) {
-        let cursor_moved_right = self.edit_cursor_position.saturating_add(1);
-        self.edit_cursor_position = self.clamp_cursor(cursor_moved_right);
+        if self.edit_cursor_position < self.edit_input.chars().count() {
+            self.edit_cursor_position = self.edit_cursor_position.saturating_add(1);
+            self.update_edit_scroll(5);
+        }
+    }
+
+    fn move_cursor_up(&mut self) {
+        if !self.edit_input.contains(',') {
+            return;
+        }
+
+        let parts: Vec<&str> = self.edit_input.split(',').collect();
+
+        // compute start indices (char offsets) for each part
+        let mut starts: Vec<usize> = Vec::with_capacity(parts.len());
+        let mut pos = 0usize;
+        for (i, p) in parts.iter().enumerate() {
+            starts.push(pos);
+            pos += p.chars().count();
+            if i < parts.len() - 1 {
+                pos += 1; // comma
+            }
+        }
+
+        // find current part index
+        let mut cur_idx: Option<usize> = None;
+        for (i, &start) in starts.iter().enumerate() {
+            let len = parts[i].chars().count();
+            if self.edit_cursor_position >= start && self.edit_cursor_position <= start + len {
+                cur_idx = Some(i);
+                break;
+            }
+        }
+
+        let cur_idx = match cur_idx {
+            Some(i) => i,
+            None => return,
+        };
+
+        if cur_idx == 0 {
+            return;
+        }
+
+        let cur_start = starts[cur_idx];
+        let offset = self.edit_cursor_position.saturating_sub(cur_start);
+        let prev_idx = cur_idx - 1;
+        let prev_start = starts[prev_idx];
+        let prev_len = parts[prev_idx].chars().count();
+        let new_offset = offset.min(prev_len);
+        self.edit_cursor_position = prev_start + new_offset;
+        self.update_edit_scroll(5);
+    }
+
+    fn move_cursor_down(&mut self) {
+        if !self.edit_input.contains(',') {
+            return;
+        }
+
+        let parts: Vec<&str> = self.edit_input.split(',').collect();
+
+        // compute start indices (char offsets) for each part
+        let mut starts: Vec<usize> = Vec::with_capacity(parts.len());
+        let mut pos = 0usize;
+        for (i, p) in parts.iter().enumerate() {
+            starts.push(pos);
+            pos += p.chars().count();
+            if i < parts.len() - 1 {
+                pos += 1; // comma
+            }
+        }
+
+        // find current part index
+        let mut cur_idx: Option<usize> = None;
+        for (i, &start) in starts.iter().enumerate() {
+            let len = parts[i].chars().count();
+            if self.edit_cursor_position >= start && self.edit_cursor_position <= start + len {
+                cur_idx = Some(i);
+                break;
+            }
+        }
+
+        let cur_idx = match cur_idx {
+            Some(i) => i,
+            None => return,
+        };
+
+        if cur_idx + 1 >= parts.len() {
+            return;
+        }
+
+        let cur_start = starts[cur_idx];
+        let offset = self.edit_cursor_position.saturating_sub(cur_start);
+        let next_idx = cur_idx + 1;
+        let next_start = starts[next_idx];
+        let next_len = parts[next_idx].chars().count();
+        let new_offset = offset.min(next_len);
+        self.edit_cursor_position = next_start + new_offset;
+        self.update_edit_scroll(5);
     }
 
     fn enter_char(&mut self, new_char: char) {
         let index = self.byte_index();
         self.edit_input.insert(index, new_char);
-        self.move_cursor_right();
+        // After inserting, advance cursor by one character (char index)
+        self.edit_cursor_position = self.edit_cursor_position.saturating_add(1);
+        self.update_edit_scroll(5);
     }
 
     fn byte_index(&self) -> usize {
+        if self.edit_cursor_position == 0 {
+            return 0;
+        }
+        // Map character index to byte index
         self.edit_input
             .char_indices()
-            .map(|(i, _)| i)
             .nth(self.edit_cursor_position)
-            .unwrap_or(self.edit_input.len())
+            .map(|(byte_idx, _)| byte_idx)
+            .unwrap_or_else(|| self.edit_input.len())
     }
 
     fn delete_char(&mut self) {
-        let is_not_cursor_leftmost = self.edit_cursor_position != 0;
-        if is_not_cursor_leftmost {
-            let current_index = self.edit_cursor_position;
-            let from_left_to_current_index = current_index - 1;
-
-            let before_char_to_delete = self.edit_input.chars().take(from_left_to_current_index);
-            let after_char_to_delete = self.edit_input.chars().skip(current_index);
-
-            self.edit_input = before_char_to_delete.chain(after_char_to_delete).collect();
-            self.move_cursor_left();
+        if self.edit_cursor_position == 0 {
+            return;
         }
+        // Remove the character before the cursor using a char buffer to avoid byte-index issues
+        let mut chars: Vec<char> = self.edit_input.chars().collect();
+        let remove_index = self.edit_cursor_position.saturating_sub(1);
+        if remove_index < chars.len() {
+            chars.remove(remove_index);
+            self.edit_input = chars.into_iter().collect();
+            self.edit_cursor_position = remove_index;
+        }
+        self.update_edit_scroll(5);
     }
 
     fn clamp_cursor(&self, new_cursor_pos: usize) -> usize {
         new_cursor_pos.clamp(0, self.edit_input.chars().count())
+    }
+
+    pub fn update_edit_scroll(&mut self, visible_lines: u16) {
+        if !self.editing_setting {
+            return;
+        }
+
+        // Calculate which line the cursor is on
+        let cursor_line = self.get_cursor_line();
+
+        // Adjust scroll if cursor is outside visible area
+        if cursor_line < self.edit_scroll_offset {
+            self.edit_scroll_offset = cursor_line;
+        } else if cursor_line >= self.edit_scroll_offset + visible_lines {
+            self.edit_scroll_offset = cursor_line.saturating_sub(visible_lines) + 1;
+        }
+    }
+
+    fn get_cursor_line(&self) -> u16 {
+        if self.edit_input.is_empty() {
+            return 0;
+        }
+
+        let parts: Vec<&str> = self.edit_input.split(',').collect();
+        let mut char_count = 0usize;
+
+        for (i, part) in parts.iter().enumerate() {
+            let len = part.chars().count();
+            if self.edit_cursor_position >= char_count
+                && self.edit_cursor_position <= char_count + len
+            {
+                return i as u16;
+            }
+            char_count += len;
+            if i < parts.len() - 1 {
+                char_count += 1; // comma
+            }
+        }
+
+        // Fallback to last line
+        (parts.len().saturating_sub(1)) as u16
     }
 }

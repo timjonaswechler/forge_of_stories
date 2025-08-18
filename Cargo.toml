@@ -4,7 +4,7 @@ members = [
     "crates/network/server",
     "crates/network/shared",
     # "crates/network/client",
-    # "crates/settings",
+    "crates/settings",
     # "crates/paths",
     # "crates/utils",
     # "crates/forge_of_stories",
@@ -21,7 +21,7 @@ shared = { path = "crates/network/shared" }
 # client = { path = "crates/network/client" }
 server = { path = "crates/network/server" }
 # paths = { path = "crates/paths" }
-# settings = { path = "crates/settings" }
+settings = { path = "crates/settings" }
 # utils = { path = "crates/utils" }
 time = { version = "0.3.41", features = [
     "formatting",
@@ -31,10 +31,13 @@ time = { version = "0.3.41", features = [
 ] }
 # --- Assets ---
 toml = { version = "0.9.5" }
+toml_edit = "0.23.3"
 serde = { version = "1", features = ["derive"] }
 dirs = "4.0"
 smallvec = { version = "1.6", features = ["union"] }
-
+regex = "1.5"
+globset = "0.4"
+unicase = "2.6"
 
 # --- Certificate ---
 rustls = { version = "0.23", features = ["aws-lc-rs", "log"] }
@@ -55,3 +58,4 @@ axum = { version = "0.8.4", features = ["json", "ws"] }
 
 # --- Error Handling ---
 anyhow = { version = "1.0.80" }
+thiserror = { version = "2.0.14", features = ["std"] }

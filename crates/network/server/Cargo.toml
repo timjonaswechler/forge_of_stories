@@ -8,6 +8,8 @@ edition = "2024"
 name = "server"
 path = "src/main.rs"
 
+[lib]
+path = "src/lib.rs"
 
 [dependencies]
 shared = { workspace = true }
@@ -40,7 +42,9 @@ rcgen = { workspace = true }
 # --- Server ---
 quinn = { workspace = true }
 tokio = { workspace = true }
+# settings = { workspace = true }
 
 [features]
+default = ["dedicated_server"]
 dedicated_server = []
 local_server = []

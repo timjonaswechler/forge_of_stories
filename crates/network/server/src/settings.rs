@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
+#[serde(default)]
 pub(crate) struct ServerConfig {
     pub(crate) generic: GenericConfig,
     pub(crate) network: NetworkConfig,

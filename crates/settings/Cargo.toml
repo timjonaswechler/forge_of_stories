@@ -1,0 +1,44 @@
+[package]
+name = "settings"
+version = "0.1.0"
+edition.workspace = true
+
+
+[lib]
+path = "src/lib.rs"
+# doctest = false # Enable if you want to skip doctests initially.
+
+[features]
+default = []
+schema = ["dep:schemars"]
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+
+toml = { workspace = true }
+toml_edit = { workspace = true }
+thiserror.workspace = true
+
+# Optional deps for upcoming functionality. They are feature-gated above.
+notify = { version = "8.2.0" }
+schemars = { version = "1.0.4", optional = true }
+# Cross-process advisory file locking (used for safe writers across processes)
+fs2 = "0.4"
+# Local workspace paths crate for resolving standard file locations
+paths = { path = "../paths" }
+
+[dev-dependencies]
+# Add test utilities as needed (e.g., insta, pretty_assertions).
+# pretty_assertions.workspace = true
+
+# TODOs / Notes:
+# - This crate provides the settings logic (layering, store, migrations, watching)
+#   without tying to a specific file format in its core APIs.
+# - We will add a TOML backend crate/module later that:
+#     * Parses text into a toml_edit::Document (with comments/decor preserved).
+#     * Applies semantic updates (set/remove/upsert in arrays-of-tables) and
+#       returns updated text (atomic-write friendly).
+#     * Supports optional keypath lookup at a byte offset (for UI/Hover) via
+#       tree-sitter-toml or toml_edit decor as needed.
+# - File watching (notify) will be used by clients/servers to hot-reload settings.
