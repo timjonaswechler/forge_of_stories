@@ -1,11 +1,11 @@
 use std::time::{Duration, Instant};
 
-use color_eyre::Result;
+use color_eyre::{Result, owo_colors::OwoColorize};
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect, Size},
-    style::{Color, Style},
+    style::{Color, Modifier, Style, Stylize},
     text::{Line, Span},
     widgets::Paragraph,
 };
@@ -17,7 +17,7 @@ use tui_prompts::{
 };
 
 use super::Component;
-use crate::{action::Action, auth, config::Config, tui::Event};
+use crate::{action::Action, config::Config, services::auth, tui::Event};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
@@ -29,6 +29,7 @@ enum Mode {
 enum Focus {
     Username,
     Password,
+    Confirm,
 }
 
 pub struct AuthComponent {
@@ -37,8 +38,10 @@ pub struct AuthComponent {
     mode: Mode,
     username: String,
     password: String,
+    confirm_password: String,
     username_state: TextState<'static>,
     password_state: TextState<'static>,
+    confirm_state: TextState<'static>,
     focus: Focus,
     error: Option<String>,
     info: Option<String>,
@@ -60,8 +63,10 @@ impl Default for AuthComponent {
             mode,
             username: String::new(),
             password: String::new(),
+            confirm_password: String::new(),
             username_state: TextState::default(),
             password_state: TextState::default(),
+            confirm_state: TextState::default(),
             focus: Focus::Username,
             error: None,
             info: match mode {
@@ -70,7 +75,7 @@ impl Default for AuthComponent {
             },
 
             last_input_at: Instant::now(),
-            idle_timeout: Duration::from_secs(5),
+            idle_timeout: Duration::from_secs(5 * 60),
         }
     }
 }
@@ -83,13 +88,14 @@ impl AuthComponent {
     fn clear_inputs(&mut self) {
         self.username.clear();
         self.password.clear();
+        self.confirm_password.clear();
         self.username_state = TextState::default();
         self.password_state = TextState::default();
+        self.confirm_state = TextState::default();
         self.focus = Focus::Username;
         *self.username_state.focus_state_mut() = FocusState::Focused;
         *self.password_state.focus_state_mut() = FocusState::Unfocused;
         self.error = None;
-
         // Hinweis: self.info hier absichtlich nicht ändern
     }
 
@@ -107,12 +113,14 @@ impl AuthComponent {
         match self.focus {
             Focus::Username => &mut self.username_state,
             Focus::Password => &mut self.password_state,
+            Focus::Confirm => &mut self.confirm_state,
         }
     }
 
     fn sync_from_states(&mut self) {
         self.username = self.username_state.value().to_string();
         self.password = self.password_state.value().to_string();
+        self.confirm_password = self.confirm_state.value().to_string();
     }
 
     fn validate_password_msg(pw: &str) -> Option<String> {
@@ -145,6 +153,10 @@ impl AuthComponent {
                 }
                 if let Some(msg) = Self::validate_password_msg(&self.password) {
                     self.error = Some(msg);
+                    return Ok(None);
+                }
+                if self.password != self.confirm_password {
+                    self.error = Some("Passwörter stimmen nicht überein".into());
                     return Ok(None);
                 }
                 auth::create_admin(self.username.trim(), &self.password)?;
@@ -248,34 +260,78 @@ impl Component for AuthComponent {
 
         match key.code {
             KeyCode::Tab => {
-                // Fokuswechsel: Username <-> Password
-                match self.focus {
-                    Focus::Username => {
+                // Fokuswechsel abhängig vom Modus
+                match (self.mode, self.focus) {
+                    (Mode::CreateAdmin, Focus::Username) => {
                         *self.username_state.focus_state_mut() = FocusState::Unfocused;
                         self.focus = Focus::Password;
                         *self.password_state.focus_state_mut() = FocusState::Focused;
                     }
-                    Focus::Password => {
+                    (Mode::CreateAdmin, Focus::Password) => {
+                        *self.password_state.focus_state_mut() = FocusState::Unfocused;
+                        self.focus = Focus::Confirm;
+                        *self.confirm_state.focus_state_mut() = FocusState::Focused;
+                    }
+                    (Mode::CreateAdmin, Focus::Confirm) => {
+                        *self.confirm_state.focus_state_mut() = FocusState::Unfocused;
+                        self.focus = Focus::Username;
+                        *self.username_state.focus_state_mut() = FocusState::Focused;
+                    }
+                    (Mode::Login, Focus::Username) => {
+                        *self.username_state.focus_state_mut() = FocusState::Unfocused;
+                        self.focus = Focus::Password;
+                        *self.password_state.focus_state_mut() = FocusState::Focused;
+                    }
+                    (Mode::Login, Focus::Password) => {
                         *self.password_state.focus_state_mut() = FocusState::Unfocused;
                         self.focus = Focus::Username;
                         *self.username_state.focus_state_mut() = FocusState::Focused;
+                    }
+                    (Mode::Login, Focus::Confirm) => {
+                        // Fallback: sollte im Login-Modus nicht auftreten
+                        self.focus = Focus::Username;
+                        *self.username_state.focus_state_mut() = FocusState::Focused;
+                        *self.password_state.focus_state_mut() = FocusState::Unfocused;
+                        *self.confirm_state.focus_state_mut() = FocusState::Unfocused;
                     }
                 }
                 self.error = None;
                 Ok(None)
             }
             KeyCode::BackTab => {
-                // Fokuswechsel rückwärts: Password <-> Username
-                match self.focus {
-                    Focus::Username => {
+                // Fokuswechsel rückwärts abhängig vom Modus
+                match (self.mode, self.focus) {
+                    (Mode::CreateAdmin, Focus::Username) => {
+                        *self.username_state.focus_state_mut() = FocusState::Unfocused;
+                        self.focus = Focus::Confirm;
+                        *self.confirm_state.focus_state_mut() = FocusState::Focused;
+                    }
+                    (Mode::CreateAdmin, Focus::Confirm) => {
+                        *self.confirm_state.focus_state_mut() = FocusState::Unfocused;
+                        self.focus = Focus::Password;
+                        *self.password_state.focus_state_mut() = FocusState::Focused;
+                    }
+                    (Mode::CreateAdmin, Focus::Password) => {
+                        *self.password_state.focus_state_mut() = FocusState::Unfocused;
+                        self.focus = Focus::Username;
+                        *self.username_state.focus_state_mut() = FocusState::Focused;
+                    }
+                    (Mode::Login, Focus::Username) => {
                         *self.username_state.focus_state_mut() = FocusState::Unfocused;
                         self.focus = Focus::Password;
                         *self.password_state.focus_state_mut() = FocusState::Focused;
                     }
-                    Focus::Password => {
+                    (Mode::Login, Focus::Password) => {
                         *self.password_state.focus_state_mut() = FocusState::Unfocused;
                         self.focus = Focus::Username;
                         *self.username_state.focus_state_mut() = FocusState::Focused;
+                    }
+                    (Mode::Login, Focus::Confirm) => {
+                        // Fallback: sollte im Login-Modus nicht auftreten
+                        self.focus = Focus::Password;
+                        *self.password_state.focus_state_mut() = FocusState::Focused;
+                        *self.username_state.focus_state_mut() = FocusState::Unfocused;
+                        *self.confirm_state.focus_state_mut() = FocusState::Unfocused;
                     }
                 }
                 self.error = None;
@@ -291,15 +347,40 @@ impl Component for AuthComponent {
                 self.clear_inputs();
                 Ok(None)
             }
+            KeyCode::Char('?') => {
+                // Kontext-Hilfe abhängig von Fokus und Modus anzeigen
+                self.error = None;
+                self.info = Some(match (self.mode, self.focus) {
+                    (Mode::CreateAdmin, Focus::Username) => {
+                        "Wähle einen Admin-Benutzernamen (mind. 3 Zeichen)".into()
+                    }
+                    (Mode::CreateAdmin, Focus::Password) => {
+                        "Passwortanforderungen: mind. 8 Zeichen, je 1 Klein-, 1 Großbuchstabe und 1 Ziffer".into()
+                    }
+                    (Mode::CreateAdmin, Focus::Confirm) => {
+                        "Wiederhole das Passwort zur Bestätigung".into()
+                    }
+                    (Mode::Login, Focus::Username) => "Gib deinen Benutzernamen ein".into(),
+                    (Mode::Login, Focus::Password) => "Gib dein Passwort ein".into(),
+                    (Mode::Login, Focus::Confirm) => "Gib dein Passwort ein".into(),
+                });
+                Ok(None)
+            }
             _ => {
                 // Alle übrigen Tasten an den aktiven TextState delegieren
                 self.focused_state_mut().handle_key_event(key);
                 // Werte übernehmen
                 self.sync_from_states();
 
-                // Live-Validierung fürs Passwort während CreateAdmin
-                if matches!(self.mode, Mode::CreateAdmin) && matches!(self.focus, Focus::Password) {
-                    self.error = Self::validate_password_msg(&self.password);
+                // Live-Validierung & Abgleich im CreateAdmin-Modus
+                if matches!(self.mode, Mode::CreateAdmin) {
+                    if !self.confirm_password.is_empty() && self.password != self.confirm_password {
+                        self.error = Some("Passwörter stimmen nicht überein".into());
+                    } else if matches!(self.focus, Focus::Password) {
+                        self.error = Self::validate_password_msg(&self.password);
+                    } else {
+                        self.error = None;
+                    }
                 } else {
                     self.error = None;
                 }
@@ -309,27 +390,37 @@ impl Component for AuthComponent {
     }
 
     fn draw(&mut self, frame: &mut Frame, body: Rect) -> Result<()> {
+        let mut constraints = vec![
+            Constraint::Min(0),    // Header-Bereich
+            Constraint::Length(5), // Header-Bereich
+            Constraint::Length(1), // Username
+            Constraint::Length(1), // Password
+        ];
+        if matches!(self.mode, Mode::CreateAdmin) {
+            constraints.push(Constraint::Length(1)); // Confirm Password
+        }
+        constraints.push(Constraint::Length(2)); // Validation/Info
+        constraints.push(Constraint::Min(0));
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(5), // Header-Bereich
-                Constraint::Length(1), // Username
-                Constraint::Length(1), // Password
-                Constraint::Length(2), // Validation/Info
-                Constraint::Min(0),
-            ])
+            .constraints(constraints)
             .split(body);
 
         frame.render_widget(
             Paragraph::new(vec![
+                Line::from(Span::styled(
+                    format!("Forge of Stories v{}", env!("CARGO_PKG_VERSION")),
+                    Style::default()
+                        .fg(Color::Rgb(255, 246, 161))
+                        .add_modifier(Modifier::BOLD),
+                )),
                 Line::from(vec![
+                    Span::styled("by ", Style::default().fg(Color::Rgb(100, 100, 100))),
                     Span::styled(
-                        "Analyze ELF binaries ",
-                        Style::default().fg(Color::Rgb(140, 145, 160)),
-                    ),
-                    Span::styled(
-                        "like a boss.",
-                        Style::default().fg(Color::Rgb(255, 255, 255)),
+                        "Chicken105 ",
+                        Style::default()
+                            .fg(Color::Rgb(130, 62, 25))
+                            .add_modifier(Modifier::BOLD),
                     ),
                 ]),
                 Line::from(Span::styled(
@@ -349,15 +440,22 @@ impl Component for AuthComponent {
                 )),
             ])
             .centered(),
-            chunks[0],
+            chunks[1],
         );
         // 2) Username Prompt
-        TextPrompt::from("Username").draw(frame, chunks[1], &mut self.username_state);
+        TextPrompt::from("Username").draw(frame, chunks[2], &mut self.username_state);
 
         // 3) Password Prompt (maskiert)
         TextPrompt::from("Password")
             .with_render_style(TextRenderStyle::Password)
-            .draw(frame, chunks[2], &mut self.password_state);
+            .draw(frame, chunks[3], &mut self.password_state);
+
+        // 3b) Confirm Password (nur CreateAdmin)
+        if matches!(self.mode, Mode::CreateAdmin) {
+            TextPrompt::from("Confirm Password")
+                .with_render_style(TextRenderStyle::Password)
+                .draw(frame, chunks[4], &mut self.confirm_state);
+        }
 
         // 4) Validation / Info / Error
         let validation = if let Some(err) = &self.error {
@@ -367,7 +465,15 @@ impl Component for AuthComponent {
         } else {
             Span::styled("", Style::default())
         };
-        frame.render_widget(Paragraph::new(Line::from(validation)), chunks[3]);
+        let validation_idx = if matches!(self.mode, Mode::CreateAdmin) {
+            5
+        } else {
+            4
+        };
+        frame.render_widget(
+            Paragraph::new(Line::from(validation)),
+            chunks[validation_idx],
+        );
 
         Ok(())
     }

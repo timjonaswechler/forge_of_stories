@@ -45,7 +45,6 @@ impl Component for LogoComponent {
     }
 
     fn draw(&mut self, frame: &mut Frame, body: Rect) -> Result<()> {
-        let area = centered_rect(90, 90, body);
         let logo_lines = vec![
             "███████████                                                     ██████",
             " ███      █                                                    ███  ███",
@@ -66,30 +65,41 @@ impl Component for LogoComponent {
         ];
 
         let logo_color = vec![
-            "AAAAABAAAAA                                                     AAAABA",
-            " AAA      B                                                    AAB  AAA",
-            " BAA   B     BBBABA  BAABABBA   ABABBBB  BBABAA      BBBBAB    ABB     ",
-            " BBBBBAB    BBB  AAB  ABA  BBB BBA  BBB BBB  BBA    AAB  BBA BBBBBBB   ",
-            " BBB   B    BBB  BBB  BBB      BBB  BBB BBBBBBB     BAB  BBB   BBB     ",
-            " BBC        BBB  BBB  BBB      BBB  BBB BBB         BBB  BBB   BBC     ",
-            "BBCCB        BBBBBB  BBBBC      BBCBBCB  BBCBCC      BBBBBB   CCBBC    ",
-            "                                    CCC                                ",
-            "                               CCC  CCC                                ",
-            "    CCDDCCCDD    CDC            CCDDCC       CCD                       ",
-            "   DDD     DDD   DDD                                                   ",
-            "   DDD         DDDDDDD    DDDDDD  DDDDDDDD  DDDD   DDDDDD   DDDDD      ",
-            "    DEDDEDDDE    EDD     DDD  DDD  DDD  DDD  DDD  DDD  DDE EEE         ",
-            "           EEE   EED     EEE  DEE  DED       EDE  EEEEEEE   EEEEE      ",
-            "   EEE     EEE   EEE EEE EEE  EEE  EEE       EEE  EEE          EEE     ",
-            "    EEEEEEEEE     EEEEE   EEEEEE  EEEEE     EEEEE  EEEEEE  EEEEEE      ",
+            "AAAAAAAAAAA                                                     AAAAAA",
+            " BBB      B                                                    BBB  BBB",
+            " CCC   C     CCCCCC  CCCCCCCC   CCCCCCC  CCCCCC      CCCCCC    CCC     ",
+            " DDDDDDD    DDD  DDD  DDD  DDD DDD  DDD DDD  DDD    DDD  DDD DDDDDDD   ",
+            " EEE   E    EEE  EEE  EEE      EEE  EEE EEEEEEE     EEE  EEE   EEE     ",
+            " FFF        FFF  FFF  FFF      FFF  FFF FFF         FFF  FFF   FFF     ",
+            "GGGGG        GGGGGG  GGGGG      GGGGGGG  GGGGGG      GGGGGG   GGGGG    ",
+            "                                    HHH                                ",
+            "                               III  III                                ",
+            "    JJJJJJJJJ    JJJ            JJJJJJ       JJJ                       ",
+            "   KKK     KKK   KKK                                                   ",
+            "   LLL         LLLLLLL    LLLLLL  LLLLLLLL  LLLL   LLLLLL   LLLLL      ",
+            "    MMMMMMMMM    MMM     MMM  MMM  MMM  MMM  MMM  MMM  MMM MMM         ",
+            "           NNN   NNN     NNN  NNN  NNN       NNN  NNNNNNN   NNNNN      ",
+            "   OOO     OOO   OOO OOO OOO  OOO  OOO       OOO  OOO          OOO     ",
+            "    PPPPPPPPP     PPPPP   PPPPPP  PPPPP     PPPPP  PPPPPP  PPPPPP      ",
         ];
 
         let color_map: HashMap<char, Color> = [
             ('A', Color::Rgb(255, 246, 161)),
-            ('B', Color::Rgb(255, 213, 101)),
-            ('C', Color::Rgb(255, 169, 48)),
-            ('D', Color::Rgb(255, 119, 8)),
-            ('E', Color::Rgb(255, 85, 18)),
+            ('B', Color::Rgb(255, 235, 151)),
+            ('C', Color::Rgb(255, 225, 141)),
+            ('D', Color::Rgb(255, 208, 127)),
+            ('E', Color::Rgb(255, 201, 121)),
+            ('F', Color::Rgb(255, 193, 113)),
+            ('G', Color::Rgb(255, 185, 106)),
+            ('H', Color::Rgb(255, 176, 98)),
+            ('I', Color::Rgb(255, 164, 88)),
+            ('J', Color::Rgb(255, 154, 79)),
+            ('K', Color::Rgb(255, 145, 72)),
+            ('L', Color::Rgb(255, 134, 62)),
+            ('M', Color::Rgb(255, 119, 48)),
+            ('N', Color::Rgb(255, 109, 39)),
+            ('O', Color::Rgb(255, 99, 30)),
+            ('P', Color::Rgb(255, 85, 18)),
         ]
         .iter()
         .cloned()

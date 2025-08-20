@@ -84,6 +84,7 @@ impl Component for FpsCounter {
             self.ticks_per_second, self.frames_per_second
         );
         let span = Span::styled(message, Style::new().dim());
+
         let paragraph = Paragraph::new(span).right_aligned();
         frame.render_widget(paragraph, top);
         Ok(())

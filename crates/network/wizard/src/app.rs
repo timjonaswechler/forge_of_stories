@@ -56,7 +56,7 @@ impl App {
             should_suspend: false,
             last_tick_key_events: Vec::new(),
             last_input_at: std::time::Instant::now(),
-            idle_timeout: std::time::Duration::from_secs(5),
+            idle_timeout: std::time::Duration::from_secs(5 * 60),
             config: Config::new()?,
             action_tx,
             action_rx,
