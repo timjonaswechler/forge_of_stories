@@ -1,7 +1,7 @@
 [
   {
     "label": "Build & Run Server",
-    "command": "cargo run -p server --bin server  ",
+    "command": "cargo run -p wizard  ",
 
     "use_new_terminal": false
   }

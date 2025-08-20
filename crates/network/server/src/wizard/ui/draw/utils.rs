@@ -11,7 +11,7 @@ pub(in crate::wizard::ui::draw) fn get_category_icon(category: &SettingsCategory
     }
 }
 
-pub(in crate::wizard::ui) fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+pub(crate) fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
     let v = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
