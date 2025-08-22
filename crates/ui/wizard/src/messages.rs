@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use serde::{Deserialize, Serialize};
+use std::cmp::Eq;
 /// Shared messaging types for Wizard orchestration.
 ///
 /// This module defines the enums used to communicate between the TUI wizard,
@@ -50,7 +52,7 @@ pub struct AetherStatsSnapshot {
 }
 
 /// Status/events flowing from the game logic (Aether) back to the wizard.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub enum AetherToWizard {
     /// The server has started successfully.
     ServerStarted,

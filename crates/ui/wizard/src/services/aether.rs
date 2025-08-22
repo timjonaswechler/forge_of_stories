@@ -1,6 +1,5 @@
-use std::time::{Duration, Instant};
-
 use crate::messages::{AetherStatsSnapshot, AetherToWizard, WizardToAether};
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use tokio::task::JoinHandle;
 use tokio::time::interval;
@@ -27,7 +26,13 @@ impl Default for AetherSettingsSnapshot {
 /// Runtime state of the supervised Aether server.
 pub enum AetherState {
     Stopped,
-    Starting,
+    Starting {
+        handle: JoinHandle<()>,
+        cancel: CancellationToken,
+        control_tx: UnboundedSender<WizardToAether>,
+        since: Instant,
+        settings: AetherSettingsSnapshot,
+    },
     Running {
         handle: JoinHandle<()>,
         cancel: CancellationToken,
@@ -40,7 +45,7 @@ pub enum AetherState {
 
 impl AetherState {
     pub fn is_running(&self) -> bool {
-        matches!(self, AetherState::Running { .. } | AetherState::Starting)
+        matches!(self, AetherState::Running { .. })
     }
 
     pub fn can_start(&self) -> bool {
@@ -99,7 +104,6 @@ impl AetherSupervisor {
             warn!("AetherSupervisor.start() ignored: not in Stopped state");
             return;
         }
-        self.state = AetherState::Starting;
 
         let cancel = CancellationToken::new();
         let (control_tx, control_rx) = unbounded_channel::<WizardToAether>();
@@ -116,7 +120,8 @@ impl AetherSupervisor {
             }
         });
 
-        self.state = AetherState::Running {
+        // -> Hier Starting statt Running
+        self.state = AetherState::Starting {
             handle,
             cancel,
             control_tx,
@@ -125,9 +130,9 @@ impl AetherSupervisor {
         };
     }
 
-    /// Initiate stop without awaiting the join. Returns the JoinHandle to await outside of any locks.
-    pub fn initiate_stop(&mut self) -> Option<JoinHandle<()>> {
+    pub fn stop(&mut self) {
         let prev = std::mem::replace(&mut self.state, AetherState::Stopping);
+        let event_tx = self.event_tx.clone();
         if let AetherState::Running {
             handle,
             cancel,
@@ -135,33 +140,52 @@ impl AetherSupervisor {
             ..
         } = prev
         {
-            // Politely ask and ensure cancellation
             let _ = control_tx.send(WizardToAether::Shutdown);
             cancel.cancel();
 
-            // Do NOT await here; return the handle to the caller
-            Some(handle)
-        } else {
-            // Nothing to stop, normalize state
+            // Join im Hintergrund, UI blockiert nicht
+
+            tokio::spawn(async move {
+                if let Err(join_err) = handle.await {
+                    error!("Aether task join error: {join_err}");
+                    let _ = event_tx.send(AetherToWizard::ServerStopped);
+                }
+                // Das Aether-Task sendet normalerweise ServerStopped selbst beim Exit
+            });
+
             self.state = AetherState::Stopped;
-            None
+        } else {
+            self.state = AetherState::Stopped;
         }
     }
 
-    /// Stop the server gracefully. Returns when the task is joined.
-    pub async fn stop(&mut self) {
-        if let Some(handle) = self.initiate_stop() {
-            if let Err(join_err) = handle.await {
-                error!("Aether task join error: {join_err}");
+    pub fn restart(&mut self, new_settings: AetherSettingsSnapshot) {
+        self.stop();
+        self.start(new_settings);
+    }
+
+    pub fn mark_started(&mut self) {
+        let prev = std::mem::replace(&mut self.state, AetherState::Stopped);
+        match prev {
+            AetherState::Starting {
+                handle,
+                cancel,
+                control_tx,
+                since,
+                settings,
+            } => {
+                self.state = AetherState::Running {
+                    handle,
+                    cancel,
+                    control_tx,
+                    since,
+                    settings,
+                };
+            }
+            other => {
+                self.state = other;
             }
         }
-        self.state = AetherState::Stopped;
-    }
-
-    /// Restart the server with new settings. Stops if running, then starts fresh.
-    pub async fn restart(&mut self, new_settings: AetherSettingsSnapshot) {
-        self.stop().await;
-        self.start(new_settings);
     }
 
     /// Send a control message to the running server (e.g., runtime tuning).

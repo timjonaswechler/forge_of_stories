@@ -1,6 +1,7 @@
-use crate::messages::AetherStatsSnapshot;
 use serde::{Deserialize, Serialize};
 use strum::Display;
+
+use crate::messages::AetherToWizard;
 
 #[derive(Debug, Clone, PartialEq, Eq, Display, Serialize, Deserialize)]
 pub enum Action {
@@ -18,7 +19,7 @@ pub enum Action {
     Error(String),
     IdleTimeout,
     Help,
-
+    AetherEvent(AetherToWizard),
     // Server control (triggered by UI; handled centrally in App)
     StartServer,
     StopServer,
@@ -29,9 +30,6 @@ pub enum Action {
     SettingsInvalid(String),
 
     // Supervisor events (forwarded from AetherSupervisor into the App action loop)
-    ServerStarted,
-    ServerStopped,
-    ServerStats(AetherStatsSnapshot),
     ApplyRuntimeSetting {
         key: String,
         value: String,

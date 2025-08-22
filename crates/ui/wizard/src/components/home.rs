@@ -1,6 +1,7 @@
 use color_eyre::Result;
 use crossterm::event::KeyEvent;
 use ratatui::{prelude::*, widgets::*};
+use std::collections::VecDeque;
 use tokio::sync::mpsc::UnboundedSender;
 
 use super::Component;
@@ -16,6 +17,7 @@ pub struct Home {
     uptime_secs: u64,
     players: usize,
     last_error: Option<String>,
+    players_history: VecDeque<u64>,
 }
 
 impl Home {
@@ -55,17 +57,13 @@ impl Component for Home {
             Action::Render => {
                 // no-op for now
             }
-            Action::ServerStarted => {
-                self.server_running = true;
-                self.last_error = None;
-            }
-            Action::ServerStopped => {
-                self.server_running = false;
-            }
-            Action::ServerStats(snap) => {
-                self.uptime_secs = snap.uptime_secs;
-                self.players = snap.players;
-            }
+            // Action::ServerStarted => {
+            //     self.server_running = true;
+            //     self.last_error = None;
+            // }
+            // Action::ServerStopped => {
+            //     self.server_running = false;
+            // }
             Action::Error(msg) => {
                 self.last_error = Some(msg);
             }
@@ -86,9 +84,35 @@ impl Component for Home {
             self.players,
             self.last_error.as_deref().unwrap_or("-"),
         );
-        let widget =
+
+        // Split area: top for status, bottom for sparkline
+        let chunks = ratatui::layout::Layout::default()
+            .direction(ratatui::layout::Direction::Vertical)
+            .constraints([
+                ratatui::layout::Constraint::Length(4),
+                ratatui::layout::Constraint::Min(0),
+            ])
+            .split(area);
+
+        // Status box
+        let status_widget =
             Paragraph::new(body).block(Block::default().title("Server").borders(Borders::ALL));
-        frame.render_widget(widget, area);
+        frame.render_widget(status_widget, chunks[0]);
+
+        // Players sparkline from history
+        let data: Vec<u64> = self.players_history.iter().copied().collect();
+        let max_val = data.iter().copied().max().unwrap_or(1);
+        let spark = Sparkline::default()
+            .block(
+                Block::default()
+                    .title("Players (history)")
+                    .borders(Borders::ALL),
+            )
+            .data(&data)
+            .max(max_val)
+            .style(Style::default().fg(Color::Cyan));
+        frame.render_widget(spark, chunks[1]);
+
         Ok(())
     }
 }

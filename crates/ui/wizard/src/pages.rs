@@ -3,15 +3,18 @@ use ratatui::{
     Frame,
     layout::{Rect, Size},
 };
+use std::{any::Any, sync::Arc};
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{action::Action, config::Config, tui::Event};
 
 mod home;
 mod login;
+mod setup;
 
 pub use home::HomePage;
 pub use login::LoginPage;
+pub use setup::SetupPage;
 
 /// A `Page` composes multiple `Component`s and exposes a lifecycle similar to the
 /// existing `Component` trait but at the page level.
@@ -26,6 +29,10 @@ pub trait Page {
 
     fn register_config_handler(&mut self, config: Config) -> Result<()> {
         let _ = config;
+        Ok(())
+    }
+
+    fn register_shared_state(&mut self, _state: Arc<dyn Any + Send + Sync>) -> Result<()> {
         Ok(())
     }
 

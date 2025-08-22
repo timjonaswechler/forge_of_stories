@@ -14,7 +14,7 @@ use crate::services::aether::{AetherSettingsSnapshot, AetherSupervisor};
 use crate::{
     action::Action,
     config::Config,
-    pages::{HomePage, LoginPage, Page},
+    pages::{HomePage, LoginPage, Page, SetupPage},
     tui::{Event, Tui},
 };
 
@@ -23,7 +23,7 @@ use util::AppContext;
 const STATS_HISTORY_LEN: usize = 300;
 
 #[derive(Default, Debug)]
-struct StatsHistory {
+pub struct StatsHistory {
     buf: VecDeque<AetherStatsSnapshot>,
 }
 
@@ -73,7 +73,7 @@ pub struct App {
     // Dashboard state
     server_running: bool,
     last_error: Option<String>,
-    stats_history: StatsHistory,
+    stats_history: Arc<Mutex<StatsHistory>>,
 
     autostart_on_launch: bool,
     autostart_on_settings_ready: bool,
@@ -90,6 +90,10 @@ impl App {
             m.insert(
                 "login".to_string(),
                 Box::new(LoginPage::new()) as Box<dyn Page>,
+            );
+            m.insert(
+                "setup".to_string(),
+                Box::new(SetupPage::new()) as Box<dyn Page>,
             );
             m.insert(
                 "home".to_string(),
@@ -112,7 +116,7 @@ impl App {
             should_suspend: false,
             last_tick_key_events: Vec::new(),
             last_input_at: std::time::Instant::now(),
-            idle_timeout: std::time::Duration::from_secs(5 * 60),
+            idle_timeout: std::time::Duration::from_secs(3),
             config: Config::new()?,
             action_tx,
             action_rx,
@@ -124,7 +128,7 @@ impl App {
 
             server_running: false,
             last_error: None,
-            stats_history: StatsHistory::with_capacity(STATS_HISTORY_LEN),
+            stats_history: Arc::new(Mutex::new(StatsHistory::with_capacity(STATS_HISTORY_LEN))),
 
             autostart_on_launch: false, // oder true, wenn du direkt starten willst
             autostart_on_settings_ready: true, // z. B. automatisch starten, sobald Settings ok sind
@@ -144,6 +148,7 @@ impl App {
                 page.register_action_handler(self.action_tx.clone())?;
                 page.register_config_handler(self.config.clone())?;
                 page.init(tui.size()?)?;
+                page.register_shared_state(self.stats_history.clone())?;
                 // Force an initial full redraw after first page init
                 let _ = self.action_tx.send(Action::ClearScreen);
                 let _ = self.action_tx.send(Action::Render);
@@ -158,23 +163,7 @@ impl App {
             let _ = self.action_tx.send(Action::StartServer);
             self.autostart_done = true;
         }
-        if let Some(mut rx) = self.aether_rx.take() {
-            let action_tx = self.action_tx.clone();
-            tokio::spawn(async move {
-                while let Some(evt) = rx.recv().await {
-                    let action = match evt {
-                        AetherToWizard::ServerStarted => Action::ServerStarted,
-                        AetherToWizard::ServerStopped => Action::ServerStopped,
-                        AetherToWizard::Stats(snap) => Action::ServerStats(snap),
-                        AetherToWizard::Error(e) => Action::Error(e),
-                    };
-                    if action_tx.send(action).is_err() {
-                        // UI ist weg – Task beenden
-                        break;
-                    }
-                }
-            });
-        }
+
         let action_tx = self.action_tx.clone();
         loop {
             self.handle_events(&mut tui).await?;
@@ -287,6 +276,7 @@ impl App {
                             let _ = page.register_action_handler(self.action_tx.clone());
                             let _ = page.register_config_handler(self.config.clone());
                             let _ = page.init(tui.size()?);
+                            let _ = page.register_shared_state(self.stats_history.clone());
                             let _ = page.on_enter();
                         }
                         // force a full redraw
@@ -334,81 +324,59 @@ impl App {
                             .send(Action::Error("Settings not ready".into()));
                     } else if let Some(snap) = self.aether_settings.clone() {
                         let sup = self.aether_sup.clone();
-                        let tx = self.action_tx.clone();
                         tokio::spawn(async move {
                             // IMPORTANT: Keine .awaits hier drin; Guard nur kurz halten.
-                            let started = {
-                                let mut guard = sup.lock().unwrap();
-                                if guard.can_start() {
-                                    let _ = guard.start(snap);
-                                    true
-                                } else {
-                                    false
-                                }
-                            }; // Guard fällt hier!
-                            if started {
-                                let _ = tx.send(Action::ServerStarted);
+                            let mut guard = sup.lock().unwrap();
+                            if guard.can_start() {
+                                let _ = guard.start(snap);
+                                true
+                            } else {
+                                false
                             }
+                            // Guard fällt hier!
                         });
                     } else {
                         let _ = self
                             .action_tx
                             .send(Action::Error("No settings snapshot".into()));
                     }
-                }
-
-                Action::ServerStarted => {
-                    self.server_running = true;
-                    self.stats_history.buf.clear();
                 }
 
                 Action::StopServer => {
-                    let sup = self.aether_sup.clone();
-                    tokio::spawn(async move {
-                        // Phase 1: take JoinHandle without holding the lock across await
-                        let join = {
-                            let mut guard = sup.lock().unwrap();
-                            guard.initiate_stop()
-                        };
-                        // Phase 2: await outside the lock
-                        if let Some(handle) = join {
-                            let _ = handle.await;
+                    self.aether_sup.lock().unwrap().stop();
+                }
+
+                Action::AetherEvent(evt) => {
+                    match evt {
+                        AetherToWizard::ServerStarted => {
+                            self.server_running = true;
+                            // Supervisor von Starting -> Running schalten (ohne neue Channels)
+                            self.aether_sup.lock().unwrap().mark_started();
+                            // Optional: Render triggern
+                            let _ = self.action_tx.send(Action::Render);
                         }
-                    });
-                }
-
-                Action::ServerStopped => {
-                    self.server_running = false;
-                }
-
-                Action::RestartServer => {
-                    if let Some(snap) = self.aether_settings.clone() {
-                        let sup = self.aether_sup.clone();
-                        // Stop then start in background; rely on events for started/stopped UI updates
-                        tokio::spawn(async move {
-                            // Stop old instance (if any) without holding the lock across await
-                            if let Some(handle) = {
-                                let mut guard = sup.lock().unwrap();
-                                guard.initiate_stop()
-                            } {
-                                let _ = handle.await;
-                            }
-                            // Start new instance under a short-lived lock
-                            {
-                                let mut guard = sup.lock().unwrap();
-                                guard.start(snap);
-                            }
-                        });
-                    } else {
-                        let _ = self
-                            .action_tx
-                            .send(Action::Error("No settings snapshot".into()));
+                        AetherToWizard::ServerStopped => {
+                            self.server_running = false;
+                            let _ = self.action_tx.send(Action::Render);
+                        }
+                        AetherToWizard::Stats(snap) => {
+                            self.stats_history.lock().unwrap().push(snap.clone());
+                            // Optional: Render triggern
+                            let _ = self.action_tx.send(Action::Render);
+                        }
+                        AetherToWizard::Error(e) => {
+                            self.last_error = Some(e.clone());
+                            tracing::error!("Error: {}", e);
+                            let _ = self.action_tx.send(Action::Render);
+                        }
                     }
                 }
 
-                Action::ServerStats(snap) => {
-                    // Push to fixed-size ring buffer
-                    self.stats_history.push(snap.clone());
+                Action::RestartServer => {
+                    self.aether_sup
+                        .lock()
+                        .unwrap()
+                        .restart(self.aether_settings.clone().unwrap_or_default());
                 }
 
                 Action::Error(msg) => {

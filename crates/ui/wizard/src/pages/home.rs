@@ -1,6 +1,7 @@
 use color_eyre::Result;
 use ratatui::Frame;
 use ratatui::layout::{Rect, Size};
+use std::{any::Any, sync::Arc};
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::components::Component;
@@ -13,6 +14,7 @@ use super::Page;
 pub struct HomePage {
     home: Home,
     fps: FpsCounter,
+    stats_history: Option<Arc<dyn Any + Send + Sync>>,
 }
 
 impl HomePage {
@@ -20,6 +22,7 @@ impl HomePage {
         Self {
             home: Home::new(),
             fps: FpsCounter::default(),
+            stats_history: None,
         }
     }
 }
@@ -44,6 +47,11 @@ impl Page for HomePage {
     fn register_config_handler(&mut self, config: Config) -> Result<()> {
         self.home.register_config_handler(config.clone())?;
         self.fps.register_config_handler(config)?;
+        Ok(())
+    }
+
+    fn register_shared_state(&mut self, state: Arc<dyn Any + Send + Sync>) -> Result<()> {
+        self.stats_history = Some(state);
         Ok(())
     }
 
