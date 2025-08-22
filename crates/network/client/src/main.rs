@@ -35,7 +35,7 @@ fn main() -> Result<()> {
     }
 
     let client_config = ClientConfig::from_file(&args.config)?;
-    fos_client::start_client(client_config, &args.server)?;
+    client::start_client(client_config, &args.server)?;
 
     Ok(())
 }

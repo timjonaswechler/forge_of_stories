@@ -1,16 +1,20 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/network/wizard",
+    "crates/aether",
+    "crates/forge_of_stories",
+    "crates/paths",
+    "crates/settings",
+    "crates/util",
+    "crates/network/client",
     "crates/network/server",
     "crates/network/shared",
-    # "crates/network/client",
-    "crates/settings",
-    "crates/paths",
-    # "crates/utils",
-    # "crates/forge_of_stories",
+    "crates/ui/fate",
+    "crates/ui/illusion",
+    "crates/ui/oracle",
+    "crates/ui/wizard",
 ]
-default-members = ["crates/network/server"]
+default-members = ["crates/forge_of_stories"]
 
 [workspace.package]
 version = "0.1.0"
@@ -18,24 +22,36 @@ edition = "2024"
 
 
 [workspace.dependencies]
-shared = { path = "crates/network/shared" }
-# client = { path = "crates/network/client" }
-server = { path = "crates/network/server" }
+aether.path = "crates/aether"
+client.path = "crates/network/client"
+fate.path = "crates/ui/fate"
+fos.path = "crates/forge_of_stories"
+illusion = { path = "crates/ui/illusion" }
+oracle = { path = "crates/ui/oracle" }
 paths = { path = "crates/paths" }
 settings = { path = "crates/settings" }
-wizard = { path = "crates/network/wizard" }
-# utils = { path = "crates/utils" }
+shared = { path = "crates/network/shared" }
+server = { path = "crates/network/server" }
+util = { path = "crates/util" }
+wizard = { path = "crates/ui/wizard" }
+
+
 #
 anyhow = { version = "1.0.80" }
 axum = { version = "0.8.4", features = ["json", "ws"] }
+clap = { version = "4.5.43", features = ["derive"] }
+color-eyre = { version = "0.6.3" }
+crossterm = "0.29.0"
+
 dirs = "4.0"
 globset = "0.4"
+ratatui = "0.29.0"
 rcgen = { version = "0.14", features = [
     "pem",
     "aws_lc_rs",
 ], default-features = false }
 regex = "1.5"
-rust-embed = "8.7.2"
+rust-embed = { version = "8.4", features = ["include-exclude"] }
 rustls = { version = "0.23", features = ["aws-lc-rs", "log"] }
 serde = { version = "1", features = ["derive"] }
 smallvec = { version = "1.6", features = ["union"] }

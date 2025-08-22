@@ -33,10 +33,10 @@ toml = { workspace = true }
 serde = { workspace = true }
 
 # --- CLI ---
-clap = { version = "4.5.43", features = ["derive"] }
-color-eyre = { version = "0.6.3" }
-crossterm = "0.29.0"
-ratatui = "0.29.0"
+clap.workspace = true
+color-eyre.workspace = true
+crossterm.workspace = true
+ratatui.workspace = true
 tui-textarea = "0.7"
 
 # --- Certificate ---

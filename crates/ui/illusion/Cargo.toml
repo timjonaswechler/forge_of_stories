@@ -1,0 +1,11 @@
+[package] # Client UI
+name = "illusion"
+version = "0.1.0"
+description = "Illusion is the client UI for Forge of Stories, providing a graphical interface for players."
+edition.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+client.workspace = true

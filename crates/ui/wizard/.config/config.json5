@@ -1,0 +1,38 @@
+{
+  // Default keybinding scopes supported by the app:
+  // 1) "*" (wildcard) -> applies everywhere
+  // 2) "global" -> applies to all pages/components unless overridden
+  // 3) "<page>" -> legacy page id scope (e.g., "login")
+  // 4) "page:<name>" -> explicit page scope
+  // 5) "component:<name>" -> explicit component scope
+  // 6) "page:<page>/component:<component>" -> most specific scope
+  "keybindings": {
+    // Wildcard: lowest priority defaults
+    "*": {
+
+    },
+
+    // Global: general defaults (override wildcard)
+     "global": {
+
+        "<Ctrl+c>": "Quit", // Yet another way to quit
+
+     },
+
+    // Most specific: only when the auth component is on the login page
+    "page:login/component:auth": {
+       "<Ctrl+h>" : "Help", // Show context help in the auth component
+    },
+
+
+    // Explicit page scope for home
+    "page:home": {
+      "<esc>": "navigate login", // Example: navigate back to login
+    },
+
+    // Home component on home page
+    "page:home/component:home": {
+      "<esc>": "navigate login",
+    },
+  }
+}

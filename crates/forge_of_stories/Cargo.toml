@@ -2,12 +2,24 @@
 name = "forge_of_stories"
 edition = { workspace = true }
 version = { workspace = true }
-publish = { workspace = true }
 
-[lib]
-path = "src/lib.rs"
+
+[[bin]]
+name = "forge_of_stories"
+path = "src/client.rs"
+
+
+[[bin]]
+name = "forge_of_stories_server"
+path = "src/server.rs"
+
 
 [dependencies]
-server = { workspace = true }
-shared = { workspace = true }
-client = { workspace = true }
+wizard = { workspace = true, optional = true }
+illusion = { workspace = true, optional = true }
+
+
+[features]
+server = ["wizard"]
+client = ["illusion"]
+default = []

@@ -1,5 +1,5 @@
 [package]
-name = "settings"
+name = "util"
 version = "0.1.0"
 edition.workspace = true
 
@@ -9,12 +9,9 @@ path = "src/lib.rs"
 # doctest = false # Enable if you want to skip doctests initially.
 
 [features]
-default = []
-local-server = []
-dedicated-server = []
-
+server = []
+client = []
 [dependencies]
-util.workspace = true
 rust-embed.workspace = true
-serde.workspace = true
+
 [dev-dependencies]

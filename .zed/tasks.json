@@ -1,7 +1,19 @@
 [
   {
-    "label": "Build & Run Server",
+    "label": "Build & Run Wizard",
     "command": "cargo run -p wizard  ",
+
+    "use_new_terminal": false
+  },
+  {
+    "label": "Build & Run Server",
+    "command": " cargo run --bin forge_of_stories_server --features server",
+
+    "use_new_terminal": false
+  },
+  {
+    "label": "Build & Run Client",
+    "command": " cargo run --bin forge_of_stories --features client",
 
     "use_new_terminal": false
   }
