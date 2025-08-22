@@ -39,13 +39,13 @@ impl Component for Home {
 
     fn handle_key_event(&mut self, key: KeyEvent) -> Result<Option<Action>> {
         // Use scoped keybindings for home page/component
-        let scoped = self
-            .config
-            .keybindings
-            .get_scoped(Some("home"), Some("home"));
-        if let Some(action) = scoped.get(&vec![key]) {
-            return Ok(Some(action.clone()));
-        }
+        // let scoped = self
+        //     .config
+        //     .keybindings
+        //     .get_scoped(Some("home"), Some("home"));
+        // if let Some(action) = scoped.get(&vec![key]) {
+        //     return Ok(Some(action.clone()));
+        // }
         Ok(None)
     }
 

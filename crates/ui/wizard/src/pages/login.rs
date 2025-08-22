@@ -54,6 +54,12 @@ impl Page for LoginPage {
         self.logo.register_config_handler(config)?;
         Ok(())
     }
+    fn register_shortcuts(
+        &self,
+    ) -> Option<(&'static str, Box<[crate::services::shortcuts::Shortcut]>)> {
+        // Aktuell ist AuthComponent die interaktivste Komponente.
+        self.auth.register_shortcuts()
+    }
 
     fn init(&mut self, area: Size) -> Result<()> {
         self.auth.init(area)?;

@@ -200,6 +200,37 @@ impl Component for AuthComponent {
         self.config = config;
         Ok(())
     }
+    fn register_shortcuts(
+        &self,
+    ) -> Option<(&'static str, Box<[crate::services::shortcuts::Shortcut]>)> {
+        use crate::shortcuts;
+        let scope = match self.mode {
+            Mode::Login => "Login",
+            Mode::CreateAdmin => "Create Admin",
+        };
+
+        let common = shortcuts!(("Submit", ["Enter"]), ("Cancle", ["Esc"]), ("Help", ["?"]),);
+
+        // Fokus-basierte Navigation
+        let nav = match self.mode {
+            Mode::Login => match self.focus {
+                Focus::Username => shortcuts!(("Continue", ["Tab"]), ("Back", ["Shift-Tab"])),
+                Focus::Password => shortcuts!(("Continue", ["Tab"]), ("Back", ["Shift-Tab"])),
+                Focus::Confirm => shortcuts!(("Continue", ["Tab"]), ("Back", ["Shift-Tab"])),
+            },
+            Mode::CreateAdmin => match self.focus {
+                Focus::Username => shortcuts!(("Continue", ["Tab"]), ("Back", ["Shift-Tab"])),
+                Focus::Password => shortcuts!(("Continue", ["Tab"]), ("Back", ["Shift-Tab"])),
+                Focus::Confirm => shortcuts!(("Continue", ["Tab"]), ("Back", ["Shift-Tab"])),
+            },
+        };
+
+        // Zusammenführen: nav + common
+        let mut v = Vec::new();
+        v.extend_from_slice(&nav);
+        v.extend_from_slice(&common);
+        Some((scope, v.into_boxed_slice()))
+    }
 
     fn init(&mut self, _area: Size) -> Result<()> {
         // Initialen Modus anhand vorhandener Credentials festlegen
@@ -252,20 +283,20 @@ impl Component for AuthComponent {
         self.last_input_at = Instant::now();
 
         // Zuerst: Scope-spezifische Keybindings (page:login/component:auth)
-        let scoped = self
-            .config
-            .keybindings
-            .get_scoped(Some("login"), Some("auth"));
-        if let Some(action) = scoped.get(&vec![key]) {
-            // Vorrangig: direkt die konfigurierte Aktion zurückgeben
-            return Ok(Some(action.clone()));
-        }
-        // Danach: Page-Level Keybindings respektieren (App übernimmt diese)
-        if let Some(bindings) = self.config.keybindings.get_by_name("login") {
-            if bindings.contains_key(&vec![key]) {
-                return Ok(None);
-            }
-        }
+        // let scoped = self
+        //     .config
+        //     .keybindings
+        //     .get_scoped(Some("login"), Some("auth"));
+        // if let Some(action) = scoped.get(&vec![key]) {
+        //     // Vorrangig: direkt die konfigurierte Aktion zurückgeben
+        //     return Ok(Some(action.clone()));
+        // }
+        // // Danach: Page-Level Keybindings respektieren (App übernimmt diese)
+        // if let Some(bindings) = self.config.keybindings.get_by_name("login") {
+        //     if bindings.contains_key(&vec![key]) {
+        //         return Ok(None);
+        //     }
+        // }
 
         match key.code {
             KeyCode::Tab => {

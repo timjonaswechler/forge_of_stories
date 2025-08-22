@@ -1,6 +1,16 @@
+use argon2::Algorithm;
 use color_eyre::Result;
 use crossterm::event::KeyEvent;
+use ratatui::layout::Alignment;
 use ratatui::prelude::Rect;
+
+use ratatui::{
+    layout::{Constraint, Direction, Layout},
+    symbols::border,
+    text::Text,
+    widgets::Block,
+};
+use std::clone;
 use std::{
     collections::{HashMap, VecDeque},
     sync::{Arc, Mutex},
@@ -8,17 +18,17 @@ use std::{
 };
 use tokio::sync::mpsc;
 use tracing::{debug, info};
+use util::AppContext;
 
 use crate::messages::{AetherStatsSnapshot, AetherToWizard};
 use crate::services::aether::{AetherSettingsSnapshot, AetherSupervisor};
+use crate::services::shortcuts::create_shortcut_list;
 use crate::{
     action::Action,
     config::Config,
     pages::{HomePage, LoginPage, Page, SetupPage},
     tui::{Event, Tui},
 };
-
-use util::AppContext;
 
 const STATS_HISTORY_LEN: usize = 300;
 
@@ -107,7 +117,7 @@ impl App {
 
         Ok(Self {
             context: cx,
-
+            config: Config::new()?,
             tick_rate,
             frame_rate,
             pages,
@@ -117,7 +127,7 @@ impl App {
             last_tick_key_events: Vec::new(),
             last_input_at: std::time::Instant::now(),
             idle_timeout: std::time::Duration::from_secs(3),
-            config: Config::new()?,
+
             action_tx,
             action_rx,
 
@@ -212,27 +222,27 @@ impl App {
     fn handle_key_event(&mut self, key: KeyEvent) -> Result<()> {
         self.last_input_at = Instant::now();
         let action_tx = self.action_tx.clone();
-        let keymap = self
-            .config
-            .keybindings
-            .get_scoped(self.current_page.as_deref(), None);
-        match keymap.get(&vec![key]) {
-            Some(action) => {
-                info!("Got action: {action:?}");
-                action_tx.send(action.clone())?;
-            }
-            _ => {
-                // If the key was not handled as a single key action,
-                // then consider it for multi-key combinations.
-                self.last_tick_key_events.push(key);
+        // let keymap = self
+        //     .config
+        //     .keybindings
+        //     .get_scoped(self.current_page.as_deref(), None);
+        // match keymap.get(&vec![key]) {
+        //     Some(action) => {
+        //         info!("Got action: {action:?}");
+        //         action_tx.send(action.clone())?;
+        //     }
+        //     _ => {
+        //         // If the key was not handled as a single key action,
+        //         // then consider it for multi-key combinations.
+        //         self.last_tick_key_events.push(key);
 
-                // Check for multi-key combinations
-                if let Some(action) = keymap.get(&self.last_tick_key_events) {
-                    info!("Got action: {action:?}");
-                    action_tx.send(action.clone())?;
-                }
-            }
-        }
+        //         // Check for multi-key combinations
+        //         if let Some(action) = keymap.get(&self.last_tick_key_events) {
+        //             info!("Got action: {action:?}");
+        //             action_tx.send(action.clone())?;
+        //         }
+        //     }
+        // }
         Ok(())
     }
 
@@ -421,103 +431,60 @@ impl App {
     fn render(&mut self, tui: &mut Tui) -> Result<()> {
         let action_tx = self.action_tx.clone();
         tui.draw(|frame| {
-            // Split into main content and a 1-line footer for key hints
-            let areas = ratatui::layout::Layout::default()
-                .direction(ratatui::layout::Direction::Vertical)
-                .constraints([
-                    ratatui::layout::Constraint::Min(0),
-                    ratatui::layout::Constraint::Length(1),
-                ])
-                .split(frame.area());
-
-            // Draw current page in the main area
             if let Some(current) = &self.current_page {
-                if let Some(page) = self.pages.get_mut(current) {
-                    if let Err(err) = page.draw(frame, areas[0]) {
-                        let _ = action_tx.send(Action::Error(format!("Failed to draw: {:?}", err)));
-                    }
-                }
-            }
+                if let Some(page) = self.pages.get(current) {
+                    if let Some((scope, shortcuts)) = page.register_shortcuts() {
+                        let layout = Layout::default()
+                            .direction(Direction::Vertical)
+                            .constraints([Constraint::Min(0), Constraint::Length(3)])
+                            .split(frame.area());
 
-            // Build footer: show only the last binding per action (most specific wins).
-            // Order of scopes: "*", "global", "<page>", "page:<page>", "component:<name>", "page:<page>/component:<name>"
-            let mut ordered_pairs: Vec<(Vec<crossterm::event::KeyEvent>, Action)> = Vec::new();
+                        // Need mutable reference for draw, so get it separately
+                        if let Some(page_mut) = self.pages.get_mut(current) {
+                            if let Err(err) = page_mut.draw(frame, layout[0]) {
+                                let _ = action_tx
+                                    .send(Action::Error(format!("Failed to draw: {:?}", err)));
+                            }
+                        }
 
-            // Helper to push bindings from a named scope, if present
-            let mut push_scope = |scope: &str| {
-                if let Some(map) = self.config.keybindings.get_by_name(scope) {
-                    for (k, v) in map.iter() {
-                        ordered_pairs.push((k.clone(), v.clone()));
-                    }
-                }
-            };
-
-            // 1) wildcard and 2) global
-            push_scope("*");
-            push_scope("global");
-
-            // 3) legacy page id and 4) explicit page:<name>
-            if let Some(page) = self.current_page.as_deref() {
-                push_scope(page);
-                let page_scope = format!("page:{page}");
-                push_scope(&page_scope);
-            }
-
-            // Collect component names available in config for this page
-            let mut components = std::collections::BTreeSet::new();
-            for scope in self.config.keybindings.keys() {
-                if let Some(name) = scope.strip_prefix("component:") {
-                    components.insert(name.to_string());
-                }
-                if let Some(page) = self.current_page.as_deref() {
-                    let prefix = format!("page:{}/component:", page);
-                    if let Some(name) = scope.strip_prefix(&prefix) {
-                        components.insert(name.to_string());
-                    }
-                }
-            }
-
-            // 5) component:<name> and 6) page:<page>/component:<name>
-            for comp in components.iter() {
-                let comp_scope = format!("component:{comp}");
-                push_scope(&comp_scope);
-                if let Some(page) = self.current_page.as_deref() {
-                    let pc_scope = format!("page:{}/component:{}", page, comp);
-                    push_scope(&pc_scope);
-                }
-            }
-
-            // Keep only the last mapping per action label
-            let mut last_for_action: std::collections::HashMap<
-                String,
-                Vec<crossterm::event::KeyEvent>,
-            > = std::collections::HashMap::new();
-            for (seq, action) in ordered_pairs.into_iter() {
-                last_for_action.insert(action.to_string(), seq);
-            }
-
-            // Convert to display entries (skip actions without a valid key sequence)
-            let mut entries: Vec<String> = last_for_action
-                .into_iter()
-                .filter(|(_, seq)| !seq.is_empty())
-                .map(|(action_label, seq)| {
-                    let key_seq = if seq.len() == 1 {
-                        crate::config::key_event_to_string(&seq[0])
+                        render_footer(frame, layout[1], scope, shortcuts);
                     } else {
-                        seq.iter()
-                            .map(|k| crate::config::key_event_to_string(k))
-                            .collect::<Vec<_>>()
-                            .join(" ")
-                    };
-                    format!("{} {}", key_seq, action_label)
-                })
-                .collect();
-            entries.sort();
+                        // Split into main content and a 1-line footer for key hints
+                        let areas = ratatui::layout::Layout::default()
+                            .direction(ratatui::layout::Direction::Vertical)
+                            .constraints([
+                                ratatui::layout::Constraint::Min(0),
+                                ratatui::layout::Constraint::Length(1),
+                            ])
+                            .split(frame.area());
 
-            let footer_text = entries.join(" | ");
-            let footer = ratatui::widgets::Paragraph::new(footer_text);
-            frame.render_widget(footer, areas[1]);
+                        // Draw current page in the main area
+                        if let Some(page_mut) = self.pages.get_mut(current) {
+                            if let Err(err) = page_mut.draw(frame, areas[0]) {
+                                let _ = action_tx
+                                    .send(Action::Error(format!("Failed to draw: {:?}", err)));
+                            }
+                        }
+                    }
+                }
+            }
         })?;
         Ok(())
     }
+}
+
+fn render_footer(
+    frame: &mut ratatui::Frame,
+    area: ratatui::layout::Rect,
+    scope: &str,
+    shortcuts: Box<[crate::services::shortcuts::Shortcut]>,
+) {
+    let block = Block::bordered()
+        .title(format!(" {scope} "))
+        .border_set(border::ROUNDED);
+
+    let inner_width = block.inner(area).width;
+    let lines = create_shortcut_list(shortcuts.into_vec(), inner_width);
+    let para = ratatui::widgets::Paragraph::new(Text::from_iter(lines)).block(block);
+    frame.render_widget(para, area);
 }

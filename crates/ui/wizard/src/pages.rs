@@ -35,7 +35,11 @@ pub trait Page {
     fn register_shared_state(&mut self, _state: Arc<dyn Any + Send + Sync>) -> Result<()> {
         Ok(())
     }
-
+    fn register_shortcuts(
+        &self,
+    ) -> Option<(&'static str, Box<[crate::services::shortcuts::Shortcut]>)> {
+        None
+    }
     fn init(&mut self, area: Size) -> Result<()> {
         let _ = area;
         Ok(())

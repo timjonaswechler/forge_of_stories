@@ -44,6 +44,12 @@ pub trait Component {
         let _ = config; // to appease clippy
         Ok(())
     }
+
+    fn register_shortcuts(
+        &self,
+    ) -> Option<(&'static str, Box<[crate::services::shortcuts::Shortcut]>)> {
+        None
+    }
     /// Initialize the component with a specified area if necessary.
     ///
     /// # Arguments
