@@ -17,6 +17,8 @@ use tui_prompts::{
 };
 
 use super::Component;
+use crate::services::keybind_symbols::{ENTER, ESC, SHIFT_TAB, TAB};
+use crate::services::shortcuts::Shortcut;
 use crate::{action::Action, config::Config, services::auth, tui::Event};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -200,28 +202,29 @@ impl Component for AuthComponent {
         self.config = config;
         Ok(())
     }
-    fn register_shortcuts(
-        &self,
-    ) -> Option<(&'static str, Box<[crate::services::shortcuts::Shortcut]>)> {
+
+    fn register_shortcuts(&self) -> Option<(&'static str, Box<[Shortcut]>)> {
         use crate::shortcuts;
         let scope = match self.mode {
             Mode::Login => "Login",
             Mode::CreateAdmin => "Create Admin",
         };
 
-        let common = shortcuts!(("Submit", ["Enter"]), ("Cancle", ["Esc"]), ("Help", ["?"]),);
+        let common = shortcuts!(("Submit", [ENTER]), ("Cancle", [ESC]), ("Help", ["?"]),);
 
         // Fokus-basierte Navigation
         let nav = match self.mode {
             Mode::Login => match self.focus {
-                Focus::Username => shortcuts!(("Continue", ["Tab"]), ("Back", ["Shift-Tab"])),
-                Focus::Password => shortcuts!(("Continue", ["Tab"]), ("Back", ["Shift-Tab"])),
-                Focus::Confirm => shortcuts!(("Continue", ["Tab"]), ("Back", ["Shift-Tab"])),
+                Focus::Username => {
+                    shortcuts!(("Continue", [TAB]), ("Back", [SHIFT_TAB]))
+                }
+                Focus::Password => shortcuts!(("Continue", [TAB]), ("Back", [SHIFT_TAB])),
+                Focus::Confirm => shortcuts!(("Continue", [TAB]), ("Back", [SHIFT_TAB])),
             },
             Mode::CreateAdmin => match self.focus {
-                Focus::Username => shortcuts!(("Continue", ["Tab"]), ("Back", ["Shift-Tab"])),
-                Focus::Password => shortcuts!(("Continue", ["Tab"]), ("Back", ["Shift-Tab"])),
-                Focus::Confirm => shortcuts!(("Continue", ["Tab"]), ("Back", ["Shift-Tab"])),
+                Focus::Username => shortcuts!(("Continue", [TAB]), ("Back", [SHIFT_TAB])),
+                Focus::Password => shortcuts!(("Continue", [TAB]), ("Back", [SHIFT_TAB])),
+                Focus::Confirm => shortcuts!(("Continue", [TAB]), ("Back", [SHIFT_TAB])),
             },
         };
 
@@ -281,22 +284,6 @@ impl Component for AuthComponent {
 
     fn handle_key_event(&mut self, key: KeyEvent) -> Result<Option<Action>> {
         self.last_input_at = Instant::now();
-
-        // Zuerst: Scope-spezifische Keybindings (page:login/component:auth)
-        // let scoped = self
-        //     .config
-        //     .keybindings
-        //     .get_scoped(Some("login"), Some("auth"));
-        // if let Some(action) = scoped.get(&vec![key]) {
-        //     // Vorrangig: direkt die konfigurierte Aktion zurückgeben
-        //     return Ok(Some(action.clone()));
-        // }
-        // // Danach: Page-Level Keybindings respektieren (App übernimmt diese)
-        // if let Some(bindings) = self.config.keybindings.get_by_name("login") {
-        //     if bindings.contains_key(&vec![key]) {
-        //         return Ok(None);
-        //     }
-        // }
 
         match key.code {
             KeyCode::Tab => {

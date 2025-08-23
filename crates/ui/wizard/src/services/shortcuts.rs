@@ -82,7 +82,7 @@ impl Shortcut {
 
 #[macro_export]
 macro_rules! shortcuts {
-    ($(($name:literal,[$($key:literal),+ $(,)?])),* $(,)?) => {
+    ($(($name:literal,[$($key:expr),+ $(,)?])),* $(,)?) => {
         vec![
             $(
                 $crate::services::shortcuts::Shortcut::new($name, [$($key),*])
