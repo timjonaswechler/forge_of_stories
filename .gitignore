@@ -1,4 +1,3 @@
 /target
-#/crates/settings
-
-.zed
+.*/
+Cargo.lock
