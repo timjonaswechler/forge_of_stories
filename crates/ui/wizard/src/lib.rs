@@ -14,10 +14,12 @@ mod utils;
 
 use crate::app::App;
 use color_eyre::Result;
+use config::ensure_data_and_config_dirs_exist;
 use util::AppContext;
 
 #[tokio::main]
 pub async fn run() -> Result<()> {
+    ensure_data_and_config_dirs_exist()?;
     crate::errors::init()?;
     crate::logging::init()?;
     let cx = AppContext::new();

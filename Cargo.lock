@@ -2572,6 +2572,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "font8x8"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "875488b8711a968268c7cf5d139578713097ca4635a76044e8fe8eedf831d07e"
+
+[[package]]
 name = "fontconfig-parser"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6800,6 +6806,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2c591d83f69777866b9126b24c6dd9a18351f177e49d625920d19f989fd31cf8"
 
 [[package]]
+name = "tui-big-text"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a97cefa9f1425ab6146db2961241cec86845d11105b5dd6bb504294b0cdd21af"
+dependencies = [
+ "derive_builder",
+ "font8x8",
+ "itertools 0.14.0",
+ "ratatui",
+]
+
+[[package]]
+name = "tui-input"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "911e93158bf80bbc94bad533b2b16e3d711e1132d69a6a6980c3920a63422c19"
+dependencies = [
+ "ratatui",
+ "unicode-width 0.2.0",
+]
+
+[[package]]
 name = "tui-prompts"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7818,6 +7846,8 @@ dependencies = [
  "tracing",
  "tracing-error",
  "tracing-subscriber",
+ "tui-big-text",
+ "tui-input",
  "tui-prompts",
  "util",
  "vergen-gix",

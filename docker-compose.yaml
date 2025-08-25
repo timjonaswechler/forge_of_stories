@@ -1,0 +1,10 @@
+version: "3.8"
+services:
+  forge_of_stories:
+    build: .
+    container_name: forge_of_stories_server
+    ports:
+      - "4433:4433" # Passe ggf. für QUIC oder andere interne Dienste an
+    restart: unless-stopped
+    environment:
+      RUST_LOG: info

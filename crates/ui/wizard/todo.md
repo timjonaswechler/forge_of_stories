@@ -1,8 +1,6 @@
-- [] server State und aetherStateSnapshot sind irgnd wie das selbe ...
-                self.uptime_secs = snap.uptime_secs;
-                self.players = snap.players;
+In inputfields müssen immer die normalen bedingunen für die eingabe gelten
 
-                sowas ersparen ist scheiße
+        let (keybind_scope, shortcuts) = self.get_keybinds();
 
 - [] was ist ist Serverstat oder AeaterStatesSnapshot im kontext von react ?
 AetherStatsSnapshot ist in messages ?! warum
