@@ -10,6 +10,7 @@ use crate::{
     action::Action,
     components::{Component, auth::AuthComponent, logo::LogoComponent},
     config::Config,
+    style::Theme,
     tui::Event,
 };
 
@@ -54,9 +55,12 @@ impl Page for LoginPage {
         self.logo.register_config_handler(config)?;
         Ok(())
     }
-    fn register_shortcuts(
-        &self,
-    ) -> Option<(&'static str, Box<[crate::services::shortcuts::Shortcut]>)> {
+    fn register_theme(&mut self, theme: Theme) -> Result<()> {
+        self.auth.register_theme(theme.clone())?;
+        self.logo.register_theme(theme)?;
+        Ok(())
+    }
+    fn get_shortcuts(&self) -> Option<(&'static str, Box<[crate::services::shortcuts::Shortcut]>)> {
         // Aktuell ist AuthComponent die interaktivste Komponente.
         self.auth.register_shortcuts()
     }
@@ -90,28 +94,22 @@ impl Page for LoginPage {
     }
 
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
-        // Left: 55% input, Right: 45% ASCII logo
-        let chunks = if area.width < 121 {
-            Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([Constraint::Min(16), Constraint::Length(16)])
-                .split(area)
-        } else {
-            Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints([
-                    Constraint::Max(50),
-                    Constraint::Min(LogoComponent::length()),
-                ])
-                .split(area)
-        };
-        if area.width < 121 {
-            self.logo.draw(frame, chunks[0])?;
-            self.auth.draw(frame, chunks[1])?;
-        } else {
-            self.auth.draw(frame, chunks[0])?;
-            self.logo.draw(frame, chunks[1])?;
-        }
+        let chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Fill(1),
+                Constraint::Min(131),
+                Constraint::Fill(1),
+            ])
+            .split(area);
+
+        let part = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Min(50), Constraint::Min(71)])
+            .split(chunks[1]);
+        self.auth.draw(frame, part[0])?;
+        self.logo.draw(frame, part[1])?;
+
         Ok(())
     }
 }

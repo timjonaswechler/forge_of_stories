@@ -6,7 +6,7 @@ use ratatui::{
 use std::{any::Any, sync::Arc};
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::{action::Action, config::Config, tui::Event};
+use crate::{action::Action, config::Config, style::Theme, tui::Event};
 
 mod home;
 mod login;
@@ -32,12 +32,15 @@ pub trait Page {
         Ok(())
     }
 
+    fn register_theme(&mut self, theme: Theme) -> Result<()> {
+        let _ = theme;
+        Ok(())
+    }
+
     fn register_shared_state(&mut self, _state: Arc<dyn Any + Send + Sync>) -> Result<()> {
         Ok(())
     }
-    fn register_shortcuts(
-        &self,
-    ) -> Option<(&'static str, Box<[crate::services::shortcuts::Shortcut]>)> {
+    fn get_shortcuts(&self) -> Option<(&'static str, Box<[crate::services::shortcuts::Shortcut]>)> {
         None
     }
     fn init(&mut self, area: Size) -> Result<()> {

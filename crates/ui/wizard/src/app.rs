@@ -1,23 +1,20 @@
-use argon2::Algorithm;
 use color_eyre::Result;
 use crossterm::event::KeyEvent;
-use ratatui::layout::Alignment;
-use ratatui::prelude::Rect;
-
 use ratatui::{
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Flex, Layout},
+    prelude::Rect,
     symbols::border,
     text::Text,
-    widgets::Block,
+    widgets::{Block, Paragraph, Widget},
 };
-use std::clone;
+
 use std::{
     collections::{HashMap, VecDeque},
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 use tokio::sync::mpsc;
-use tracing::{debug, info};
+use tracing::debug;
 use util::AppContext;
 
 use crate::messages::{AetherStatsSnapshot, AetherToWizard};
@@ -27,6 +24,7 @@ use crate::{
     action::Action,
     config::Config,
     pages::{HomePage, LoginPage, Page, SetupPage},
+    style,
     tui::{Event, Tui},
 };
 
@@ -88,6 +86,10 @@ pub struct App {
     autostart_on_launch: bool,
     autostart_on_settings_ready: bool,
     autostart_done: bool,
+
+    // Theming
+    theme: style::Theme,
+    palette_guard: Option<style::TerminalPaletteGuard>,
 }
 
 impl App {
@@ -143,6 +145,9 @@ impl App {
             autostart_on_launch: false, // oder true, wenn du direkt starten willst
             autostart_on_settings_ready: true, // z. B. automatisch starten, sobald Settings ok sind
             autostart_done: false,
+
+            theme: style::default_dark_theme(),
+            palette_guard: None,
         })
     }
 
@@ -151,12 +156,17 @@ impl App {
             // .mouse(true) // uncomment this line to enable mouse support
             .tick_rate(self.tick_rate)
             .frame_rate(self.frame_rate);
+
+        // Apply terminal palette override for the selected theme; reset via RAII on drop
+        self.palette_guard = Some(style::apply_theme_palette(&self.theme));
+
         tui.enter()?;
 
         if let Some(current) = &self.current_page {
             if let Some(page) = self.pages.get_mut(current) {
                 page.register_action_handler(self.action_tx.clone())?;
                 page.register_config_handler(self.config.clone())?;
+                page.register_theme(self.theme.clone())?;
                 page.init(tui.size()?)?;
                 page.register_shared_state(self.stats_history.clone())?;
                 // Force an initial full redraw after first page init
@@ -190,6 +200,8 @@ impl App {
             }
         }
         tui.exit()?;
+        // Drop the palette guard to reset terminal colors after exiting TUI
+        self.palette_guard = None;
         Ok(())
     }
 
@@ -285,6 +297,7 @@ impl App {
                         if let Some(page) = self.pages.get_mut(name.as_str()) {
                             let _ = page.register_action_handler(self.action_tx.clone());
                             let _ = page.register_config_handler(self.config.clone());
+                            let _ = page.register_theme(self.theme.clone());
                             let _ = page.init(tui.size()?);
                             let _ = page.register_shared_state(self.stats_history.clone());
                             let _ = page.on_enter();
@@ -431,60 +444,49 @@ impl App {
     fn render(&mut self, tui: &mut Tui) -> Result<()> {
         let action_tx = self.action_tx.clone();
         tui.draw(|frame| {
+            // Fill full-screen background with theme color
+            // let bg = Block::default()
+            //     .style(ratatui::style::Style::default().bg(self.theme.roles.background));
+            // frame.render_widget(bg, frame.area());
             if let Some(current) = &self.current_page {
-                if let Some(page) = self.pages.get(current) {
-                    if let Some((scope, shortcuts)) = page.register_shortcuts() {
-                        let layout = Layout::default()
-                            .direction(Direction::Vertical)
-                            .constraints([Constraint::Min(0), Constraint::Length(3)])
-                            .split(frame.area());
-
-                        // Need mutable reference for draw, so get it separately
+                if let Some(page) = self.pages.get_mut(current) {
+                    let Some((keybind_scope, shortcuts)) = page.get_shortcuts() else {
+                        // No shortcuts registered, just draw the page full area
                         if let Some(page_mut) = self.pages.get_mut(current) {
-                            if let Err(err) = page_mut.draw(frame, layout[0]) {
+                            if let Err(err) = page_mut.draw(frame, frame.area()) {
                                 let _ = action_tx
                                     .send(Action::Error(format!("Failed to draw: {:?}", err)));
                             }
                         }
+                        return;
+                    };
+                    let keybinds_block = Block::bordered()
+                        .title(format!(" {keybind_scope} "))
+                        .border_set(border::ROUNDED);
+                    let keybind_render_width = keybinds_block.inner(frame.area()).width;
+                    let keybinds = create_shortcut_list(shortcuts, keybind_render_width);
+                    let keybind_len = keybinds.len() as u16;
+                    let keybind_para =
+                        Paragraph::new(Text::from_iter(keybinds)).block(keybinds_block);
 
-                        render_footer(frame, layout[1], scope, shortcuts);
-                    } else {
-                        // Split into main content and a 1-line footer for key hints
-                        let areas = ratatui::layout::Layout::default()
-                            .direction(ratatui::layout::Direction::Vertical)
-                            .constraints([
-                                ratatui::layout::Constraint::Min(0),
-                                ratatui::layout::Constraint::Length(1),
-                            ])
-                            .split(frame.area());
+                    let vertical = Layout::vertical([
+                        Constraint::Percentage(100),
+                        Constraint::Length(keybind_len + 2),
+                    ])
+                    .flex(Flex::Legacy)
+                    .split(frame.area());
 
-                        // Draw current page in the main area
-                        if let Some(page_mut) = self.pages.get_mut(current) {
-                            if let Err(err) = page_mut.draw(frame, areas[0]) {
-                                let _ = action_tx
-                                    .send(Action::Error(format!("Failed to draw: {:?}", err)));
-                            }
-                        }
+                    if let Err(err) = page.draw(frame, vertical[0]) {
+                        let _ = action_tx.send(Action::Error(format!("Failed to draw: {:?}", err)));
                     }
+                    frame.render_widget(keybind_para, vertical[1]);
                 }
             }
         })?;
         Ok(())
     }
-}
 
-fn render_footer(
-    frame: &mut ratatui::Frame,
-    area: ratatui::layout::Rect,
-    scope: &str,
-    shortcuts: Box<[crate::services::shortcuts::Shortcut]>,
-) {
-    let block = Block::bordered()
-        .title(format!(" {scope} "))
-        .border_set(border::ROUNDED);
-
-    let inner_width = block.inner(area).width;
-    let lines = create_shortcut_list(shortcuts.into_vec(), inner_width);
-    let para = ratatui::widgets::Paragraph::new(Text::from_iter(lines)).block(block);
-    frame.render_widget(para, area);
+    pub fn theme(&self) -> &style::Theme {
+        &self.theme
+    }
 }

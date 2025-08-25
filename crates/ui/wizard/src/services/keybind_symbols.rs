@@ -28,3 +28,4 @@ pub const SHIFT: &str = "Shift";
 pub const OPTION: &str = "Option/Alt";
 pub const BACKSPACE: &str = "Backspace";
 pub const SHIFT_TAB: &str = "Shift+Tab";
+pub const CONTROL_C: &str = "Ctrl+C";

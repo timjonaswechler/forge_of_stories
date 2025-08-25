@@ -8,6 +8,7 @@ mod logging;
 mod messages;
 mod pages;
 mod services;
+mod style;
 mod tui;
 mod utils;
 

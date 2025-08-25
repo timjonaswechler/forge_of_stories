@@ -1,25 +1,27 @@
-use std::time::{Duration, Instant};
-
-use color_eyre::Result;
-use crossterm::event::{KeyCode, KeyEvent};
+use color_eyre::{Result, owo_colors::OwoColorize};
+use crossterm::{
+    event::{KeyCode, KeyEvent},
+    style::Stylize,
+};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect, Size},
     style::{Color, Modifier, Style},
+    symbols::border,
     text::{Line, Span},
-    widgets::Paragraph,
+    widgets::{Block, Paragraph},
 };
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc::UnboundedSender;
-use tui_prompts::Prompt;
-use tui_prompts::{
-    State,
-    prelude::{FocusState, TextPrompt, TextRenderStyle, TextState},
-};
+use tui_big_text::{BigText, PixelSize};
+use tui_input::Input;
+use tui_input::backend::crossterm::EventHandler as _;
 
 use super::Component;
-use crate::services::keybind_symbols::{ENTER, ESC, SHIFT_TAB, TAB};
+use crate::services::keybind_symbols::{CONTROL_C, ENTER, ESC, SHIFT_TAB, TAB};
 use crate::services::shortcuts::Shortcut;
-use crate::{action::Action, config::Config, services::auth, tui::Event};
+use crate::{action::Action, config::Config, services::auth, style::Theme, tui::Event};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
@@ -37,13 +39,14 @@ enum Focus {
 pub struct AuthComponent {
     tx: Option<UnboundedSender<Action>>,
     config: Config,
+    theme: Theme,
     mode: Mode,
     username: String,
     password: String,
     confirm_password: String,
-    username_state: TextState<'static>,
-    password_state: TextState<'static>,
-    confirm_state: TextState<'static>,
+    username_input: Input,
+    password_input: Input,
+    confirm_input: Input,
     focus: Focus,
     error: Option<String>,
     info: Option<String>,
@@ -62,13 +65,14 @@ impl Default for AuthComponent {
         Self {
             tx: None,
             config: Config::new().unwrap_or_default(),
+            theme: crate::style::default_dark_theme(),
             mode,
             username: String::new(),
             password: String::new(),
             confirm_password: String::new(),
-            username_state: TextState::default(),
-            password_state: TextState::default(),
-            confirm_state: TextState::default(),
+            username_input: Input::default(),
+            password_input: Input::default(),
+            confirm_input: Input::default(),
             focus: Focus::Username,
             error: None,
             info: match mode {
@@ -91,12 +95,10 @@ impl AuthComponent {
         self.username.clear();
         self.password.clear();
         self.confirm_password.clear();
-        self.username_state = TextState::default();
-        self.password_state = TextState::default();
-        self.confirm_state = TextState::default();
+        self.username_input = Input::default();
+        self.password_input = Input::default();
+        self.confirm_input = Input::default();
         self.focus = Focus::Username;
-        *self.username_state.focus_state_mut() = FocusState::Focused;
-        *self.password_state.focus_state_mut() = FocusState::Unfocused;
         self.error = None;
         // Hinweis: self.info hier absichtlich nicht ändern
     }
@@ -111,18 +113,10 @@ impl AuthComponent {
         // Hinweis: self.info hier absichtlich nicht setzen; LoginPage zeigt Grundzeile
     }
 
-    fn focused_state_mut(&mut self) -> &mut TextState<'static> {
-        match self.focus {
-            Focus::Username => &mut self.username_state,
-            Focus::Password => &mut self.password_state,
-            Focus::Confirm => &mut self.confirm_state,
-        }
-    }
-
     fn sync_from_states(&mut self) {
-        self.username = self.username_state.value().to_string();
-        self.password = self.password_state.value().to_string();
-        self.confirm_password = self.confirm_state.value().to_string();
+        self.username = self.username_input.value().to_string();
+        self.password = self.password_input.value().to_string();
+        self.confirm_password = self.confirm_input.value().to_string();
     }
 
     fn validate_password_msg(pw: &str) -> Option<String> {
@@ -165,12 +159,10 @@ impl AuthComponent {
                 self.info = Some("Admin angelegt. Bitte jetzt einloggen.".into());
                 self.username.clear();
                 self.password.clear();
-                self.username_state = TextState::default();
-                self.password_state = TextState::default();
+                self.username_input = Input::default();
+                self.password_input = Input::default();
                 self.mode = Mode::Login;
                 self.focus = Focus::Username;
-                *self.username_state.focus_state_mut() = FocusState::Focused;
-                *self.password_state.focus_state_mut() = FocusState::Unfocused;
                 Ok(None)
             }
             Mode::Login => {
@@ -203,6 +195,11 @@ impl Component for AuthComponent {
         Ok(())
     }
 
+    fn register_theme(&mut self, theme: Theme) -> Result<()> {
+        self.theme = theme;
+        Ok(())
+    }
+
     fn register_shortcuts(&self) -> Option<(&'static str, Box<[Shortcut]>)> {
         use crate::shortcuts;
         let scope = match self.mode {
@@ -210,7 +207,12 @@ impl Component for AuthComponent {
             Mode::CreateAdmin => "Create Admin",
         };
 
-        let common = shortcuts!(("Submit", [ENTER]), ("Cancle", [ESC]), ("Help", ["?"]),);
+        let common = shortcuts!(
+            ("Submit", [ENTER]),
+            ("Cancle", [ESC]),
+            ("Help", ["?"]),
+            ("Quit", [CONTROL_C]),
+        );
 
         // Fokus-basierte Navigation
         let nav = match self.mode {
@@ -290,36 +292,23 @@ impl Component for AuthComponent {
                 // Fokuswechsel abhängig vom Modus
                 match (self.mode, self.focus) {
                     (Mode::CreateAdmin, Focus::Username) => {
-                        *self.username_state.focus_state_mut() = FocusState::Unfocused;
                         self.focus = Focus::Password;
-                        *self.password_state.focus_state_mut() = FocusState::Focused;
                     }
                     (Mode::CreateAdmin, Focus::Password) => {
-                        *self.password_state.focus_state_mut() = FocusState::Unfocused;
                         self.focus = Focus::Confirm;
-                        *self.confirm_state.focus_state_mut() = FocusState::Focused;
                     }
                     (Mode::CreateAdmin, Focus::Confirm) => {
-                        *self.confirm_state.focus_state_mut() = FocusState::Unfocused;
                         self.focus = Focus::Username;
-                        *self.username_state.focus_state_mut() = FocusState::Focused;
                     }
                     (Mode::Login, Focus::Username) => {
-                        *self.username_state.focus_state_mut() = FocusState::Unfocused;
                         self.focus = Focus::Password;
-                        *self.password_state.focus_state_mut() = FocusState::Focused;
                     }
                     (Mode::Login, Focus::Password) => {
-                        *self.password_state.focus_state_mut() = FocusState::Unfocused;
                         self.focus = Focus::Username;
-                        *self.username_state.focus_state_mut() = FocusState::Focused;
                     }
                     (Mode::Login, Focus::Confirm) => {
                         // Fallback: sollte im Login-Modus nicht auftreten
                         self.focus = Focus::Username;
-                        *self.username_state.focus_state_mut() = FocusState::Focused;
-                        *self.password_state.focus_state_mut() = FocusState::Unfocused;
-                        *self.confirm_state.focus_state_mut() = FocusState::Unfocused;
                     }
                 }
                 self.error = None;
@@ -329,36 +318,23 @@ impl Component for AuthComponent {
                 // Fokuswechsel rückwärts abhängig vom Modus
                 match (self.mode, self.focus) {
                     (Mode::CreateAdmin, Focus::Username) => {
-                        *self.username_state.focus_state_mut() = FocusState::Unfocused;
                         self.focus = Focus::Confirm;
-                        *self.confirm_state.focus_state_mut() = FocusState::Focused;
                     }
                     (Mode::CreateAdmin, Focus::Confirm) => {
-                        *self.confirm_state.focus_state_mut() = FocusState::Unfocused;
                         self.focus = Focus::Password;
-                        *self.password_state.focus_state_mut() = FocusState::Focused;
                     }
                     (Mode::CreateAdmin, Focus::Password) => {
-                        *self.password_state.focus_state_mut() = FocusState::Unfocused;
                         self.focus = Focus::Username;
-                        *self.username_state.focus_state_mut() = FocusState::Focused;
                     }
                     (Mode::Login, Focus::Username) => {
-                        *self.username_state.focus_state_mut() = FocusState::Unfocused;
                         self.focus = Focus::Password;
-                        *self.password_state.focus_state_mut() = FocusState::Focused;
                     }
                     (Mode::Login, Focus::Password) => {
-                        *self.password_state.focus_state_mut() = FocusState::Unfocused;
                         self.focus = Focus::Username;
-                        *self.username_state.focus_state_mut() = FocusState::Focused;
                     }
                     (Mode::Login, Focus::Confirm) => {
                         // Fallback: sollte im Login-Modus nicht auftreten
                         self.focus = Focus::Password;
-                        *self.password_state.focus_state_mut() = FocusState::Focused;
-                        *self.username_state.focus_state_mut() = FocusState::Unfocused;
-                        *self.confirm_state.focus_state_mut() = FocusState::Unfocused;
                     }
                 }
                 self.error = None;
@@ -394,8 +370,19 @@ impl Component for AuthComponent {
                 Ok(None)
             }
             _ => {
-                // Alle übrigen Tasten an den aktiven TextState delegieren
-                self.focused_state_mut().handle_key_event(key);
+                // Alle übrigen Tasten an das aktive Input-Feld delegieren
+                let ev = crossterm::event::Event::Key(key);
+                match self.focus {
+                    Focus::Username => {
+                        self.username_input.handle_event(&ev);
+                    }
+                    Focus::Password => {
+                        self.password_input.handle_event(&ev);
+                    }
+                    Focus::Confirm => {
+                        self.confirm_input.handle_event(&ev);
+                    }
+                }
                 // Werte übernehmen
                 self.sync_from_states();
 
@@ -417,92 +404,267 @@ impl Component for AuthComponent {
     }
 
     fn draw(&mut self, frame: &mut Frame, body: Rect) -> Result<()> {
-        let mut constraints = vec![
-            Constraint::Min(0),    // Header-Bereich
-            Constraint::Length(6), // Header-Bereich
-            Constraint::Length(1), // Username
-            Constraint::Length(1), // Password
-        ];
-        if matches!(self.mode, Mode::CreateAdmin) {
-            constraints.push(Constraint::Length(1)); // Confirm Password
-        }
-        constraints.push(Constraint::Length(2)); // Validation/Info
-        constraints.push(Constraint::Min(0));
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(constraints)
-            .split(body);
-
-        frame.render_widget(
-            Paragraph::new(vec![
-                Line::from("Forge of Stories's dedicated server"),
-                Line::from(Span::styled(
-                    format!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION")),
-                    Style::default()
-                        .fg(Color::Rgb(255, 246, 161))
-                        .add_modifier(Modifier::BOLD),
-                )),
-                Line::from(vec![
-                    Span::styled("by ", Style::default().fg(Color::Rgb(100, 100, 100))),
-                    Span::styled(
-                        "Chicken105 ",
-                        Style::default()
-                            .fg(Color::Rgb(130, 62, 25))
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                ]),
-                Line::from(Span::styled(
-                    ratatui::symbols::line::HORIZONTAL.repeat(31),
-                    Style::default().fg(Color::Rgb(100, 100, 100)),
-                )),
-                Line::from(vec![
-                    match self.mode {
-                        Mode::CreateAdmin => "Create Admin",
-                        Mode::Login => "Login",
-                    }
-                    .into(),
-                ]),
-                Line::from(Span::styled(
-                    self.info.clone().unwrap_or_default(),
-                    Style::default().fg(Color::Rgb(100, 255, 100)),
-                )),
+        // let bg = Block::default()
+        //     .style(ratatui::style::Style::default().bg(self.theme.roles.background));
+        // frame.render_widget(bg, body);
+        let horizontal = Layout::default()
+            .direction(ratatui::layout::Direction::Horizontal)
+            .constraints([
+                Constraint::Fill(1),
+                Constraint::Percentage(100),
+                Constraint::Fill(1),
             ])
-            .centered(),
-            chunks[1],
-        );
-        // 2) Username Prompt
-        TextPrompt::from("Username").draw(frame, chunks[2], &mut self.username_state);
+            .split(body);
+        let vertical = Layout::vertical([
+            Constraint::Fill(1),
+            Constraint::Length(8), // Header
+            Constraint::Length(1),
+            Constraint::Length(2), // Info
+            Constraint::Length(1),
+            Constraint::Length(3), // Username
+            Constraint::Length(1),
+            Constraint::Length(3), // Password
+            Constraint::Length(1),
+            if matches!(self.mode, Mode::CreateAdmin) {
+                Constraint::Length(3) // Confirm Password
+            } else {
+                Constraint::Length(0)
+            },
+            Constraint::Fill(1),
+        ]);
 
-        // 3) Password Prompt (maskiert)
-        TextPrompt::from("Password")
-            .with_render_style(TextRenderStyle::Password)
-            .draw(frame, chunks[3], &mut self.password_state);
-
-        // 3b) Confirm Password (nur CreateAdmin)
+        let [
+            _,
+            header,
+            _,
+            info,
+            _,
+            username_input,
+            _,
+            password_input,
+            _,
+            comfirm_password_input,
+            _,
+        ] = vertical.areas(horizontal[1]);
+        self.render_header(frame, header);
+        self.render_info(frame, info);
+        self.render_username(frame, username_input);
+        self.render_password(frame, password_input);
         if matches!(self.mode, Mode::CreateAdmin) {
-            TextPrompt::from("Confirm Password")
-                .with_render_style(TextRenderStyle::Password)
-                .draw(frame, chunks[4], &mut self.confirm_state);
+            self.render_confirm(frame, comfirm_password_input);
         }
-
-        // 4) Validation / Info / Error
-        let validation = if let Some(err) = &self.error {
-            Span::styled(err.as_str(), Style::default().fg(Color::Red))
-        } else if self.password.len() >= 12 {
-            Span::styled("Passwortstärke: gut", Style::default().fg(Color::Green))
-        } else {
-            Span::styled("", Style::default())
-        };
-        let validation_idx = if matches!(self.mode, Mode::CreateAdmin) {
-            5
-        } else {
-            4
-        };
-        frame.render_widget(
-            Paragraph::new(Line::from(validation)),
-            chunks[validation_idx],
-        );
 
         Ok(())
+    }
+}
+
+impl AuthComponent {
+    fn render_header(&self, frame: &mut Frame, area: Rect) {
+        let vertical = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(0), Constraint::Max(16), Constraint::Min(0)])
+            .split(area);
+        let horizontal = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Min(0), Constraint::Max(71), Constraint::Min(0)])
+            .split(vertical[1]);
+
+        let logo_lines = vec![
+            "██        ██ ██ ███████  █████  ██████  ██████",
+            "██   ██   ██ ██      ██ ██   ██ ██   ██ ██   ██",
+            " ██ ████ ██  ██   ███   ███████ ██████  ██   ██",
+            " ████  ████  ██ ██      ██   ██ ██   ██ ██   ██",
+            "  ██    ██   ██ ███████ ██   ██ ██   ██ ██████",
+        ];
+
+        let logo_color = vec![
+            "AA        DD EE EFFFGGG  HHIII  JJKKKL  LMMMNN",
+            "AA   BC   DD EE      GG HH   IJ JJ   LL LM   NN",
+            " AA BBCC DD  EE   FFG   HHHIIIJ JJKKKL  LM   NN",
+            " AABB  CCDD  EE EF      HH   IJ JJ   LL LM   NN",
+            "  AB    CD   EE EFFFGGG HH   IJ JJ   LL LMMMNN",
+        ];
+
+        let color_map: HashMap<char, Color> = [
+            ('A', Color::Rgb(91, 0, 130)),
+            ('B', Color::Rgb(85, 1, 129)),
+            ('C', Color::Rgb(68, 3, 127)),
+            ('D', Color::Rgb(54, 4, 126)),
+            ('E', Color::Rgb(38, 6, 124)),
+            ('F', Color::Rgb(30, 7, 123)),
+            ('G', Color::Rgb(20, 8, 122)),
+            ('H', Color::Rgb(13, 9, 121)),
+            ('I', Color::Rgb(8, 17, 129)),
+            ('J', Color::Rgb(7, 38, 151)),
+            ('K', Color::Rgb(5, 64, 178)),
+            ('L', Color::Rgb(3, 89, 203)),
+            ('M', Color::Rgb(1, 116, 230)),
+            ('N', Color::Rgb(0, 140, 255)),
+        ]
+        .iter()
+        .cloned()
+        .collect();
+
+        let mut styled_lines = Vec::new();
+
+        for (_, (logo_line, color_line)) in logo_lines.iter().zip(logo_color.iter()).enumerate() {
+            let mut spans = Vec::new();
+            let logo_chars: Vec<char> = logo_line.chars().collect();
+            let color_chars: Vec<char> = color_line.chars().collect();
+
+            for (j, &logo_char) in logo_chars.iter().enumerate() {
+                let color = if j < color_chars.len() {
+                    color_map
+                        .get(&color_chars[j])
+                        .copied()
+                        .unwrap_or(Color::White)
+                } else {
+                    Color::White
+                };
+
+                spans.push(Span::styled(
+                    logo_char.to_string(),
+                    Style::default().fg(color),
+                ));
+            }
+
+            styled_lines.push(Line::from(spans));
+        }
+
+        let logo = Paragraph::new(styled_lines)
+            .block(Block::default())
+            .wrap(ratatui::widgets::Wrap { trim: false });
+
+        frame.render_widget(logo, horizontal[1]);
+    }
+
+    fn render_info(&self, frame: &mut Frame, area: Rect) {
+        let (msg, style) = if let Some(err) = &self.error {
+            (err.as_str(), Style::default().fg(self.theme.roles.danger))
+        } else if let Some(info) = &self.info {
+            (info.as_str(), Style::default().fg(self.theme.roles.info))
+        } else {
+            ("", Style::default().fg(self.theme.roles.subtle_text))
+        };
+        let info_paragraph = Paragraph::new(msg).centered().style(style);
+        frame.render_widget(info_paragraph, area);
+    }
+
+    fn render_username(&self, frame: &mut Frame, area: Rect) {
+        let width = area.width.max(3) - 3;
+        let scroll = self.username_input.visual_scroll(width as usize);
+
+        let title_style = if self.focus == Focus::Username {
+            Style::default()
+                .fg(self.theme.roles.primary)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(self.theme.roles.subtle_text)
+        };
+        let border_style = if self.focus == Focus::Username {
+            Style::default().fg(self.theme.roles.primary)
+        } else {
+            Style::default().fg(self.theme.roles.muted)
+        };
+        let input_style = Style::default().fg(self.theme.roles.text);
+
+        let input = Paragraph::new(self.username_input.value())
+            .scroll((0, scroll as u16))
+            .style(input_style)
+            .block(
+                Block::bordered()
+                    .title("Username")
+                    .title_style(title_style)
+                    .border_set(border::ROUNDED)
+                    .border_style(border_style),
+            );
+        frame.render_widget(input, area);
+
+        if self.focus == Focus::Username {
+            // Ratatui hides the cursor unless it's explicitly set. Position the  cursor past the
+            // end of the input text and one line down from the border to the input line
+            let x = self.username_input.visual_cursor().max(scroll) - scroll + 1;
+            frame.set_cursor_position((area.x + x as u16, area.y + 1))
+        }
+    }
+
+    fn render_password(&self, frame: &mut Frame, area: Rect) {
+        // keep 2 for borders and 1 for cursor
+        let width = area.width.max(3) - 3;
+        let scroll = self.password_input.visual_scroll(width as usize);
+        let input_style = if self.focus == Focus::Password {
+            Style::default().fg(self.theme.roles.text)
+        } else {
+            Style::default().fg(self.theme.roles.subtle_text)
+        };
+        let title_style = if self.focus == Focus::Password {
+            Style::default()
+                .fg(self.theme.roles.primary)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(self.theme.roles.subtle_text)
+        };
+        let border_style = if self.focus == Focus::Password {
+            Style::default().fg(self.theme.roles.primary)
+        } else {
+            Style::default().fg(self.theme.roles.muted)
+        };
+        let masked: String = self.password_input.value().chars().map(|_| '•').collect();
+        let input = Paragraph::new(masked)
+            .style(input_style)
+            .scroll((0, scroll as u16))
+            .block(
+                Block::bordered()
+                    .title("Password")
+                    .title_style(title_style)
+                    .border_set(border::ROUNDED)
+                    .border_style(border_style),
+            );
+        frame.render_widget(input, area);
+
+        if self.focus == Focus::Password {
+            let x = self.password_input.visual_cursor().max(scroll) - scroll + 1;
+            frame.set_cursor_position((area.x + x as u16, area.y + 1))
+        }
+    }
+
+    fn render_confirm(&self, frame: &mut Frame, area: Rect) {
+        // keep 2 for borders and 1 for cursor
+        let width = area.width.max(3) - 3;
+        let scroll = self.confirm_input.visual_scroll(width as usize);
+        let input_style = if self.focus == Focus::Confirm {
+            Style::default().fg(self.theme.roles.text)
+        } else {
+            Style::default().fg(self.theme.roles.subtle_text)
+        };
+        let title_style = if self.focus == Focus::Confirm {
+            Style::default()
+                .fg(self.theme.roles.primary)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(self.theme.roles.subtle_text)
+        };
+        let border_style = if self.focus == Focus::Confirm {
+            Style::default().fg(self.theme.roles.primary)
+        } else {
+            Style::default().fg(self.theme.roles.muted)
+        };
+        let masked: String = self.confirm_input.value().chars().map(|_| '•').collect();
+        let input = Paragraph::new(masked)
+            .style(input_style)
+            .scroll((0, scroll as u16))
+            .block(
+                Block::bordered()
+                    .title("Confirm")
+                    .title_style(title_style)
+                    .border_set(border::ROUNDED)
+                    .border_style(border_style),
+            );
+        frame.render_widget(input, area);
+
+        if self.focus == Focus::Confirm {
+            let x = self.confirm_input.visual_cursor().max(scroll) - scroll + 1;
+            frame.set_cursor_position((area.x + x as u16, area.y + 1))
+        }
     }
 }

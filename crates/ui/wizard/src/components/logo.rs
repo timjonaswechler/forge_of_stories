@@ -148,3 +148,121 @@ impl Component for LogoComponent {
         Ok(())
     }
 }
+
+#[derive(Default)]
+pub struct WizardLogoComponent {
+    command_tx: Option<UnboundedSender<Action>>,
+    config: Config,
+}
+impl WizardLogoComponent {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub(crate) fn length() -> u16 {
+        49
+    }
+}
+impl Component for WizardLogoComponent {
+    fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
+        self.command_tx = Some(tx);
+        Ok(())
+    }
+
+    fn register_config_handler(&mut self, config: Config) -> Result<()> {
+        self.config = config;
+        Ok(())
+    }
+
+    fn update(&mut self, action: Action) -> Result<Option<Action>> {
+        match action {
+            Action::Tick => {
+                // add any logic here that should run on every tick
+            }
+            Action::Render => {
+                // add any logic here that should run on every render
+            }
+            _ => {}
+        }
+        Ok(None)
+    }
+
+    fn draw(&mut self, frame: &mut Frame, body: Rect) -> Result<()> {
+        let vertical = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(0), Constraint::Max(16), Constraint::Min(0)])
+            .split(body);
+        let horizontal = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Min(0), Constraint::Max(71), Constraint::Min(0)])
+            .split(vertical[1]);
+
+        let logo_lines = vec![
+            "██        ██ ██ ███████  █████  ██████  ██████",
+            "██   ██   ██ ██      ██ ██   ██ ██   ██ ██   ██",
+            " ██ ████ ██  ██   ███   ███████ ██████  ██   ██",
+            " ████  ████  ██ ██      ██   ██ ██   ██ ██   ██",
+            "  ██    ██   ██ ███████ ██   ██ ██   ██ ██████",
+        ];
+
+        let logo_color = vec![
+            "AA        DD EE EFFFGGG  HHIII  JJKKKL  LMMMNN",
+            "AA   BC   DD EE      GG HH   IJ JJ   LL LM   NN",
+            " AA BBCC DD  EE   FFG   HHHIIIJ JJKKKL  LM   NN",
+            " AABB  CCDD  EE EF      HH   IJ JJ   LL LM   NN",
+            "  AB    CD   EE EFFFGGG HH   IJ JJ   LL LMMMNN",
+        ];
+
+        let color_map: HashMap<char, Color> = [
+            ('A', Color::Rgb(91, 0, 130)),
+            ('B', Color::Rgb(85, 1, 129)),
+            ('C', Color::Rgb(68, 3, 127)),
+            ('D', Color::Rgb(54, 4, 126)),
+            ('E', Color::Rgb(38, 6, 124)),
+            ('F', Color::Rgb(30, 7, 123)),
+            ('G', Color::Rgb(20, 8, 122)),
+            ('H', Color::Rgb(13, 9, 121)),
+            ('I', Color::Rgb(8, 17, 129)),
+            ('J', Color::Rgb(7, 38, 151)),
+            ('K', Color::Rgb(5, 64, 178)),
+            ('L', Color::Rgb(3, 89, 203)),
+            ('M', Color::Rgb(1, 116, 230)),
+            ('N', Color::Rgb(0, 140, 255)),
+        ]
+        .iter()
+        .cloned()
+        .collect();
+
+        let mut styled_lines = Vec::new();
+
+        for (_, (logo_line, color_line)) in logo_lines.iter().zip(logo_color.iter()).enumerate() {
+            let mut spans = Vec::new();
+            let logo_chars: Vec<char> = logo_line.chars().collect();
+            let color_chars: Vec<char> = color_line.chars().collect();
+
+            for (j, &logo_char) in logo_chars.iter().enumerate() {
+                let color = if j < color_chars.len() {
+                    color_map
+                        .get(&color_chars[j])
+                        .copied()
+                        .unwrap_or(Color::White)
+                } else {
+                    Color::White
+                };
+
+                spans.push(Span::styled(
+                    logo_char.to_string(),
+                    Style::default().fg(color),
+                ));
+            }
+
+            styled_lines.push(Line::from(spans));
+        }
+
+        let logo = Paragraph::new(styled_lines)
+            .block(Block::default())
+            .wrap(ratatui::widgets::Wrap { trim: false });
+
+        frame.render_widget(logo, horizontal[1]);
+        Ok(())
+    }
+}

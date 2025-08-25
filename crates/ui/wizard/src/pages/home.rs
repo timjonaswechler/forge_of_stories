@@ -7,7 +7,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use crate::components::Component;
 use crate::components::fps::FpsCounter;
 use crate::components::home::Home;
-use crate::{action::Action, config::Config, tui::Event};
+use crate::{action::Action, config::Config, style::Theme, tui::Event};
 
 use super::Page;
 
@@ -47,6 +47,12 @@ impl Page for HomePage {
     fn register_config_handler(&mut self, config: Config) -> Result<()> {
         self.home.register_config_handler(config.clone())?;
         self.fps.register_config_handler(config)?;
+        Ok(())
+    }
+
+    fn register_theme(&mut self, theme: Theme) -> Result<()> {
+        self.home.register_theme(theme.clone())?;
+        self.fps.register_theme(theme)?;
         Ok(())
     }
 

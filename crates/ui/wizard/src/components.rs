@@ -6,7 +6,7 @@ use ratatui::{
 };
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::{action::Action, config::Config, tui::Event};
+use crate::{action::Action, config::Config, style::Theme, tui::Event};
 
 pub mod auth;
 pub mod fps;
@@ -42,6 +42,20 @@ pub trait Component {
     /// * `Result<()>` - An Ok result or an error.
     fn register_config_handler(&mut self, config: Config) -> Result<()> {
         let _ = config; // to appease clippy
+        Ok(())
+    }
+
+    /// Register a theme so the component can use shared semantic colors/styles.
+    ///
+    /// # Arguments
+    ///
+    /// * `theme` - The current UI theme (semantic roles and optional palette info).
+    ///
+    /// # Returns
+    ///
+    /// * `Result<()>` - An Ok result or an error.
+    fn register_theme(&mut self, theme: Theme) -> Result<()> {
+        let _ = theme; // to appease clippy
         Ok(())
     }
 
