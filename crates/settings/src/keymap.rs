@@ -187,23 +187,13 @@ impl KeymapFile {
                         MarkdownInlineCode(&action.0.to_string())
                     ));
                 }
-                let serde_json::Value::String(ref name) = items[0] else {
+                None => {
                     return Err(format!(
-                        "expected two-element array of `[name, input]`, \
-                        but the first element is not a string in {}.",
-                        MarkdownInlineCode(&action.0.to_string())
+                        "can't build {} action - it requires input data via [name, input]: {}",
+                        MarkdownInlineCode(&format!("\"{}\"", &name)),
+                        MarkdownEscaped(&error.to_string())
                     ));
-                };
-                let action_input = items[1].clone();
-                let action_input_string = action_input.to_string();
-                (
-                    //todo: cx.build_action(name, Some(action_input)),
-                    Some(action_input_string),
-                )
-            }
-            Value::String(name) => {
-                //cx.build_action(name, None),
-                None
+                }
             }
             Value::Null => (Ok("NoAction".boxed_clone()), None),
             _ => {
