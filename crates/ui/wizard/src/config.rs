@@ -3,6 +3,7 @@
 use color_eyre::Result;
 use directories::ProjectDirs;
 use lazy_static::lazy_static;
+use paths::{config_dir, data_dir};
 use serde::Deserialize;
 use std::fs;
 use std::{env, path::PathBuf};
@@ -22,22 +23,10 @@ pub struct Config {
     pub config: AppConfig,
 }
 
-lazy_static! {
-    pub static ref PROJECT_NAME: String = env!("CARGO_CRATE_NAME").to_uppercase().to_string();
-    pub static ref DATA_FOLDER: Option<PathBuf> =
-        env::var(format!("{}_DATA", PROJECT_NAME.clone()))
-            .ok()
-            .map(PathBuf::from);
-    pub static ref CONFIG_FOLDER: Option<PathBuf> =
-        env::var(format!("{}_CONFIG", PROJECT_NAME.clone()))
-            .ok()
-            .map(PathBuf::from);
-}
-
 impl Config {
     pub fn new() -> Result<Self, config::ConfigError> {
-        let data_dir = get_data_dir();
-        let config_dir = get_config_dir();
+        let data_dir = data_dir();
+        let config_dir = config_dir();
         let mut builder = config::Config::builder()
             .set_default("data_dir", data_dir.to_str().unwrap())?
             .set_default("config_dir", config_dir.to_str().unwrap())?;
@@ -64,43 +53,4 @@ impl Config {
 
         Ok(cfg)
     }
-}
-
-pub fn get_data_dir() -> PathBuf {
-    let directory = if let Some(s) = DATA_FOLDER.clone() {
-        s
-    } else if let Some(proj_dirs) = project_directory() {
-        proj_dirs.data_local_dir().to_path_buf()
-    } else {
-        PathBuf::from(".").join(".data")
-    };
-    directory
-}
-
-pub fn get_config_dir() -> PathBuf {
-    let directory = if let Some(s) = CONFIG_FOLDER.clone() {
-        s
-    } else if let Some(proj_dirs) = project_directory() {
-        proj_dirs.config_local_dir().to_path_buf()
-    } else {
-        PathBuf::from(".").join(".config")
-    };
-    directory
-}
-
-fn project_directory() -> Option<ProjectDirs> {
-    ProjectDirs::from("com", "chicken105", env!("CARGO_PKG_NAME"))
-}
-pub fn ensure_data_and_config_dirs_exist() -> std::io::Result<()> {
-    let data_dir = get_data_dir();
-    let config_dir = get_config_dir();
-
-    if !data_dir.exists() {
-        fs::create_dir_all(&data_dir)?;
-    }
-    if !config_dir.exists() {
-        fs::create_dir_all(&config_dir)?;
-    }
-
-    Ok(())
 }

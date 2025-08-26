@@ -10,64 +10,68 @@ use unicase::UniCase;
 
 static CUSTOM_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 
+static CUSTOM_CONFIG_DIR: OnceLock<PathBuf> = OnceLock::new();
+
 static CURRENT_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 
-static CONFIG_DIR: OnceLock<PathBuf> = OnceLock::new();
+static CURRENT_CONFIG_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 const ENV_DATA_DIR: &str = "FORGE_OF_STORIES_DATA_DIR";
 const ENV_CONFIG_DIR: &str = "FORGE_OF_STORIES_CONFIG_DIR";
 const ENV_DATA_DIR_ALT: &str = "FOS_DATA_DIR";
 const ENV_CONFIG_DIR_ALT: &str = "FOS_CONFIG_DIR";
 
-/// Sets a custom directory for all user data, overriding the default data directory.
-/// This function must be called before any other path operations that depend on the data directory.
+/// Sets a custom directory for configuration data, overriding the default config directory.
+/// This function must be called before any other path operations that depend on the config directory.
 /// The directory's path will be canonicaliForge_of_Stories to an absolute path by a blocking FS operation.
 /// The directory will be created if it doesn't exist.
 ///
 /// # Arguments
 ///
-/// * `dir` - The path to use as the custom data directory. This will be used as the base
-///           directory for all user data, including databases, extensions, and logs.
+/// * `dir` - The path to use as the custom config directory.
 ///
 /// # Returns
 ///
-/// A reference to the static `PathBuf` containing the custom data directory path.
+/// A reference to the static `PathBuf` containing the custom config directory path.
 ///
 /// # Panics
 ///
 /// Panics if:
-/// * Called after the data directory has been initialiForge_of_Stories (e.g., via `data_dir` or `config_dir`)
+/// * Called after the config directory has been initialiForge_of_Stories (e.g., via `config_dir`)
 /// * The directory's path cannot be canonicaliForge_of_Stories to an absolute path
 /// * The directory cannot be created
-pub fn set_custom_data_dir(dir: &str) -> &'static PathBuf {
-    if CURRENT_DATA_DIR.get().is_some() || CONFIG_DIR.get().is_some() {
-        panic!("set_custom_data_dir called after data_dir or config_dir was initialized");
+pub fn set_custom_config_dir(dir: &str) -> &'static PathBuf {
+    if CURRENT_DATA_DIR.get().is_some() || CURRENT_CONFIG_DIR.get().is_some() {
+        panic!("set_custom_config_dir called after data_dir or config_dir was initialized");
     }
-    CUSTOM_DATA_DIR.get_or_init(|| {
+    CUSTOM_CONFIG_DIR.get_or_init(|| {
         let mut path = PathBuf::from(dir);
         if path.is_relative() {
-            let abs_path = path
-                .canonicalize()
-                .expect("failed to canonicalize custom data directory's path to an absolute path");
+            let abs_path = path.canonicalize().expect(
+                "failed to canonicalize custom config directory's path to an absolute path",
+            );
             path = PathBuf::from(SanitizedPath::from(abs_path))
         }
-        std::fs::create_dir_all(&path).expect("failed to create custom data directory");
+        std::fs::create_dir_all(&path).expect("failed to create custom config directory");
         path
     })
 }
 
 /// Returns the path to the configuration directory used by Forge_of_Stories.
 pub fn config_dir() -> &'static PathBuf {
-    CONFIG_DIR.get_or_init(|| {
+    CURRENT_CONFIG_DIR.get_or_init(|| {
         // 1) ENV overrides
         if let Ok(p) = std::env::var(ENV_CONFIG_DIR).or_else(|_| std::env::var(ENV_CONFIG_DIR_ALT))
         {
             PathBuf::from(p)
+        } else if let Some(custom_config) = CUSTOM_CONFIG_DIR.get() {
+            // 2) Runtime override via custom config dir
+            custom_config.clone()
         } else if let Some(custom_dir) = CUSTOM_DATA_DIR.get() {
-            // 2) Runtime override via custom data dir
+            // 3) Runtime override via custom data dir
             custom_dir.join("config")
         } else if cfg!(target_os = "windows") {
-            // 3) OS defaults
+            // 4) OS defaults
             dirs::config_dir()
                 .expect("failed to determine RoamingAppData directory")
                 .join("Forge_of_Stories")
@@ -176,24 +180,6 @@ pub fn ensure_logs_dir() -> std::io::Result<PathBuf> {
         std::fs::create_dir_all(&ld)?;
     }
     Ok(ld)
-}
-
-/// Returns the path to the `Forge_of_Stories.server.log` file.
-pub fn server_log_file() -> &'static PathBuf {
-    static LOG_FILE: OnceLock<PathBuf> = OnceLock::new();
-    LOG_FILE.get_or_init(|| logs_dir().join("Forge_of_Stories.server.log"))
-}
-
-/// Returns the path to the `Forge_of_Stories.client.log` file.
-pub fn client_log_file() -> &'static PathBuf {
-    static LOG_FILE: OnceLock<PathBuf> = OnceLock::new();
-    LOG_FILE.get_or_init(|| logs_dir().join("Forge_of_Stories.client.log"))
-}
-
-/// Returns the path to the `Forge_of_Stories.log.old` file.
-pub fn old_log_file() -> &'static PathBuf {
-    static OLD_LOG_FILE: OnceLock<PathBuf> = OnceLock::new();
-    OLD_LOG_FILE.get_or_init(|| logs_dir().join("Forge_of_Stories.log.old"))
 }
 
 /// Returns the path to the extensions directory.
