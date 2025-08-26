@@ -1,10 +1,23 @@
+use super::{
+    Settings,
+    location::{SaveGameId, SettingsLocation},
+    source::SettingsSources,
+};
+use std::{
+    any::{Any, type_name},
+    ops::Range,
+    path::Path,
+    sync::Arc,
+};
+use toml_edit::Value;
+
 #[derive(Debug)]
-struct SettingValue<T> {
-    global_value: Option<T>,
-    local_values: Vec<(WorktreeId, Arc<Path>, T)>,
+pub struct SettingValue<T> {
+    pub global_value: Option<T>,
+    pub local_values: Vec<(SaveGameId, Arc<Path>, T)>,
 }
 
-trait AnySettingValue: 'static + Send + Sync {
+pub trait AnySettingValue: 'static + Send + Sync {
     fn key(&self) -> Option<&'static str>;
     fn setting_type_name(&self) -> &'static str;
     fn deserialize_setting(&self, json: &Value) -> Result<DeserializedSetting> {
@@ -14,21 +27,15 @@ trait AnySettingValue: 'static + Send + Sync {
         &self,
         json: &Value,
     ) -> (Option<&'static str>, Result<DeserializedSetting>);
-    fn load_setting(
-        &self,
-        sources: SettingsSources<DeserializedSetting>,
-        cx: &mut App,
-    ) -> Result<Box<dyn Any>>;
+    fn load_setting(&self, sources: SettingsSources<DeserializedSetting>) -> Result<Box<dyn Any>>;
     fn value_for_path(&self, path: Option<SettingsLocation>) -> &dyn Any;
-    fn all_local_values(&self) -> Vec<(WorktreeId, Arc<Path>, &dyn Any)>;
+    fn all_local_values(&self) -> Vec<(SaveGameId, Arc<Path>, &dyn Any)>;
     fn set_global_value(&mut self, value: Box<dyn Any>);
-    fn set_local_value(&mut self, root_id: WorktreeId, path: Arc<Path>, value: Box<dyn Any>);
-    fn json_schema(&self, generator: &mut schemars::SchemaGenerator) -> schemars::Schema;
+    fn set_local_value(&mut self, root_id: SaveGameId, path: Arc<Path>, value: Box<dyn Any>);
     fn edits_for_update(
         &self,
-        raw_settings: &serde_json::Value,
+        raw_settings: &Value,
         tab_size: usize,
-        vscode_settings: &VsCodeSettings,
         text: &mut String,
         edits: &mut Vec<(Range<usize>, String)>,
     );
@@ -43,44 +50,28 @@ impl<T: Settings> AnySettingValue for SettingValue<T> {
         type_name::<T>()
     }
 
-    fn load_setting(
-        &self,
-        values: SettingsSources<DeserializedSetting>,
-        cx: &mut App,
-    ) -> Result<Box<dyn Any>> {
-        Ok(Box::new(T::load(
-            SettingsSources {
-                default: values.default.0.downcast_ref::<T::FileContent>().unwrap(),
-                global: values
-                    .global
-                    .map(|value| value.0.downcast_ref::<T::FileContent>().unwrap()),
-                extensions: values
-                    .extensions
-                    .map(|value| value.0.downcast_ref::<T::FileContent>().unwrap()),
-                user: values
-                    .user
-                    .map(|value| value.0.downcast_ref::<T::FileContent>().unwrap()),
-                release_channel: values
-                    .release_channel
-                    .map(|value| value.0.downcast_ref::<T::FileContent>().unwrap()),
-                operating_system: values
-                    .operating_system
-                    .map(|value| value.0.downcast_ref::<T::FileContent>().unwrap()),
-                profile: values
-                    .profile
-                    .map(|value| value.0.downcast_ref::<T::FileContent>().unwrap()),
-                server: values
-                    .server
-                    .map(|value| value.0.downcast_ref::<T::FileContent>().unwrap()),
-                project: values
-                    .project
-                    .iter()
-                    .map(|value| value.0.downcast_ref().unwrap())
-                    .collect::<SmallVec<[_; 3]>>()
-                    .as_slice(),
-            },
-            cx,
-        )?))
+    fn load_setting(&self, values: SettingsSources<DeserializedSetting>) -> Result<Box<dyn Any>> {
+        Ok(Box::new(T::load(SettingsSources {
+            default: values.default.0.downcast_ref::<T::FileContent>().unwrap(),
+            global: values
+                .global
+                .map(|value| value.0.downcast_ref::<T::FileContent>().unwrap()),
+            extensions: values
+                .extensions
+                .map(|value| value.0.downcast_ref::<T::FileContent>().unwrap()),
+            user: values
+                .user
+                .map(|value| value.0.downcast_ref::<T::FileContent>().unwrap()),
+            server: values
+                .server
+                .map(|value| value.0.downcast_ref::<T::FileContent>().unwrap()),
+            project: values
+                .project
+                .iter()
+                .map(|value| value.0.downcast_ref().unwrap())
+                .collect::<SmallVec<[_; 3]>>()
+                .as_slice(),
+        })?))
     }
 
     fn deserialize_setting_with_key(
@@ -106,7 +97,7 @@ impl<T: Settings> AnySettingValue for SettingValue<T> {
         (key, value)
     }
 
-    fn all_local_values(&self) -> Vec<(WorktreeId, Arc<Path>, &dyn Any)> {
+    fn all_local_values(&self) -> Vec<(SaveGameId, Arc<Path>, &dyn Any)> {
         self.local_values
             .iter()
             .map(|(id, path, value)| (*id, path.clone(), value as _))
@@ -114,9 +105,9 @@ impl<T: Settings> AnySettingValue for SettingValue<T> {
     }
 
     fn value_for_path(&self, path: Option<SettingsLocation>) -> &dyn Any {
-        if let Some(SettingsLocation { worktree_id, path }) = path {
+        if let Some(SettingsLocation { savegame_id, path }) = path {
             for (settings_root_id, settings_path, value) in self.local_values.iter().rev() {
-                if worktree_id == *settings_root_id && path.starts_with(settings_path) {
+                if savegame_id == *settings_root_id && path.starts_with(settings_path) {
                     return value;
                 }
             }
@@ -130,7 +121,7 @@ impl<T: Settings> AnySettingValue for SettingValue<T> {
         self.global_value = Some(*value.downcast().unwrap());
     }
 
-    fn set_local_value(&mut self, root_id: WorktreeId, path: Arc<Path>, value: Box<dyn Any>) {
+    fn set_local_value(&mut self, root_id: SaveGameId, path: Arc<Path>, value: Box<dyn Any>) {
         let value = *value.downcast().unwrap();
         match self
             .local_values
@@ -141,15 +132,10 @@ impl<T: Settings> AnySettingValue for SettingValue<T> {
         }
     }
 
-    fn json_schema(&self, generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        T::FileContent::json_schema(generator)
-    }
-
     fn edits_for_update(
         &self,
-        raw_settings: &serde_json::Value,
+        raw_settings: &Value,
         tab_size: usize,
-        vscode_settings: &VsCodeSettings,
         text: &mut String,
         edits: &mut Vec<(Range<usize>, String)>,
     ) {
@@ -159,7 +145,6 @@ impl<T: Settings> AnySettingValue for SettingValue<T> {
             Err(_) => Box::<<T as Settings>::FileContent>::default(),
         };
         let mut new_content = old_content.clone();
-        T::import_from_vscode(vscode_settings, &mut new_content);
 
         let old_value = serde_json::to_value(&old_content).unwrap();
         let new_value = serde_json::to_value(new_content).unwrap();

@@ -1,10 +1,13 @@
-mod source;
+mod location;
+pub mod source;
 mod store;
+pub(crate) mod toml;
 mod value;
 
 use crate::settings::source::SettingsSources;
-
-use serde::{Deserialize, Serialize};
+use crate::settings::store::SettingsStore;
+pub use location::SettingsLocation;
+use serde::{Serialize, de::DeserializeOwned};
 
 /// A value that can be defined as a user setting.
 ///
@@ -27,21 +30,17 @@ pub trait Settings: 'static + Send + Sync {
     const PRESERVED_KEYS: Option<&'static [&'static str]> = None;
 
     /// The type that is stored in an individual JSON file.
-    type FileContent: Clone + Default + Serialize + DeserializeOwned + JsonSchema;
+    type FileContent: Clone + Default + Serialize + DeserializeOwned;
 
     /// The logic for combining together values from one or more JSON files into the
     /// final value for this setting.
-    fn load(sources: SettingsSources<Self::FileContent>, cx: &mut App) -> Result<Self>
+    fn load(sources: SettingsSources<Self::FileContent>) -> Result<Self>
     where
         Self: Sized;
 
     fn missing_default() -> anyhow::Error {
         anyhow::anyhow!("missing default")
     }
-
-    /// Use [the helpers in the vscode_import module](crate::vscode_import) to apply known
-    /// equivalent settings from a vscode config to our config
-    fn import_from_vscode(vscode: &VsCodeSettings, current: &mut Self::FileContent);
 
     #[track_caller]
     fn register(cx: &mut App)
@@ -59,29 +58,5 @@ pub trait Settings: 'static + Send + Sync {
         Self: Sized,
     {
         cx.global::<SettingsStore>().get(path)
-    }
-
-    #[track_caller]
-    fn get_global(cx: &App) -> &Self
-    where
-        Self: Sized,
-    {
-        cx.global::<SettingsStore>().get(None)
-    }
-
-    #[track_caller]
-    fn try_read_global<R>(cx: &AsyncApp, f: impl FnOnce(&Self) -> R) -> Option<R>
-    where
-        Self: Sized,
-    {
-        cx.try_read_global(|s: &SettingsStore, _| f(s.get(None)))
-    }
-
-    #[track_caller]
-    fn override_global(settings: Self, cx: &mut App)
-    where
-        Self: Sized,
-    {
-        cx.global_mut::<SettingsStore>().override_global(settings)
     }
 }

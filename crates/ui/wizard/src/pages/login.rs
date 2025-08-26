@@ -98,14 +98,14 @@ impl Page for LoginPage {
             .direction(Direction::Horizontal)
             .constraints([
                 Constraint::Fill(1),
-                Constraint::Min(131),
+                Constraint::Min(151),
                 Constraint::Fill(1),
             ])
             .split(area);
 
         let part = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Min(50), Constraint::Min(71)])
+            .constraints([Constraint::Min(60), Constraint::Min(71)])
             .split(chunks[1]);
         self.auth.draw(frame, part[0])?;
         self.logo.draw(frame, part[1])?;

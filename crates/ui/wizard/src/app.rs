@@ -128,7 +128,7 @@ impl App {
             should_suspend: false,
             last_tick_key_events: Vec::new(),
             last_input_at: std::time::Instant::now(),
-            idle_timeout: std::time::Duration::from_secs(3),
+            idle_timeout: std::time::Duration::from_secs(5 * 60),
 
             action_tx,
             action_rx,
@@ -234,27 +234,7 @@ impl App {
     fn handle_key_event(&mut self, key: KeyEvent) -> Result<()> {
         self.last_input_at = Instant::now();
         let action_tx = self.action_tx.clone();
-        // let keymap = self
-        //     .config
-        //     .keybindings
-        //     .get_scoped(self.current_page.as_deref(), None);
-        // match keymap.get(&vec![key]) {
-        //     Some(action) => {
-        //         info!("Got action: {action:?}");
-        //         action_tx.send(action.clone())?;
-        //     }
-        //     _ => {
-        //         // If the key was not handled as a single key action,
-        //         // then consider it for multi-key combinations.
-        //         self.last_tick_key_events.push(key);
 
-        //         // Check for multi-key combinations
-        //         if let Some(action) = keymap.get(&self.last_tick_key_events) {
-        //             info!("Got action: {action:?}");
-        //             action_tx.send(action.clone())?;
-        //         }
-        //     }
-        // }
         Ok(())
     }
 

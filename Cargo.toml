@@ -39,6 +39,7 @@ wizard = { path = "crates/ui/wizard" }
 #
 anyhow = { version = "1.0.80" }
 axum = { version = "0.8.4", features = ["json", "ws"] }
+bitflags = "2.9.3"
 clap = { version = "4.5.43", features = ["derive"] }
 color-eyre = { version = "0.6.3" }
 crossterm = "0.29.0"

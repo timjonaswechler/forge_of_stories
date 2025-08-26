@@ -1,3 +1,8 @@
+use std::{
+    fmt::{Debug, Display, Formatter, Result as FmtResult},
+    path::Path,
+};
+
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
 pub struct SaveGameId(usize);
 
@@ -25,14 +30,14 @@ impl SaveGameId {
     }
 }
 
-impl fmt::Display for SaveGameId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        std::fmt::Display::fmt(&self.0, f)
+impl Display for SaveGameId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        Display::fmt(&self.0, f)
     }
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct SettingsLocation<'a> {
-    pub worktree_id: SaveGameId,
+    pub savegame_id: SaveGameId,
     pub path: &'a Path,
 }

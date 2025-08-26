@@ -1,20 +1,15 @@
-use color_eyre::{Result, owo_colors::OwoColorize};
-use crossterm::{
-    event::{KeyCode, KeyEvent},
-    style::Stylize,
-};
+use color_eyre::Result;
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout, Rect, Size},
-    style::{Color, Modifier, Style},
+    layout::{Constraint, Layout, Rect, Size},
+    style::{Modifier, Style},
     symbols::border,
-    text::{Line, Span},
     widgets::{Block, Paragraph},
 };
-use std::collections::HashMap;
-use std::time::{Duration, Instant};
+
 use tokio::sync::mpsc::UnboundedSender;
-use tui_big_text::{BigText, PixelSize};
+
 use tui_input::Input;
 use tui_input::backend::crossterm::EventHandler as _;
 
@@ -50,9 +45,6 @@ pub struct AuthComponent {
     focus: Focus,
     error: Option<String>,
     info: Option<String>,
-
-    last_input_at: Instant,
-    idle_timeout: Duration,
 }
 
 impl Default for AuthComponent {
@@ -79,9 +71,6 @@ impl Default for AuthComponent {
                 Mode::CreateAdmin => Some("Erstelle einen neuen Admin-Benutzer".into()),
                 Mode::Login => Some("Bitte einloggen".into()),
             },
-
-            last_input_at: Instant::now(),
-            idle_timeout: Duration::from_secs(5 * 60),
         }
     }
 }
@@ -238,15 +227,12 @@ impl Component for AuthComponent {
     }
 
     fn init(&mut self, _area: Size) -> Result<()> {
-        // Initialen Modus anhand vorhandener Credentials festlegen
         self.mode = if auth::exists() {
             Mode::Login
         } else {
             Mode::CreateAdmin
         };
-        self.last_input_at = Instant::now();
 
-        // Felder und Fokus initial zurücksetzen
         self.clear_inputs();
 
         Ok(())
@@ -255,7 +241,7 @@ impl Component for AuthComponent {
     fn handle_events(&mut self, event: Option<Event>) -> Result<Option<Action>> {
         match event {
             Some(Event::Key(key)) => {
-                self.last_input_at = Instant::now();
+                // self.last_input_at = Instant::now();
                 self.handle_key_event(key)
             }
             Some(Event::Mouse(mouse)) => self.handle_mouse_event(mouse),
@@ -269,15 +255,9 @@ impl Component for AuthComponent {
                 // Sofort zurücksetzen und Grund anzeigen
                 self.reset_to_login();
                 self.info = Some("Zurück zum Login (Inaktivität)".into());
-                self.last_input_at = Instant::now();
+                // self.last_input_at = Instant::now();
             }
-            Action::Tick => {
-                // Inaktivität prüfen (nur relevant, wenn wir bereits auf der Login-Seite sind)
-                if self.last_input_at.elapsed() >= self.idle_timeout {
-                    self.reset_to_login();
-                    self.last_input_at = Instant::now();
-                }
-            }
+            Action::Tick => {}
             Action::Render => {}
             _ => {}
         }
@@ -285,7 +265,7 @@ impl Component for AuthComponent {
     }
 
     fn handle_key_event(&mut self, key: KeyEvent) -> Result<Option<Action>> {
-        self.last_input_at = Instant::now();
+        // self.last_input_at = Instant::now();
 
         match key.code {
             KeyCode::Tab => {
@@ -404,14 +384,14 @@ impl Component for AuthComponent {
     }
 
     fn draw(&mut self, frame: &mut Frame, body: Rect) -> Result<()> {
-        // let bg = Block::default()
-        //     .style(ratatui::style::Style::default().bg(self.theme.roles.background));
-        // frame.render_widget(bg, body);
+        let bg = Block::default()
+            .style(ratatui::style::Style::default().bg(self.theme.roles.background));
+        frame.render_widget(bg, body);
         let horizontal = Layout::default()
             .direction(ratatui::layout::Direction::Horizontal)
             .constraints([
                 Constraint::Fill(1),
-                Constraint::Percentage(100),
+                Constraint::Length(50),
                 Constraint::Fill(1),
             ])
             .split(body);
@@ -460,82 +440,7 @@ impl Component for AuthComponent {
 
 impl AuthComponent {
     fn render_header(&self, frame: &mut Frame, area: Rect) {
-        let vertical = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(0), Constraint::Max(16), Constraint::Min(0)])
-            .split(area);
-        let horizontal = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Min(0), Constraint::Max(71), Constraint::Min(0)])
-            .split(vertical[1]);
-
-        let logo_lines = vec![
-            "██        ██ ██ ███████  █████  ██████  ██████",
-            "██   ██   ██ ██      ██ ██   ██ ██   ██ ██   ██",
-            " ██ ████ ██  ██   ███   ███████ ██████  ██   ██",
-            " ████  ████  ██ ██      ██   ██ ██   ██ ██   ██",
-            "  ██    ██   ██ ███████ ██   ██ ██   ██ ██████",
-        ];
-
-        let logo_color = vec![
-            "AA        DD EE EFFFGGG  HHIII  JJKKKL  LMMMNN",
-            "AA   BC   DD EE      GG HH   IJ JJ   LL LM   NN",
-            " AA BBCC DD  EE   FFG   HHHIIIJ JJKKKL  LM   NN",
-            " AABB  CCDD  EE EF      HH   IJ JJ   LL LM   NN",
-            "  AB    CD   EE EFFFGGG HH   IJ JJ   LL LMMMNN",
-        ];
-
-        let color_map: HashMap<char, Color> = [
-            ('A', Color::Rgb(91, 0, 130)),
-            ('B', Color::Rgb(85, 1, 129)),
-            ('C', Color::Rgb(68, 3, 127)),
-            ('D', Color::Rgb(54, 4, 126)),
-            ('E', Color::Rgb(38, 6, 124)),
-            ('F', Color::Rgb(30, 7, 123)),
-            ('G', Color::Rgb(20, 8, 122)),
-            ('H', Color::Rgb(13, 9, 121)),
-            ('I', Color::Rgb(8, 17, 129)),
-            ('J', Color::Rgb(7, 38, 151)),
-            ('K', Color::Rgb(5, 64, 178)),
-            ('L', Color::Rgb(3, 89, 203)),
-            ('M', Color::Rgb(1, 116, 230)),
-            ('N', Color::Rgb(0, 140, 255)),
-        ]
-        .iter()
-        .cloned()
-        .collect();
-
-        let mut styled_lines = Vec::new();
-
-        for (_, (logo_line, color_line)) in logo_lines.iter().zip(logo_color.iter()).enumerate() {
-            let mut spans = Vec::new();
-            let logo_chars: Vec<char> = logo_line.chars().collect();
-            let color_chars: Vec<char> = color_line.chars().collect();
-
-            for (j, &logo_char) in logo_chars.iter().enumerate() {
-                let color = if j < color_chars.len() {
-                    color_map
-                        .get(&color_chars[j])
-                        .copied()
-                        .unwrap_or(Color::White)
-                } else {
-                    Color::White
-                };
-
-                spans.push(Span::styled(
-                    logo_char.to_string(),
-                    Style::default().fg(color),
-                ));
-            }
-
-            styled_lines.push(Line::from(spans));
-        }
-
-        let logo = Paragraph::new(styled_lines)
-            .block(Block::default())
-            .wrap(ratatui::widgets::Wrap { trim: false });
-
-        frame.render_widget(logo, horizontal[1]);
+        // frame.render_widget(Paragraph::new().centered(), area);
     }
 
     fn render_info(&self, frame: &mut Frame, area: Rect) {
@@ -551,7 +456,15 @@ impl AuthComponent {
     }
 
     fn render_username(&self, frame: &mut Frame, area: Rect) {
-        let width = area.width.max(3) - 3;
+        let horizontal = Layout::default()
+            .direction(ratatui::layout::Direction::Horizontal)
+            .constraints([
+                Constraint::Fill(1),
+                Constraint::Length(45),
+                Constraint::Fill(1),
+            ])
+            .split(area);
+        let width = horizontal[1].width.max(3) - 3;
         let scroll = self.username_input.visual_scroll(width as usize);
 
         let title_style = if self.focus == Focus::Username {
@@ -578,19 +491,27 @@ impl AuthComponent {
                     .border_set(border::ROUNDED)
                     .border_style(border_style),
             );
-        frame.render_widget(input, area);
+        frame.render_widget(input, horizontal[1]);
 
         if self.focus == Focus::Username {
             // Ratatui hides the cursor unless it's explicitly set. Position the  cursor past the
             // end of the input text and one line down from the border to the input line
             let x = self.username_input.visual_cursor().max(scroll) - scroll + 1;
-            frame.set_cursor_position((area.x + x as u16, area.y + 1))
+            frame.set_cursor_position((horizontal[1].x + x as u16, horizontal[1].y + 1))
         }
     }
 
     fn render_password(&self, frame: &mut Frame, area: Rect) {
+        let horizontal = Layout::default()
+            .direction(ratatui::layout::Direction::Horizontal)
+            .constraints([
+                Constraint::Fill(1),
+                Constraint::Length(45),
+                Constraint::Fill(1),
+            ])
+            .split(area);
         // keep 2 for borders and 1 for cursor
-        let width = area.width.max(3) - 3;
+        let width = horizontal[1].width.max(3) - 3;
         let scroll = self.password_input.visual_scroll(width as usize);
         let input_style = if self.focus == Focus::Password {
             Style::default().fg(self.theme.roles.text)
@@ -620,17 +541,25 @@ impl AuthComponent {
                     .border_set(border::ROUNDED)
                     .border_style(border_style),
             );
-        frame.render_widget(input, area);
+        frame.render_widget(input, horizontal[1]);
 
         if self.focus == Focus::Password {
             let x = self.password_input.visual_cursor().max(scroll) - scroll + 1;
-            frame.set_cursor_position((area.x + x as u16, area.y + 1))
+            frame.set_cursor_position((horizontal[1].x + x as u16, horizontal[1].y + 1))
         }
     }
 
     fn render_confirm(&self, frame: &mut Frame, area: Rect) {
+        let horizontal = Layout::default()
+            .direction(ratatui::layout::Direction::Horizontal)
+            .constraints([
+                Constraint::Fill(1),
+                Constraint::Length(45),
+                Constraint::Fill(1),
+            ])
+            .split(area);
         // keep 2 for borders and 1 for cursor
-        let width = area.width.max(3) - 3;
+        let width = horizontal[1].width.max(3) - 3;
         let scroll = self.confirm_input.visual_scroll(width as usize);
         let input_style = if self.focus == Focus::Confirm {
             Style::default().fg(self.theme.roles.text)
@@ -660,11 +589,11 @@ impl AuthComponent {
                     .border_set(border::ROUNDED)
                     .border_style(border_style),
             );
-        frame.render_widget(input, area);
+        frame.render_widget(input, horizontal[1]);
 
         if self.focus == Focus::Confirm {
             let x = self.confirm_input.visual_cursor().max(scroll) - scroll + 1;
-            frame.set_cursor_position((area.x + x as u16, area.y + 1))
+            frame.set_cursor_position((horizontal[1].x + x as u16, horizontal[1].y + 1))
         }
     }
 }

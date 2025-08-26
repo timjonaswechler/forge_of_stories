@@ -1,2 +1,3 @@
-// mod assets;
-// mod settings;
+mod assets;
+mod keymap;
+mod settings;

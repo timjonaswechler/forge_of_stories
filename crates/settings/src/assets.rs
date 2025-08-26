@@ -1,5 +1,5 @@
 use rust_embed::RustEmbed;
-use std::{borrow::Cow, fmt, str};
+use std::{borrow::Cow, str};
 use util::asset_str;
 
 #[derive(RustEmbed)]
@@ -22,6 +22,11 @@ pub const DEFAULT_KEYMAP_PATH: &str = "keymaps/default-windows.toml";
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
 pub const DEFAULT_KEYMAP_PATH: &str = "keymaps/default-linux.toml";
 
+pub const DEFAULT_GAMEPAD_KEYMAP_PATH: &str = "keymaps/default-gamepad.toml";
+
 pub fn default_keymap() -> Cow<'static, str> {
     asset_str::<SettingsAssets>(DEFAULT_KEYMAP_PATH)
+}
+pub fn default_gamepad_keymap() -> Cow<'static, str> {
+    asset_str::<SettingsAssets>(DEFAULT_GAMEPAD_KEYMAP_PATH)
 }

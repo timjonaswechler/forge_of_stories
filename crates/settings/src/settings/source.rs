@@ -9,11 +9,11 @@ pub struct SettingsSources<'a, T> {
     /// The user settings.
     pub user: Option<&'a T>,
     /// The user settings for the current release channel.
-    pub release_channel: Option<&'a T>,
-    /// The user settings for the current operating system.
-    pub operating_system: Option<&'a T>,
-    /// The settings associated with an enabled settings profile
-    pub profile: Option<&'a T>,
+    // pub release_channel: Option<&'a T>,
+    // /// The user settings for the current operating system.
+    // pub operating_system: Option<&'a T>,
+    // /// The settings associated with an enabled settings profile
+    // pub profile: Option<&'a T>,
     /// The server's settings.
     pub server: Option<&'a T>,
     /// The project settings, ordered from least specific to most specific.

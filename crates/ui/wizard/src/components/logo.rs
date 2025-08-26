@@ -15,9 +15,6 @@ impl LogoComponent {
     pub fn new() -> Self {
         Self::default()
     }
-    pub(crate) fn length() -> u16 {
-        71
-    }
 }
 
 impl Component for LogoComponent {
