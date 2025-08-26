@@ -15,9 +15,12 @@ dedicated-server = []
 
 [dependencies]
 bitflags.workspace = true
+log.workspace = true
+futures.workspace = true
 util.workspace = true
 rust-embed.workspace = true
 serde.workspace = true
+tokio.workspace = true
 toml.workspace = true
 toml_edit.workspace = true
 anyhow.workspace = true

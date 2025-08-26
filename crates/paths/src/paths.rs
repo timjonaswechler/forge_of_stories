@@ -1,32 +1,23 @@
 //! Paths to locations used by Forge_of_Stories.
 
 use globset::{Glob, GlobSet, GlobSetBuilder};
-use regex::Regex;
-use serde::{Deserialize, Serialize};
+
 use std::cmp::{self, Ordering};
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf, StripPrefixError};
 use std::sync::{Arc, OnceLock};
-use std::{ffi::OsStr, sync::LazyLock};
 use unicase::UniCase;
 
-/// A custom data directory override, set only by `set_custom_data_dir`.
-/// This is used to override the default data directory location.
-/// The directory will be created if it doesn't exist when set.
 static CUSTOM_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 
-/// The resolved data directory, combining custom override or platform defaults.
-/// This is set once and cached for subsequent calls.
-/// On macOS, this is `~/Library/Application Support/Forge_of_Stories`.
-/// On Linux/FreeBSD, this is `$XDG_DATA_HOME/Forge_of_Stories`.
-/// On Windows, this is `%LOCALAPPDATA%\Forge_of_Stories`.
 static CURRENT_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 
-/// The resolved config directory, combining custom override or platform defaults.
-/// This is set once and cached for subsequent calls.
-/// On macOS, this is `~/.config/Forge_of_Stories`.
-/// On Linux/FreeBSD, this is `$XDG_CONFIG_HOME/Forge_of_Stories`.
-/// On Windows, this is `%APPDATA%\Forge_of_Stories`.
 static CONFIG_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+const ENV_DATA_DIR: &str = "FORGE_OF_STORIES_DATA_DIR";
+const ENV_CONFIG_DIR: &str = "FORGE_OF_STORIES_CONFIG_DIR";
+const ENV_DATA_DIR_ALT: &str = "FOS_DATA_DIR";
+const ENV_CONFIG_DIR_ALT: &str = "FOS_CONFIG_DIR";
 
 /// Sets a custom directory for all user data, overriding the default data directory.
 /// This function must be called before any other path operations that depend on the data directory.
@@ -68,9 +59,15 @@ pub fn set_custom_data_dir(dir: &str) -> &'static PathBuf {
 /// Returns the path to the configuration directory used by Forge_of_Stories.
 pub fn config_dir() -> &'static PathBuf {
     CONFIG_DIR.get_or_init(|| {
-        if let Some(custom_dir) = CUSTOM_DATA_DIR.get() {
+        // 1) ENV overrides
+        if let Ok(p) = std::env::var(ENV_CONFIG_DIR).or_else(|_| std::env::var(ENV_CONFIG_DIR_ALT))
+        {
+            PathBuf::from(p)
+        } else if let Some(custom_dir) = CUSTOM_DATA_DIR.get() {
+            // 2) Runtime override via custom data dir
             custom_dir.join("config")
         } else if cfg!(target_os = "windows") {
+            // 3) OS defaults
             dirs::config_dir()
                 .expect("failed to determine RoamingAppData directory")
                 .join("Forge_of_Stories")
@@ -90,8 +87,15 @@ pub fn config_dir() -> &'static PathBuf {
 /// Returns the path to the data directory used by Forge_of_Stories.
 pub fn data_dir() -> &'static PathBuf {
     CURRENT_DATA_DIR.get_or_init(|| {
+        // 1) Runtime override via custom data dir
         if let Some(custom_dir) = CUSTOM_DATA_DIR.get() {
             custom_dir.clone()
+        // 2) ENV overrides
+        } else if let Ok(p) =
+            std::env::var(ENV_DATA_DIR).or_else(|_| std::env::var(ENV_DATA_DIR_ALT))
+        {
+            PathBuf::from(p)
+        // 3) OS defaults
         } else if cfg!(target_os = "macos") {
             home_dir().join("Library/Application Support/Forge_of_Stories")
         } else if cfg!(any(target_os = "linux", target_os = "freebsd")) {
@@ -152,10 +156,26 @@ pub fn logs_dir() -> &'static PathBuf {
     })
 }
 
-/// Returns the path to the Forge_of_Stories server directory on this SSH host.
-pub fn remote_server_state_dir() -> &'static PathBuf {
-    static REMOTE_SERVER_STATE: OnceLock<PathBuf> = OnceLock::new();
-    REMOTE_SERVER_STATE.get_or_init(|| data_dir().join("server_state"))
+/// Ensures that the base data and config directories exist.
+pub fn ensure_base_dirs() -> std::io::Result<()> {
+    let dd = data_dir().clone();
+    let cd = config_dir().clone();
+    if !dd.exists() {
+        std::fs::create_dir_all(&dd)?;
+    }
+    if !cd.exists() {
+        std::fs::create_dir_all(&cd)?;
+    }
+    Ok(())
+}
+
+/// Ensures that the logs directory exists and returns it.
+pub fn ensure_logs_dir() -> std::io::Result<PathBuf> {
+    let ld = logs_dir().clone();
+    if !ld.exists() {
+        std::fs::create_dir_all(&ld)?;
+    }
+    Ok(ld)
 }
 
 /// Returns the path to the `Forge_of_Stories.server.log` file.
@@ -176,36 +196,6 @@ pub fn old_log_file() -> &'static PathBuf {
     OLD_LOG_FILE.get_or_init(|| logs_dir().join("Forge_of_Stories.log.old"))
 }
 
-/// Returns the path to the `settings.json` file.
-pub fn settings_file() -> &'static PathBuf {
-    static SETTINGS_FILE: OnceLock<PathBuf> = OnceLock::new();
-    SETTINGS_FILE.get_or_init(|| config_dir().join("settings.json"))
-}
-
-/// Returns the path to the global settings file.
-pub fn global_settings_file() -> &'static PathBuf {
-    static GLOBAL_SETTINGS_FILE: OnceLock<PathBuf> = OnceLock::new();
-    GLOBAL_SETTINGS_FILE.get_or_init(|| config_dir().join("global_settings.json"))
-}
-
-/// Returns the path to the `settings_backup.json` file.
-pub fn settings_backup_file() -> &'static PathBuf {
-    static SETTINGS_FILE: OnceLock<PathBuf> = OnceLock::new();
-    SETTINGS_FILE.get_or_init(|| config_dir().join("settings_backup.json"))
-}
-
-/// Returns the path to the `keymap.json` file.
-pub fn keymap_file() -> &'static PathBuf {
-    static KEYMAP_FILE: OnceLock<PathBuf> = OnceLock::new();
-    KEYMAP_FILE.get_or_init(|| config_dir().join("keymap.json"))
-}
-
-/// Returns the path to the `keymap_backup.json` file.
-pub fn keymap_backup_file() -> &'static PathBuf {
-    static KEYMAP_FILE: OnceLock<PathBuf> = OnceLock::new();
-    KEYMAP_FILE.get_or_init(|| config_dir().join("keymap_backup.json"))
-}
-
 /// Returns the path to the extensions directory.
 ///
 /// This is where installed extensions are stored.
@@ -214,77 +204,12 @@ pub fn extensions_dir() -> &'static PathBuf {
     EXTENSIONS_DIR.get_or_init(|| data_dir().join("extensions"))
 }
 
-/// Returns the path to the contexts directory.
-///
-/// This is where the prompts for use with the Assistant are stored.
-pub fn prompts_dir() -> &'static PathBuf {
-    static PROMPTS_DIR: OnceLock<PathBuf> = OnceLock::new();
-    PROMPTS_DIR.get_or_init(|| {
-        if cfg!(target_os = "macos") {
-            config_dir().join("prompts")
-        } else {
-            data_dir().join("prompts")
-        }
-    })
-}
-
-/// Returns the path to the prompt templates directory.
-///
-/// This is where the prompt templates for core features can be overridden with templates.
-///
-/// # Arguments
-///
-/// * `dev_mode` - If true, assumes the current working directory is the Forge_of_Stories repository.
-pub fn prompt_overrides_dir(repo_path: Option<&Path>) -> PathBuf {
-    if let Some(path) = repo_path {
-        let dev_path = path.join("assets").join("prompts");
-        if dev_path.exists() {
-            return dev_path;
-        }
-    }
-
-    static PROMPT_TEMPLATES_DIR: OnceLock<PathBuf> = OnceLock::new();
-    PROMPT_TEMPLATES_DIR
-        .get_or_init(|| {
-            if cfg!(target_os = "macos") {
-                config_dir().join("prompt_overrides")
-            } else {
-                data_dir().join("prompt_overrides")
-            }
-        })
-        .clone()
-}
-
 /// Returns the path to the languages directory.
 ///
 /// This is where language servers are downloaded to for languages built-in to Forge_of_Stories.
 pub fn languages_dir() -> &'static PathBuf {
     static LANGUAGES_DIR: OnceLock<PathBuf> = OnceLock::new();
     LANGUAGES_DIR.get_or_init(|| data_dir().join("languages"))
-}
-
-/// Returns the relative path to a `.Forge_of_Stories` folder within a project.
-pub fn local_settings_folder_relative_path() -> &'static Path {
-    Path::new(".forge_of_stories")
-}
-
-/// Returns the relative path to a `settings.json` file within a project.
-pub fn local_settings_file_relative_path() -> &'static Path {
-    Path::new(".forge_of_stories/settings.json")
-}
-
-/// Returns the relative path to a `debug.json` file within a project.
-/// .Forge_of_Stories/debug.json
-pub fn local_debug_file_relative_path() -> &'static Path {
-    Path::new(".forge_of_stories/debug.json")
-}
-
-pub fn user_ssh_config_file() -> PathBuf {
-    home_dir().join(".ssh/config")
-}
-
-pub fn global_ssh_config_file() -> &'static Path {
-    Path::new("/etc/ssh/ssh_config")
 }
 
 /// Returns the path to the user's home directory.
@@ -466,300 +391,6 @@ impl PathStyle {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct RemotePathBuf {
-    inner: PathBuf,
-    style: PathStyle,
-    string: String, // Cached string representation
-}
-
-impl RemotePathBuf {
-    pub fn new(path: PathBuf, style: PathStyle) -> Self {
-        #[cfg(target_os = "windows")]
-        let string = match style {
-            PathStyle::Posix => path.to_string_lossy().replace('\\', "/"),
-            PathStyle::Windows => path.to_string_lossy().into(),
-        };
-        #[cfg(not(target_os = "windows"))]
-        let string = match style {
-            PathStyle::Posix => path.to_string_lossy().to_string(),
-            PathStyle::Windows => path.to_string_lossy().replace('/', "\\"),
-        };
-        Self {
-            inner: path,
-            style,
-            string,
-        }
-    }
-
-    pub fn from_str(path: &str, style: PathStyle) -> Self {
-        let path_buf = PathBuf::from(path);
-        Self::new(path_buf, style)
-    }
-
-    pub fn to_string(&self) -> String {
-        self.string.clone()
-    }
-
-    #[cfg(target_os = "windows")]
-    pub fn to_proto(self) -> String {
-        match self.path_style() {
-            PathStyle::Posix => self.to_string(),
-            PathStyle::Windows => self.inner.to_string_lossy().replace('\\', "/"),
-        }
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    pub fn to_proto(self) -> String {
-        match self.path_style() {
-            PathStyle::Posix => self.inner.to_string_lossy().to_string(),
-            PathStyle::Windows => self.to_string(),
-        }
-    }
-
-    pub fn as_path(&self) -> &Path {
-        &self.inner
-    }
-
-    pub fn path_style(&self) -> PathStyle {
-        self.style
-    }
-
-    pub fn parent(&self) -> Option<RemotePathBuf> {
-        self.inner
-            .parent()
-            .map(|p| RemotePathBuf::new(p.to_path_buf(), self.style))
-    }
-}
-
-/// A delimiter to use in `path_query:row_number:column_number` strings parsing.
-pub const FILE_ROW_COLUMN_DELIMITER: char = ':';
-
-const ROW_COL_CAPTURE_REGEX: &str = r"(?xs)
-    ([^\(]+)\:(?:
-        \((\d+)[,:](\d+)\) # filename:(row,column), filename:(row:column)
-        |
-        \((\d+)\)()     # filename:(row)
-    )
-    |
-    ([^\(]+)(?:
-        \((\d+)[,:](\d+)\) # filename(row,column), filename(row:column)
-        |
-        \((\d+)\)()     # filename(row)
-    )
-    |
-    (.+?)(?:
-        \:+(\d+)\:(\d+)\:*$  # filename:row:column
-        |
-        \:+(\d+)\:*()$       # filename:row
-    )";
-
-/// A representation of a path-like string with optional row and column numbers.
-/// Matching values example: `te`, `test.rs:22`, `te:22:5`, `test.c(22)`, `test.c(22,5)`etc.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
-pub struct PathWithPosition {
-    pub path: PathBuf,
-    pub row: Option<u32>,
-    // Absent if row is absent.
-    pub column: Option<u32>,
-}
-
-impl PathWithPosition {
-    /// Returns a PathWithPosition from a path.
-    pub fn from_path(path: PathBuf) -> Self {
-        Self {
-            path,
-            row: None,
-            column: None,
-        }
-    }
-
-    /// Parses a string that possibly has `:row:column` or `(row, column)` suffix.
-    /// Parenthesis format is used by [MSBuild](https://learn.microsoft.com/en-us/visualstudio/msbuild/msbuild-diagnostic-format-for-tasks) compatible tools
-    /// Ignores trailing `:`s, so `test.rs:22:` is parsed as `test.rs:22`.
-    /// If the suffix parsing fails, the whole string is parsed as a path.
-    ///
-    /// Be mindful that `test_file:10:1:` is a valid posix filename.
-    /// `PathWithPosition` class assumes that the ending position-like suffix is **not** part of the filename.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use util::paths::PathWithPosition;
-    /// # use std::path::PathBuf;
-    /// assert_eq!(PathWithPosition::parse_str("test_file"), PathWithPosition {
-    ///     path: PathBuf::from("test_file"),
-    ///     row: None,
-    ///     column: None,
-    /// });
-    /// assert_eq!(PathWithPosition::parse_str("test_file:10"), PathWithPosition {
-    ///     path: PathBuf::from("test_file"),
-    ///     row: Some(10),
-    ///     column: None,
-    /// });
-    /// assert_eq!(PathWithPosition::parse_str("test_file.rs"), PathWithPosition {
-    ///     path: PathBuf::from("test_file.rs"),
-    ///     row: None,
-    ///     column: None,
-    /// });
-    /// assert_eq!(PathWithPosition::parse_str("test_file.rs:1"), PathWithPosition {
-    ///     path: PathBuf::from("test_file.rs"),
-    ///     row: Some(1),
-    ///     column: None,
-    /// });
-    /// assert_eq!(PathWithPosition::parse_str("test_file.rs:1:2"), PathWithPosition {
-    ///     path: PathBuf::from("test_file.rs"),
-    ///     row: Some(1),
-    ///     column: Some(2),
-    /// });
-    /// ```
-    ///
-    /// # Expected parsing results when encounter ill-formatted inputs.
-    /// ```
-    /// # use util::paths::PathWithPosition;
-    /// # use std::path::PathBuf;
-    /// assert_eq!(PathWithPosition::parse_str("test_file.rs:a"), PathWithPosition {
-    ///     path: PathBuf::from("test_file.rs:a"),
-    ///     row: None,
-    ///     column: None,
-    /// });
-    /// assert_eq!(PathWithPosition::parse_str("test_file.rs:a:b"), PathWithPosition {
-    ///     path: PathBuf::from("test_file.rs:a:b"),
-    ///     row: None,
-    ///     column: None,
-    /// });
-    /// assert_eq!(PathWithPosition::parse_str("test_file.rs::"), PathWithPosition {
-    ///     path: PathBuf::from("test_file.rs::"),
-    ///     row: None,
-    ///     column: None,
-    /// });
-    /// assert_eq!(PathWithPosition::parse_str("test_file.rs::1"), PathWithPosition {
-    ///     path: PathBuf::from("test_file.rs"),
-    ///     row: Some(1),
-    ///     column: None,
-    /// });
-    /// assert_eq!(PathWithPosition::parse_str("test_file.rs:1::"), PathWithPosition {
-    ///     path: PathBuf::from("test_file.rs"),
-    ///     row: Some(1),
-    ///     column: None,
-    /// });
-    /// assert_eq!(PathWithPosition::parse_str("test_file.rs::1:2"), PathWithPosition {
-    ///     path: PathBuf::from("test_file.rs"),
-    ///     row: Some(1),
-    ///     column: Some(2),
-    /// });
-    /// assert_eq!(PathWithPosition::parse_str("test_file.rs:1::2"), PathWithPosition {
-    ///     path: PathBuf::from("test_file.rs:1"),
-    ///     row: Some(2),
-    ///     column: None,
-    /// });
-    /// assert_eq!(PathWithPosition::parse_str("test_file.rs:1:2:3"), PathWithPosition {
-    ///     path: PathBuf::from("test_file.rs:1"),
-    ///     row: Some(2),
-    ///     column: Some(3),
-    /// });
-    /// ```
-    pub fn parse_str(s: &str) -> Self {
-        let trimmed = s.trim();
-        let path = Path::new(trimmed);
-        let maybe_file_name_with_row_col = path.file_name().unwrap_or_default().to_string_lossy();
-        if maybe_file_name_with_row_col.is_empty() {
-            return Self {
-                path: Path::new(s).to_path_buf(),
-                row: None,
-                column: None,
-            };
-        }
-
-        // Let's avoid repeated init cost on this. It is subject to thread contention, but
-        // so far this code isn't called from multiple hot paths. Getting contention here
-        // in the future seems unlikely.
-        static SUFFIX_RE: LazyLock<Regex> =
-            LazyLock::new(|| Regex::new(ROW_COL_CAPTURE_REGEX).unwrap());
-        match SUFFIX_RE
-            .captures(&maybe_file_name_with_row_col)
-            .map(|caps| caps.extract())
-        {
-            Some((_, [file_name, maybe_row, maybe_column])) => {
-                let row = maybe_row.parse::<u32>().ok();
-                let column = maybe_column.parse::<u32>().ok();
-
-                let suffix_length = maybe_file_name_with_row_col.len() - file_name.len();
-                let path_without_suffix = &trimmed[..trimmed.len() - suffix_length];
-
-                Self {
-                    path: Path::new(path_without_suffix).to_path_buf(),
-                    row,
-                    column,
-                }
-            }
-            None => {
-                // The `ROW_COL_CAPTURE_REGEX` deals with separated digits only,
-                // but in reality there could be `foo/bar.py:22:in` inputs which we want to match too.
-                // The regex mentioned is not very extendable with "digit or random string" checks, so do this here instead.
-                let delimiter = ':';
-                let mut path_parts = s
-                    .rsplitn(3, delimiter)
-                    .collect::<Vec<_>>()
-                    .into_iter()
-                    .rev()
-                    .fuse();
-                let mut path_string = path_parts.next().expect("rsplitn should have the rest of the string as its last parameter that we reversed").to_owned();
-                let mut row = None;
-                let mut column = None;
-                if let Some(maybe_row) = path_parts.next() {
-                    if let Ok(parsed_row) = maybe_row.parse::<u32>() {
-                        row = Some(parsed_row);
-                        if let Some(parsed_column) = path_parts
-                            .next()
-                            .and_then(|maybe_col| maybe_col.parse::<u32>().ok())
-                        {
-                            column = Some(parsed_column);
-                        }
-                    } else {
-                        path_string.push(delimiter);
-                        path_string.push_str(maybe_row);
-                    }
-                }
-                for split in path_parts {
-                    path_string.push(delimiter);
-                    path_string.push_str(split);
-                }
-
-                Self {
-                    path: PathBuf::from(path_string),
-                    row,
-                    column,
-                }
-            }
-        }
-    }
-
-    pub fn map_path<E>(
-        self,
-        mapping: impl FnOnce(PathBuf) -> Result<PathBuf, E>,
-    ) -> Result<PathWithPosition, E> {
-        Ok(PathWithPosition {
-            path: mapping(self.path)?,
-            row: self.row,
-            column: self.column,
-        })
-    }
-
-    pub fn to_string(&self, path_to_string: impl Fn(&PathBuf) -> String) -> String {
-        let path_string = path_to_string(&self.path);
-        if let Some(row) = self.row {
-            if let Some(column) = self.column {
-                format!("{path_string}:{row}:{column}")
-            } else {
-                format!("{path_string}:{row}")
-            }
-        } else {
-            path_string
-        }
-    }
-}
-
 #[derive(Clone, Debug, Default)]
 pub struct PathMatcher {
     sources: Vec<String>,
@@ -914,456 +545,5 @@ impl Ord for NumericPrefixWithSuffix<'_> {
 impl PartialOrd for NumericPrefixWithSuffix<'_> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn compare_paths_with_dots() {
-        let mut paths = vec![
-            (Path::new("test_dirs"), false),
-            (Path::new("test_dirs/1.46"), false),
-            (Path::new("test_dirs/1.46/bar_1"), true),
-            (Path::new("test_dirs/1.46/bar_2"), true),
-            (Path::new("test_dirs/1.45"), false),
-            (Path::new("test_dirs/1.45/foo_2"), true),
-            (Path::new("test_dirs/1.45/foo_1"), true),
-        ];
-        paths.sort_by(|&a, &b| compare_paths(a, b));
-        assert_eq!(
-            paths,
-            vec![
-                (Path::new("test_dirs"), false),
-                (Path::new("test_dirs/1.45"), false),
-                (Path::new("test_dirs/1.45/foo_1"), true),
-                (Path::new("test_dirs/1.45/foo_2"), true),
-                (Path::new("test_dirs/1.46"), false),
-                (Path::new("test_dirs/1.46/bar_1"), true),
-                (Path::new("test_dirs/1.46/bar_2"), true),
-            ]
-        );
-        let mut paths = vec![
-            (Path::new("root1/one.txt"), true),
-            (Path::new("root1/one.two.txt"), true),
-        ];
-        paths.sort_by(|&a, &b| compare_paths(a, b));
-        assert_eq!(
-            paths,
-            vec![
-                (Path::new("root1/one.txt"), true),
-                (Path::new("root1/one.two.txt"), true),
-            ]
-        );
-    }
-
-    #[test]
-    fn compare_paths_with_same_name_different_extensions() {
-        let mut paths = vec![
-            (Path::new("test_dirs/file.rs"), true),
-            (Path::new("test_dirs/file.txt"), true),
-            (Path::new("test_dirs/file.md"), true),
-            (Path::new("test_dirs/file"), true),
-            (Path::new("test_dirs/file.a"), true),
-        ];
-        paths.sort_by(|&a, &b| compare_paths(a, b));
-        assert_eq!(
-            paths,
-            vec![
-                (Path::new("test_dirs/file"), true),
-                (Path::new("test_dirs/file.a"), true),
-                (Path::new("test_dirs/file.md"), true),
-                (Path::new("test_dirs/file.rs"), true),
-                (Path::new("test_dirs/file.txt"), true),
-            ]
-        );
-    }
-
-    #[test]
-    fn compare_paths_case_semi_sensitive() {
-        let mut paths = vec![
-            (Path::new("test_DIRS"), false),
-            (Path::new("test_DIRS/foo_1"), true),
-            (Path::new("test_DIRS/foo_2"), true),
-            (Path::new("test_DIRS/bar"), true),
-            (Path::new("test_DIRS/BAR"), true),
-            (Path::new("test_dirs"), false),
-            (Path::new("test_dirs/foo_1"), true),
-            (Path::new("test_dirs/foo_2"), true),
-            (Path::new("test_dirs/bar"), true),
-            (Path::new("test_dirs/BAR"), true),
-        ];
-        paths.sort_by(|&a, &b| compare_paths(a, b));
-        assert_eq!(
-            paths,
-            vec![
-                (Path::new("test_dirs"), false),
-                (Path::new("test_dirs/bar"), true),
-                (Path::new("test_dirs/BAR"), true),
-                (Path::new("test_dirs/foo_1"), true),
-                (Path::new("test_dirs/foo_2"), true),
-                (Path::new("test_DIRS"), false),
-                (Path::new("test_DIRS/bar"), true),
-                (Path::new("test_DIRS/BAR"), true),
-                (Path::new("test_DIRS/foo_1"), true),
-                (Path::new("test_DIRS/foo_2"), true),
-            ]
-        );
-    }
-
-    #[test]
-    fn path_with_position_parse_posix_path() {
-        // Test POSIX filename edge cases
-        // Read more at https://en.wikipedia.org/wiki/Filename
-        assert_eq!(
-            PathWithPosition::parse_str("test_file"),
-            PathWithPosition {
-                path: PathBuf::from("test_file"),
-                row: None,
-                column: None
-            }
-        );
-
-        assert_eq!(
-            PathWithPosition::parse_str("a:bc:.zip:1"),
-            PathWithPosition {
-                path: PathBuf::from("a:bc:.zip"),
-                row: Some(1),
-                column: None
-            }
-        );
-
-        assert_eq!(
-            PathWithPosition::parse_str("one.second.zip:1"),
-            PathWithPosition {
-                path: PathBuf::from("one.second.zip"),
-                row: Some(1),
-                column: None
-            }
-        );
-
-        // Trim off trailing `:`s for otherwise valid input.
-        assert_eq!(
-            PathWithPosition::parse_str("test_file:10:1:"),
-            PathWithPosition {
-                path: PathBuf::from("test_file"),
-                row: Some(10),
-                column: Some(1)
-            }
-        );
-
-        assert_eq!(
-            PathWithPosition::parse_str("test_file.rs:"),
-            PathWithPosition {
-                path: PathBuf::from("test_file.rs:"),
-                row: None,
-                column: None
-            }
-        );
-
-        assert_eq!(
-            PathWithPosition::parse_str("test_file.rs:1:"),
-            PathWithPosition {
-                path: PathBuf::from("test_file.rs"),
-                row: Some(1),
-                column: None
-            }
-        );
-
-        assert_eq!(
-            PathWithPosition::parse_str("ab\ncd"),
-            PathWithPosition {
-                path: PathBuf::from("ab\ncd"),
-                row: None,
-                column: None
-            }
-        );
-
-        assert_eq!(
-            PathWithPosition::parse_str("👋\nab"),
-            PathWithPosition {
-                path: PathBuf::from("👋\nab"),
-                row: None,
-                column: None
-            }
-        );
-
-        assert_eq!(
-            PathWithPosition::parse_str("Types.hs:(617,9)-(670,28):"),
-            PathWithPosition {
-                path: PathBuf::from("Types.hs"),
-                row: Some(617),
-                column: Some(9),
-            }
-        );
-    }
-
-    #[test]
-    #[cfg(not(target_os = "windows"))]
-    fn path_with_position_parse_posix_path_with_suffix() {
-        assert_eq!(
-            PathWithPosition::parse_str("foo/bar:34:in"),
-            PathWithPosition {
-                path: PathBuf::from("foo/bar"),
-                row: Some(34),
-                column: None,
-            }
-        );
-        assert_eq!(
-            PathWithPosition::parse_str("foo/bar.rs:1902:::15:"),
-            PathWithPosition {
-                path: PathBuf::from("foo/bar.rs:1902"),
-                row: Some(15),
-                column: None
-            }
-        );
-
-        assert_eq!(
-            PathWithPosition::parse_str("app-editors:zed-0.143.6:20240710-201212.log:34:"),
-            PathWithPosition {
-                path: PathBuf::from("app-editors:zed-0.143.6:20240710-201212.log"),
-                row: Some(34),
-                column: None,
-            }
-        );
-
-        assert_eq!(
-            PathWithPosition::parse_str("crates/file_finder/src/file_finder.rs:1902:13:"),
-            PathWithPosition {
-                path: PathBuf::from("crates/file_finder/src/file_finder.rs"),
-                row: Some(1902),
-                column: Some(13),
-            }
-        );
-
-        assert_eq!(
-            PathWithPosition::parse_str("crate/utils/src/test:today.log:34"),
-            PathWithPosition {
-                path: PathBuf::from("crate/utils/src/test:today.log"),
-                row: Some(34),
-                column: None,
-            }
-        );
-        assert_eq!(
-            PathWithPosition::parse_str("/testing/out/src/file_finder.odin(7:15)"),
-            PathWithPosition {
-                path: PathBuf::from("/testing/out/src/file_finder.odin"),
-                row: Some(7),
-                column: Some(15),
-            }
-        );
-    }
-
-    #[test]
-    #[cfg(target_os = "windows")]
-    fn path_with_position_parse_windows_path() {
-        assert_eq!(
-            PathWithPosition::parse_str("crates\\utils\\paths.rs"),
-            PathWithPosition {
-                path: PathBuf::from("crates\\utils\\paths.rs"),
-                row: None,
-                column: None
-            }
-        );
-
-        assert_eq!(
-            PathWithPosition::parse_str("C:\\Users\\someone\\test_file.rs"),
-            PathWithPosition {
-                path: PathBuf::from("C:\\Users\\someone\\test_file.rs"),
-                row: None,
-                column: None
-            }
-        );
-    }
-
-    #[test]
-    #[cfg(target_os = "windows")]
-    fn path_with_position_parse_windows_path_with_suffix() {
-        assert_eq!(
-            PathWithPosition::parse_str("crates\\utils\\paths.rs:101"),
-            PathWithPosition {
-                path: PathBuf::from("crates\\utils\\paths.rs"),
-                row: Some(101),
-                column: None
-            }
-        );
-
-        assert_eq!(
-            PathWithPosition::parse_str("\\\\?\\C:\\Users\\someone\\test_file.rs:1:20"),
-            PathWithPosition {
-                path: PathBuf::from("\\\\?\\C:\\Users\\someone\\test_file.rs"),
-                row: Some(1),
-                column: Some(20)
-            }
-        );
-
-        assert_eq!(
-            PathWithPosition::parse_str("C:\\Users\\someone\\test_file.rs(1902,13)"),
-            PathWithPosition {
-                path: PathBuf::from("C:\\Users\\someone\\test_file.rs"),
-                row: Some(1902),
-                column: Some(13)
-            }
-        );
-
-        // Trim off trailing `:`s for otherwise valid input.
-        assert_eq!(
-            PathWithPosition::parse_str("\\\\?\\C:\\Users\\someone\\test_file.rs:1902:13:"),
-            PathWithPosition {
-                path: PathBuf::from("\\\\?\\C:\\Users\\someone\\test_file.rs"),
-                row: Some(1902),
-                column: Some(13)
-            }
-        );
-
-        assert_eq!(
-            PathWithPosition::parse_str("\\\\?\\C:\\Users\\someone\\test_file.rs:1902:13:15:"),
-            PathWithPosition {
-                path: PathBuf::from("\\\\?\\C:\\Users\\someone\\test_file.rs:1902"),
-                row: Some(13),
-                column: Some(15)
-            }
-        );
-
-        assert_eq!(
-            PathWithPosition::parse_str("\\\\?\\C:\\Users\\someone\\test_file.rs:1902:::15:"),
-            PathWithPosition {
-                path: PathBuf::from("\\\\?\\C:\\Users\\someone\\test_file.rs:1902"),
-                row: Some(15),
-                column: None
-            }
-        );
-
-        assert_eq!(
-            PathWithPosition::parse_str("\\\\?\\C:\\Users\\someone\\test_file.rs(1902,13):"),
-            PathWithPosition {
-                path: PathBuf::from("\\\\?\\C:\\Users\\someone\\test_file.rs"),
-                row: Some(1902),
-                column: Some(13),
-            }
-        );
-
-        assert_eq!(
-            PathWithPosition::parse_str("\\\\?\\C:\\Users\\someone\\test_file.rs(1902):"),
-            PathWithPosition {
-                path: PathBuf::from("\\\\?\\C:\\Users\\someone\\test_file.rs"),
-                row: Some(1902),
-                column: None,
-            }
-        );
-
-        assert_eq!(
-            PathWithPosition::parse_str("C:\\Users\\someone\\test_file.rs:1902:13:"),
-            PathWithPosition {
-                path: PathBuf::from("C:\\Users\\someone\\test_file.rs"),
-                row: Some(1902),
-                column: Some(13),
-            }
-        );
-
-        assert_eq!(
-            PathWithPosition::parse_str("C:\\Users\\someone\\test_file.rs(1902,13):"),
-            PathWithPosition {
-                path: PathBuf::from("C:\\Users\\someone\\test_file.rs"),
-                row: Some(1902),
-                column: Some(13),
-            }
-        );
-
-        assert_eq!(
-            PathWithPosition::parse_str("C:\\Users\\someone\\test_file.rs(1902):"),
-            PathWithPosition {
-                path: PathBuf::from("C:\\Users\\someone\\test_file.rs"),
-                row: Some(1902),
-                column: None,
-            }
-        );
-
-        assert_eq!(
-            PathWithPosition::parse_str("crates/utils/paths.rs:101"),
-            PathWithPosition {
-                path: PathBuf::from("crates\\utils\\paths.rs"),
-                row: Some(101),
-                column: None,
-            }
-        );
-    }
-
-    #[test]
-    fn test_path_compact() {
-        let path: PathBuf = [
-            home_dir().to_string_lossy().to_string(),
-            "some_file.txt".to_string(),
-        ]
-        .iter()
-        .collect();
-        if cfg!(any(target_os = "linux", target_os = "freebsd")) || cfg!(target_os = "macos") {
-            assert_eq!(path.compact().to_str(), Some("~/some_file.txt"));
-        } else {
-            assert_eq!(path.compact().to_str(), path.to_str());
-        }
-    }
-
-    #[test]
-    fn test_extension_or_hidden_file_name() {
-        // No dots in name
-        let path = Path::new("/a/b/c/file_name.rs");
-        assert_eq!(path.extension_or_hidden_file_name(), Some("rs"));
-
-        // Single dot in name
-        let path = Path::new("/a/b/c/file.name.rs");
-        assert_eq!(path.extension_or_hidden_file_name(), Some("rs"));
-
-        // Multiple dots in name
-        let path = Path::new("/a/b/c/long.file.name.rs");
-        assert_eq!(path.extension_or_hidden_file_name(), Some("rs"));
-
-        // Hidden file, no extension
-        let path = Path::new("/a/b/c/.gitignore");
-        assert_eq!(path.extension_or_hidden_file_name(), Some("gitignore"));
-
-        // Hidden file, with extension
-        let path = Path::new("/a/b/c/.eslintrc.js");
-        assert_eq!(path.extension_or_hidden_file_name(), Some("eslintrc.js"));
-    }
-
-    #[test]
-    fn edge_of_glob() {
-        let path = Path::new("/work/node_modules");
-        let path_matcher = PathMatcher::new(&["**/node_modules/**".to_owned()]).unwrap();
-        assert!(
-            path_matcher.is_match(path),
-            "Path matcher should match {path:?}"
-        );
-    }
-
-    #[test]
-    fn project_search() {
-        let path = Path::new("/Users/someonetoignore/work/zed/zed.dev/node_modules");
-        let path_matcher = PathMatcher::new(&["**/node_modules/**".to_owned()]).unwrap();
-        assert!(
-            path_matcher.is_match(path),
-            "Path matcher should match {path:?}"
-        );
-    }
-
-    #[test]
-    #[cfg(target_os = "windows")]
-    fn test_sanitized_path() {
-        let path = Path::new("C:\\Users\\someone\\test_file.rs");
-        let sanitized_path = SanitizedPath::from(path);
-        assert_eq!(
-            sanitized_path.to_string(),
-            "C:\\Users\\someone\\test_file.rs"
-        );
-
-        let path = Path::new("\\\\?\\C:\\Users\\someone\\test_file.rs");
-        let sanitized_path = SanitizedPath::from(path);
-        assert_eq!(
-            sanitized_path.to_string(),
-            "C:\\Users\\someone\\test_file.rs"
-        );
     }
 }

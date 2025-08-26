@@ -103,7 +103,7 @@ impl<'a> KeybindUpdateTarget<'a> {
         Ok(Value::Array(arr))
     }
 
-    fn keystrokes_unparsed(&self) -> String {
+    pub(crate) fn keystrokes_unparsed(&self) -> String {
         let mut keystrokes = String::with_capacity(self.keystrokes.len() * 8);
         for keystroke in self.keystrokes {
             keystrokes.push_str(&keystroke.unparse());

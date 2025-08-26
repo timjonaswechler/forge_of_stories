@@ -37,15 +37,16 @@ wizard = { path = "crates/ui/wizard" }
 
 
 #
+futures = { version = "0.3.28" }
 anyhow = { version = "1.0.80" }
 axum = { version = "0.8.4", features = ["json", "ws"] }
 bitflags = "2.9.3"
 clap = { version = "4.5.43", features = ["derive"] }
 color-eyre = { version = "0.6.3" }
 crossterm = "0.29.0"
-
 dirs = "4.0"
 globset = "0.4"
+log = "0.4.27"
 ratatui = "0.29.0"
 rcgen = { version = "0.14", features = [
     "pem",

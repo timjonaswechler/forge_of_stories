@@ -3,6 +3,8 @@ use super::{
     location::{SaveGameId, SettingsLocation},
     source::SettingsSources,
 };
+use anyhow::Result;
+use serde::Deserialize;
 use std::{
     any::{Any, type_name},
     ops::Range,
@@ -16,6 +18,9 @@ pub struct SettingValue<T> {
     pub global_value: Option<T>,
     pub local_values: Vec<(SaveGameId, Arc<Path>, T)>,
 }
+
+#[derive(Debug)]
+pub struct DeserializedSetting(pub Box<dyn Any>);
 
 pub trait AnySettingValue: 'static + Send + Sync {
     fn key(&self) -> Option<&'static str>;
@@ -65,33 +70,28 @@ impl<T: Settings> AnySettingValue for SettingValue<T> {
             server: values
                 .server
                 .map(|value| value.0.downcast_ref::<T::FileContent>().unwrap()),
-            project: values
-                .project
-                .iter()
-                .map(|value| value.0.downcast_ref().unwrap())
-                .collect::<SmallVec<[_; 3]>>()
-                .as_slice(),
+            project: &[],
         })?))
     }
 
     fn deserialize_setting_with_key(
         &self,
-        mut json: &Value,
+        mut toml: &Value,
     ) -> (Option<&'static str>, Result<DeserializedSetting>) {
         let mut key = None;
         if let Some(k) = T::KEY {
-            if let Some(value) = json.get(k) {
-                json = value;
+            if let Some(value) = toml.get(k) {
+                toml = value;
                 key = Some(k);
-            } else if let Some((k, value)) = T::FALLBACK_KEY.and_then(|k| Some((k, json.get(k)?))) {
-                json = value;
+            } else if let Some((k, value)) = T::FALLBACK_KEY.and_then(|k| Some((k, toml.get(k)?))) {
+                toml = value;
                 key = Some(k);
             } else {
                 let value = T::FileContent::default();
                 return (T::KEY, Ok(DeserializedSetting(Box::new(value))));
             }
         }
-        let value = T::FileContent::deserialize(json)
+        let value = T::FileContent::deserialize(toml)
             .map(|value| DeserializedSetting(Box::new(value)))
             .map_err(anyhow::Error::from);
         (key, value)
@@ -134,34 +134,17 @@ impl<T: Settings> AnySettingValue for SettingValue<T> {
 
     fn edits_for_update(
         &self,
-        raw_settings: &Value,
-        tab_size: usize,
-        text: &mut String,
-        edits: &mut Vec<(Range<usize>, String)>,
+        _raw_settings: &Value,
+        _tab_size: usize,
+        _text: &mut String,
+        _edits: &mut Vec<(Range<usize>, String)>,
     ) {
-        let (key, deserialized_setting) = self.deserialize_setting_with_key(raw_settings);
-        let old_content = match deserialized_setting {
-            Ok(content) => content.0.downcast::<T::FileContent>().unwrap(),
-            Err(_) => Box::<<T as Settings>::FileContent>::default(),
-        };
-        let mut new_content = old_content.clone();
-
-        let old_value = serde_json::to_value(&old_content).unwrap();
-        let new_value = serde_json::to_value(new_content).unwrap();
-
-        let mut key_path = Vec::new();
-        if let Some(key) = key {
-            key_path.push(key);
-        }
-
-        update_value_in_json_text(
-            text,
-            &mut key_path,
-            tab_size,
-            &old_value,
-            &new_value,
-            T::PRESERVED_KEYS.unwrap_or_default(),
-            edits,
-        );
+        // TOML-Migration: Die format-preserving Updates erfolgen zentral im Store
+        // mittels toml_edit::DocumentMut. Diese Methode liefert daher aktuell
+        // keine Edits zurück. Der Store erzeugt die finalen Änderungen.
+        // Wenn du später feingranulare Edits hier haben willst, kannst du:
+        // - das aktuelle T::FileContent aus _raw_settings herausziehen,
+        // - die Differenzen ermitteln,
+        // - gezielte Ranges/Replacement-Strings basierend auf toml_edit erzeugen.
     }
 }

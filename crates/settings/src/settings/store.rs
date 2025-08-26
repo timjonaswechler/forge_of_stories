@@ -1,15 +1,20 @@
 use super::Settings;
 use super::source::SettingsSources;
-use super::value::{AnySettingValue, SettingValue};
+use super::value::{AnySettingValue, DeserializedSetting, SettingValue};
 use crate::settings::location::{SaveGameId, SettingsLocation};
 use serde::Serialize;
 
-use std::any::{TypeId, type_name};
-use std::collections::HashMap;
-use std::collections::{BTreeMap, HashMap as hash_map, btree_map};
-use std::fmt::Debug;
-use std::path::Path;
-use std::sync::Arc;
+use anyhow::Result;
+use futures::{FutureExt, StreamExt, channel::mpsc, future::LocalBoxFuture};
+use std::{
+    any::{TypeId, type_name},
+    collections::{BTreeMap, HashMap, HashMap as hash_map, btree_map},
+    fmt::Debug,
+    ops::Range,
+    path::Path,
+    str::{self},
+    sync::Arc,
+};
 use toml_edit::Value;
 
 /// A set of strongly-typed setting values defined via multiple config files.
@@ -70,7 +75,7 @@ impl SettingsStore {
     }
 
     /// Add a new type of setting to the store.
-    pub fn register_setting<T: Settings>(&mut self, cx: &mut App) {
+    pub fn register_setting<T: Settings>(&mut self) {
         let setting_type_id = TypeId::of::<T>();
         let entry = self.setting_values.entry(setting_type_id);
 
@@ -326,15 +331,11 @@ impl SettingsStore {
     /// Sets the default settings via a JSON string.
     ///
     /// The string should contain a JSON object with a default value for every setting.
-    pub fn set_default_settings(
-        &mut self,
-        default_settings_content: &str,
-        cx: &mut App,
-    ) -> Result<()> {
+    pub fn set_default_settings(&mut self, default_settings_content: &str) -> Result<()> {
         let settings: Value = parse_json_with_comments(default_settings_content)?;
         anyhow::ensure!(settings.is_object(), "settings must be an object");
         self.raw_default_settings = settings;
-        self.recompute_values(None, cx)?;
+        self.recompute_values(None)?;
         Ok(())
     }
 
@@ -348,7 +349,7 @@ impl SettingsStore {
 
         anyhow::ensure!(settings.is_object(), "settings must be an object");
         self.raw_user_settings = settings.clone();
-        self.recompute_values(None, cx)?;
+        self.recompute_values(None)?;
         Ok(settings)
     }
 
@@ -362,7 +363,7 @@ impl SettingsStore {
 
         anyhow::ensure!(settings.is_object(), "settings must be an object");
         self.raw_global_settings = Some(settings.clone());
-        self.recompute_values(None, cx)?;
+        self.recompute_values(None)?;
         Ok(settings)
     }
 
@@ -381,117 +382,117 @@ impl SettingsStore {
             "settings must be an object"
         );
         self.raw_server_settings = settings;
-        self.recompute_values(None, cx)?;
+        self.recompute_values(None)?;
         Ok(())
     }
 
     /// Add or remove a set of local settings via a JSON string.
-    pub fn set_local_settings(
-        &mut self,
-        root_id: SaveGameId,
-        directory_path: Arc<Path>,
-        kind: LocalSettingsKind,
-        settings_content: Option<&str>,
-    ) -> std::result::Result<(), InvalidSettingsError> {
-        let mut zed_settings_changed = false;
-        match (
-            kind,
-            settings_content
-                .map(|content| content.trim())
-                .filter(|content| !content.is_empty()),
-        ) {
-            (LocalSettingsKind::Tasks, _) => {
-                return Err(InvalidSettingsError::Tasks {
-                    message: "Attempted to submit tasks into the settings store".to_string(),
-                    path: directory_path.join(task_file_name()),
-                });
-            }
-            (LocalSettingsKind::Debug, _) => {
-                return Err(InvalidSettingsError::Debug {
-                    message: "Attempted to submit debugger config into the settings store"
-                        .to_string(),
-                    path: directory_path.join(task_file_name()),
-                });
-            }
-            (LocalSettingsKind::Settings, None) => {
-                zed_settings_changed = self
-                    .raw_local_settings
-                    .remove(&(root_id, directory_path.clone()))
-                    .is_some()
-            }
-            (LocalSettingsKind::Editorconfig, None) => {
-                self.raw_editorconfig_settings
-                    .remove(&(root_id, directory_path.clone()));
-            }
-            (LocalSettingsKind::Settings, Some(settings_contents)) => {
-                let new_settings =
-                    parse_json_with_comments::<Value>(settings_contents).map_err(|e| {
-                        InvalidSettingsError::LocalSettings {
-                            path: directory_path.join(local_settings_file_relative_path()),
-                            message: e.to_string(),
-                        }
-                    })?;
-                match self
-                    .raw_local_settings
-                    .entry((root_id, directory_path.clone()))
-                {
-                    btree_map::Entry::Vacant(v) => {
-                        v.insert(new_settings);
-                        zed_settings_changed = true;
-                    }
-                    btree_map::Entry::Occupied(mut o) => {
-                        if o.get() != &new_settings {
-                            o.insert(new_settings);
-                            zed_settings_changed = true;
-                        }
-                    }
-                }
-            }
-            (LocalSettingsKind::Editorconfig, Some(editorconfig_contents)) => {
-                match self
-                    .raw_editorconfig_settings
-                    .entry((root_id, directory_path.clone()))
-                {
-                    btree_map::Entry::Vacant(v) => match editorconfig_contents.parse() {
-                        Ok(new_contents) => {
-                            v.insert((editorconfig_contents.to_owned(), Some(new_contents)));
-                        }
-                        Err(e) => {
-                            v.insert((editorconfig_contents.to_owned(), None));
-                            return Err(InvalidSettingsError::Editorconfig {
-                                message: e.to_string(),
-                                path: directory_path.join(EDITORCONFIG_NAME),
-                            });
-                        }
-                    },
-                    btree_map::Entry::Occupied(mut o) => {
-                        if o.get().0 != editorconfig_contents {
-                            match editorconfig_contents.parse() {
-                                Ok(new_contents) => {
-                                    o.insert((
-                                        editorconfig_contents.to_owned(),
-                                        Some(new_contents),
-                                    ));
-                                }
-                                Err(e) => {
-                                    o.insert((editorconfig_contents.to_owned(), None));
-                                    return Err(InvalidSettingsError::Editorconfig {
-                                        message: e.to_string(),
-                                        path: directory_path.join(EDITORCONFIG_NAME),
-                                    });
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        };
+    // pub fn set_local_settings(
+    //     &mut self,
+    //     root_id: SaveGameId,
+    //     directory_path: Arc<Path>,
+    //     kind: LocalSettingsKind,
+    //     settings_content: Option<&str>,
+    // ) -> std::result::Result<(), InvalidSettingsError> {
+    //     let mut zed_settings_changed = false;
+    //     match (
+    //         kind,
+    //         settings_content
+    //             .map(|content| content.trim())
+    //             .filter(|content| !content.is_empty()),
+    //     ) {
+    //         (LocalSettingsKind::Tasks, _) => {
+    //             return Err(InvalidSettingsError::Tasks {
+    //                 message: "Attempted to submit tasks into the settings store".to_string(),
+    //                 path: directory_path.join(task_file_name()),
+    //             });
+    //         }
+    //         (LocalSettingsKind::Debug, _) => {
+    //             return Err(InvalidSettingsError::Debug {
+    //                 message: "Attempted to submit debugger config into the settings store"
+    //                     .to_string(),
+    //                 path: directory_path.join(task_file_name()),
+    //             });
+    //         }
+    //         (LocalSettingsKind::Settings, None) => {
+    //             zed_settings_changed = self
+    //                 .raw_local_settings
+    //                 .remove(&(root_id, directory_path.clone()))
+    //                 .is_some()
+    //         }
+    //         (LocalSettingsKind::Editorconfig, None) => {
+    //             self.raw_editorconfig_settings
+    //                 .remove(&(root_id, directory_path.clone()));
+    //         }
+    //         (LocalSettingsKind::Settings, Some(settings_contents)) => {
+    //             let new_settings =
+    //                 parse_json_with_comments::<Value>(settings_contents).map_err(|e| {
+    //                     InvalidSettingsError::LocalSettings {
+    //                         path: directory_path.join(local_settings_file_relative_path()),
+    //                         message: e.to_string(),
+    //                     }
+    //                 })?;
+    //             match self
+    //                 .raw_local_settings
+    //                 .entry((root_id, directory_path.clone()))
+    //             {
+    //                 btree_map::Entry::Vacant(v) => {
+    //                     v.insert(new_settings);
+    //                     zed_settings_changed = true;
+    //                 }
+    //                 btree_map::Entry::Occupied(mut o) => {
+    //                     if o.get() != &new_settings {
+    //                         o.insert(new_settings);
+    //                         zed_settings_changed = true;
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //         (LocalSettingsKind::Editorconfig, Some(editorconfig_contents)) => {
+    //             match self
+    //                 .raw_editorconfig_settings
+    //                 .entry((root_id, directory_path.clone()))
+    //             {
+    //                 btree_map::Entry::Vacant(v) => match editorconfig_contents.parse() {
+    //                     Ok(new_contents) => {
+    //                         v.insert((editorconfig_contents.to_owned(), Some(new_contents)));
+    //                     }
+    //                     Err(e) => {
+    //                         v.insert((editorconfig_contents.to_owned(), None));
+    //                         return Err(InvalidSettingsError::Editorconfig {
+    //                             message: e.to_string(),
+    //                             path: directory_path.join(EDITORCONFIG_NAME),
+    //                         });
+    //                     }
+    //                 },
+    //                 btree_map::Entry::Occupied(mut o) => {
+    //                     if o.get().0 != editorconfig_contents {
+    //                         match editorconfig_contents.parse() {
+    //                             Ok(new_contents) => {
+    //                                 o.insert((
+    //                                     editorconfig_contents.to_owned(),
+    //                                     Some(new_contents),
+    //                                 ));
+    //                             }
+    //                             Err(e) => {
+    //                                 o.insert((editorconfig_contents.to_owned(), None));
+    //                                 return Err(InvalidSettingsError::Editorconfig {
+    //                                     message: e.to_string(),
+    //                                     path: directory_path.join(EDITORCONFIG_NAME),
+    //                                 });
+    //                             }
+    //                         }
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     };
 
-        if zed_settings_changed {
-            self.recompute_values(Some((root_id, &directory_path)))?;
-        }
-        Ok(())
-    }
+    //     if zed_settings_changed {
+    //         self.recompute_values(Some((root_id, &directory_path)))?;
+    //     }
+    //     Ok(())
+    // }
 
     pub fn set_extension_settings<T: Serialize>(&mut self, content: T) -> Result<()> {
         let settings: Value = serde_json::to_value(content)?;
@@ -522,23 +523,6 @@ impl SettingsStore {
                     ),
             )
             .map(|((_, path), content)| (path.clone(), serde_json::to_string(content).unwrap()))
-    }
-
-    pub fn local_editorconfig_settings(
-        &self,
-        root_id: SaveGameId,
-    ) -> impl '_ + Iterator<Item = (Arc<Path>, String, Option<Editorconfig>)> {
-        self.raw_editorconfig_settings
-            .range(
-                (root_id, Path::new("").into())
-                    ..(
-                        SaveGameId::from_usize(root_id.to_usize() + 1),
-                        Path::new("").into(),
-                    ),
-            )
-            .map(|((_, path), (content, parsed_content))| {
-                (path.clone(), content.clone(), parsed_content.clone())
-            })
     }
 
     fn recompute_values(
@@ -578,36 +562,6 @@ impl SettingsStore {
                 .raw_server_settings
                 .as_ref()
                 .and_then(|setting| setting_value.deserialize_setting(setting).log_err());
-
-            // let mut release_channel_settings = None;
-            // if let Some(release_settings) = &self
-            //     .raw_user_settings
-            //     .get(release_channel::RELEASE_CHANNEL.dev_name())
-            // {
-            //     if let Some(release_settings) = setting_value
-            //         .deserialize_setting(release_settings)
-            //         .log_err()
-            //     {
-            //         release_channel_settings = Some(release_settings);
-            //     }
-            // }
-
-            // let mut os_settings = None;
-            // if let Some(settings) = &self.raw_user_settings.get(env::consts::OS) {
-            //     if let Some(settings) = setting_value.deserialize_setting(settings).log_err() {
-            //         os_settings = Some(settings);
-            //     }
-            // }
-
-            // let mut profile_settings = None;
-            // if let Some(active_profile) = cx.try_global::<ActiveSettingsProfileName>() {
-            //     if let Some(profiles) = self.raw_user_settings.get("profiles") {
-            //         if let Some(profile_json) = profiles.get(&active_profile.0) {
-            //             profile_settings =
-            //                 setting_value.deserialize_setting(profile_json).log_err();
-            //         }
-            //     }
-            // }
 
             // If the global settings file changed, reload the global value for the field.
             if changed_local_path.is_none() {
@@ -687,32 +641,5 @@ impl SettingsStore {
             }
         }
         Ok(())
-    }
-
-    pub fn editorconfig_properties(
-        &self,
-        for_worktree: SaveGameId,
-        for_path: &Path,
-    ) -> Option<EditorconfigProperties> {
-        let mut properties = EditorconfigProperties::new();
-
-        for (directory_with_config, _, parsed_editorconfig) in
-            self.local_editorconfig_settings(for_worktree)
-        {
-            if !for_path.starts_with(&directory_with_config) {
-                properties.use_fallbacks();
-                return Some(properties);
-            }
-            let parsed_editorconfig = parsed_editorconfig?;
-            if parsed_editorconfig.is_root {
-                properties = EditorconfigProperties::new();
-            }
-            for section in parsed_editorconfig.sections {
-                section.apply_to(&mut properties, for_path).log_err()?;
-            }
-        }
-
-        properties.use_fallbacks();
-        Some(properties)
     }
 }

@@ -6,6 +6,7 @@ mod value;
 
 use crate::settings::source::SettingsSources;
 use crate::settings::store::SettingsStore;
+use anyhow::Result;
 pub use location::SettingsLocation;
 use serde::{Serialize, de::DeserializeOwned};
 

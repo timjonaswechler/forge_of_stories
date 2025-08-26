@@ -22,6 +22,14 @@ Notes:
   - OSC 112 BEL      -> reset cursor color
 */
 
+// text: rgb(0xffffff),
+// selected_text: rgb(0xffffff),
+// disabled: rgb(0x565656),
+// selected: rgb(0x2457ca),
+// background: rgb(0x222222),
+// border: rgb(0x000000),
+// separator: rgb(0xd9d9d9),
+// container: rgb(0x262626),
 use std::io::{Write, stdout};
 
 use ratatui::style::{Color, Style};

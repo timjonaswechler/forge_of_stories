@@ -8,13 +8,13 @@ mod validation;
 
 use super::{
     assets::SettingsAssets,
-    keymap::{
-        action::KeymapAction, load_result::KeymapFileLoadResult, source::KeybindSource, 
-    },
+    keymap::{action::KeymapAction, load_result::KeymapFileLoadResult, source::KeybindSource},
 };
-use crate::keymap::binding_adapter::BindingSpec;
+use crate::keymap::binding_adapter::{
+    ActionSpec, BindingSpec, KeyCodeSpec, KeystrokeSpec, Modifiers,
+};
 use serde::Deserialize;
-use std::{collections::BTreeMap, fmt::Write, rc::Rc, sync::Arc};
+use std::{collections::BTreeMap, fmt::Write, sync::Arc};
 use toml_edit::Value;
 use update::KeybindUpdateOperation;
 use util::asset_str;
@@ -40,6 +40,7 @@ impl KeymapSection {
 }
 
 impl KeymapFile {
+    const NO_ACTION_NAME: &str = "NoAction";
     pub fn parse(content: &str) -> anyhow::Result<Self> {
         Ok(toml::from_str::<KeymapFile>(content)?)
     }
@@ -49,15 +50,14 @@ impl KeymapFile {
         source: Option<KeybindSource>,
     ) -> anyhow::Result<Vec<BindingSpec>> {
         match Self::load(asset_str::<SettingsAssets>(asset_path).as_ref()) {
-            KeymapFileLoadResult::Success { mut key_bindings } => match source {
-                Some(source) => Ok({
-                    for key_binding in &mut key_bindings {
-                        key_binding.set_meta(source.meta());
+            KeymapFileLoadResult::Success { mut key_bindings } => {
+                if let Some(src) = source {
+                    for spec in &mut key_bindings {
+                        spec.source = Some(src.name().to_string());
                     }
-                    key_bindings
-                }),
-                None => Ok(key_bindings),
-            },
+                }
+                Ok(key_bindings)
+            }
             KeymapFileLoadResult::SomeFailedToLoad { error_message, .. } => {
                 anyhow::bail!("Error loading built-in keymap \"{asset_path}\": {error_message}",)
             }
@@ -68,9 +68,6 @@ impl KeymapFile {
     }
 
     pub fn load(content: &str) -> KeymapFileLoadResult {
-        // let key_equivalents =
-        //     crate::key_equivalents::get_key_equivalents(cx.keyboard_layout().id());
-
         if content.is_empty() {
             return KeymapFileLoadResult::Success {
                 key_bindings: Vec::new(),
@@ -83,91 +80,57 @@ impl KeymapFile {
             }
         };
 
-        // Accumulate errors in order to support partial load of user keymap in the presence of
-        // errors in context and binding parsing.
         let mut errors = Vec::new();
         let mut key_bindings = Vec::new();
 
-        for KeymapSection {
-            context,
-            // use_key_equivalents,
-            bindings,
-        } in keymap_file.0.iter()
-        {
-            let context_predicate: Option<Rc<KeyBindingContextPredicate>> = if context.is_empty() {
+        for section in keymap_file.sections.iter() {
+            let context_opt = if section.context.trim().is_empty() {
                 None
             } else {
-                match KeyBindingContextPredicate::parse(context) {
-                    Ok(context_predicate) => Some(context_predicate.into()),
-                    Err(err) => {
-                        // Leading space is to separate from the message indicating which section
-                        // the error occurred in.
-                        errors.push((
-                            context,
-                            format!(" Parse error in section `context` field: {}", err),
-                        ));
-                        continue;
-                    }
-                }
+                Some(section.context.clone())
             };
 
             let mut section_errors = String::new();
 
-            if let Some(bindings) = bindings {
+            if let Some(bindings) = &section.bindings {
                 for (keystrokes, action) in bindings {
-                    let result = Self::load_keybinding(
-                        keystrokes,
-                        action,
-                        context_predicate.clone(),
-                        // key_equivalents,
-                    );
+                    let result = Self::load_keybinding(keystrokes, action, context_opt.as_deref());
                     match result {
-                        Ok(key_binding) => {
-                            key_bindings.push(key_binding);
-                        }
+                        Ok(binding) => key_bindings.push(binding),
                         Err(err) => {
-                            let mut lines = err.lines();
-                            let mut indented_err = lines.next().unwrap().to_string();
-                            for line in lines {
-                                indented_err.push_str("  ");
-                                indented_err.push_str(line);
-                                indented_err.push_str("\n");
-                            }
-                            write!(
-                                section_errors,
-                                "\n\n- In binding {}, {indented_err}",
-                                MarkdownInlineCode(&format!("\"{}\"", keystrokes))
+                            // Einfache, gut lesbare Fehlermeldung
+                            writeln!(
+                                &mut section_errors,
+                                "- In binding \"{}\", {}",
+                                keystrokes, err
                             )
-                            .unwrap();
+                            .ok();
                         }
                     }
                 }
             }
 
             if !section_errors.is_empty() {
-                errors.push((context, section_errors))
+                errors.push((section.context.clone(), section_errors));
             }
         }
 
         if errors.is_empty() {
             KeymapFileLoadResult::Success { key_bindings }
         } else {
-            let mut error_message = "Errors in user keymap file.\n".to_owned();
+            let mut error_message = String::from("Errors in user keymap file.\n");
             for (context, section_errors) in errors {
-                if context.is_empty() {
-                    let _ = write!(error_message, "\n\nIn section without context predicate:");
+                if context.trim().is_empty() {
+                    error_message.push_str("\nIn section without context predicate:\n");
                 } else {
-                    let _ = write!(
-                        error_message,
-                        "\n\nIn section with {}:",
-                        MarkdownInlineCode(&format!("context = \"{}\"", context))
-                    );
+                    error_message
+                        .push_str(&format!("\nIn section with context = \"{}\":\n", context));
                 }
-                let _ = write!(error_message, "{section_errors}");
+                error_message.push_str(&section_errors);
             }
             KeymapFileLoadResult::SomeFailedToLoad {
                 key_bindings,
-                error_message: error_message,
+                error_message,
             }
         }
     }
@@ -175,94 +138,74 @@ impl KeymapFile {
     fn load_keybinding(
         keystrokes: &str,
         action: &KeymapAction,
-        context: Option<Rc<KeyBindingContextPredicate>>,
-        // cx:App
+        context: Option<&str>,
     ) -> std::result::Result<BindingSpec, String> {
-        let (build_result, action_input_string) = match &action.0 {
+        // 1) Action interpretieren
+        let action_spec = match &action.0 {
+            Value::String(name) => {
+                let s = name.value();
+                if s.eq_ignore_ascii_case("NoAction") {
+                    ActionSpec::NoAction
+                } else {
+                    ActionSpec::Name(s.to_string())
+                }
+            }
             Value::Array(items) => {
                 if items.len() != 2 {
                     return Err(format!(
-                        "expected two-element array of `[name, input]`. \
-                        Instead found {}.",
-                        MarkdownInlineCode(&action.0.to_string())
+                        "expected [name, args], found {}",
+                        action.0.to_string()
                     ));
                 }
-                None => {
-                    return Err(format!(
-                        "can't build {} action - it requires input data via [name, input]: {}",
-                        MarkdownInlineCode(&format!("\"{}\"", &name)),
-                        MarkdownEscaped(&error.to_string())
-                    ));
+                let name_val = &items[0];
+                let args_val = &items[1];
+                let name_str = name_val.as_str().ok_or_else(|| {
+                    format!(
+                        "first element of [name, args] must be a string, found {}",
+                        name_val
+                    )
+                })?;
+                if name_str.eq_ignore_ascii_case("NoAction") {
+                    ActionSpec::NoAction
+                } else {
+                    let args = toml_value_from_edit(args_val)
+                        .map_err(|e| format!("failed to parse args TOML: {e}"))?;
+                    ActionSpec::WithArgs {
+                        name: name_str.to_string(),
+                        args,
+                    }
                 }
             }
-            Value::Null => (Ok("NoAction".boxed_clone()), None),
-            _ => {
-                return Err(format!(
-                    "expected two-element array of `[name, input]`. \
-                    Instead found {}.",
-                    MarkdownInlineCode(&action.0.to_string())
-                ));
+            other => {
+                return Err(format!("invalid action value: {}", other));
             }
         };
 
-        let action = match build_result {
-            Ok(action) => action,
-            Err(ActionBuildError::NotFound { name }) => {
-                return Err(format!(
-                    "didn't find an action named {}.",
-                    MarkdownInlineCode(&format!("\"{}\"", &name))
-                ));
-            }
-            Err(ActionBuildError::BuildError { name, error }) => match action_input_string {
-                Some(action_input_string) => {
-                    return Err(format!(
-                        "can't build {} action from input value {}: {}",
-                        MarkdownInlineCode(&format!("\"{}\"", &name)),
-                        MarkdownInlineCode(&action_input_string),
-                        MarkdownEscaped(&error.to_string())
-                    ));
-                }
-                None => {
-                    return Err(format!(
-                        "can't build {} action - it requires input data via [name, input]: {}",
-                        MarkdownInlineCode(&format!("\"{}\"", &name)),
-                        MarkdownEscaped(&error.to_string())
-                    ));
-                }
-            },
-        };
-
-        let key_binding = match BindingSpec::load(
-            keystrokes,
-            action,
-            context,
-            // key_equivalents,
-            action_input_string.map(SharedString::from),
-        ) {
-            Ok(key_binding) => key_binding,
-            Err(InvalidKeystrokeError { keystroke }) => {
-                return Err(format!(
-                    "invalid keystroke {}. {}",
-                    MarkdownInlineCode(&format!("\"{}\"", &keystroke)),
-                    KEYSTROKE_PARSE_EXPECTED_MESSAGE
-                ));
-            }
-        };
-
-        if let Some(validator) = KEY_BINDING_VALIDATORS.get(&key_binding.action().type_id()) {
-            match validator.validate(&key_binding) {
-                Ok(()) => Ok(key_binding),
-                Err(error) => Err(error.0),
-            }
-        } else {
-            Ok(key_binding)
+        // 2) Keystrokes parsen: Sequenz mit Whitespace getrennt
+        let mut seq = Vec::new();
+        for token in keystrokes.split_whitespace() {
+            let ks = parse_keystroke(token)?;
+            seq.push(ks);
         }
+        if seq.is_empty() {
+            return Err("empty keystrokes".into());
+        }
+
+        Ok(BindingSpec {
+            source: None,
+            context: context.map(|s| s.to_string()),
+            keystrokes: seq,
+            action: action_spec,
+        })
     }
 
     pub fn sections(&self) -> impl DoubleEndedIterator<Item = &KeymapSection> {
-        self.0.iter()
+        self.sections.iter()
     }
 
+    // toml_edit::Value -> toml::Value (über kleines Trick-Dokument)
+
+    // paths wird noch erstellt diese Funktion braucht keine Änderung
     pub async fn load_keymap_file(fs: &Arc<dyn Fs>) -> Result<String> {
         match fs.load(paths::keymap_file()).await {
             result @ Ok(_) => result,
@@ -270,7 +213,7 @@ impl KeymapFile {
                 if let Some(e) = err.downcast_ref::<std::io::Error>()
                     && e.kind() == std::io::ErrorKind::NotFound
                 {
-                    return Ok(crate::initial_keymap_content().to_string());
+                    return Ok(crate::assets::default_keymap().to_string());
                 }
                 Err(err)
             }
@@ -280,10 +223,12 @@ impl KeymapFile {
     pub fn update_keybinding<'a>(
         mut operation: KeybindUpdateOperation<'a>,
         mut keymap_contents: String,
-        tab_size: usize,
+        _tab_size: usize,
     ) -> Result<String> {
+        use toml_edit::{ArrayOfTables, DocumentMut, Item, Table};
+
+        // Nicht-User-Replace/Remove in Add/NoAction umbiegen (wie zuvor)
         match operation {
-            // if trying to replace a keybinding that is not user-defined, treat it as an add operation
             KeybindUpdateOperation::Replace {
                 target_keybind_source: target_source,
                 source,
@@ -294,8 +239,6 @@ impl KeymapFile {
                     from: Some(target),
                 };
             }
-            // if trying to remove a keybinding that is not user-defined, treat it as creating a binding
-            // that binds it to `zed::NoAction`
             KeybindUpdateOperation::Remove {
                 target,
                 target_keybind_source,
@@ -311,212 +254,198 @@ impl KeymapFile {
             _ => {}
         }
 
-        // Sanity check that keymap contents are valid, even though we only use it for Replace.
-        // We don't want to modify the file if it's invalid.
-        let keymap = Self::parse(&keymap_contents).context("Failed to parse keymap")?;
+        // Validierung: Parse per serde (semantisch), brich bei Fehlern ab
+        let _ = Self::parse(&keymap_contents).context("Failed to parse keymap")?;
 
-        if let KeybindUpdateOperation::Remove { target, .. } = operation {
-            let target_action_value = target
-                .action_value()
-                .context("Failed to generate target action JSON value")?;
-            let Some((index, keystrokes_str)) =
-                find_binding(&keymap, &target, &target_action_value)
-            else {
-                anyhow::bail!("Failed to find keybinding to remove");
-            };
-            let is_only_binding = keymap.0[index]
-                .bindings
-                .as_ref()
-                .is_none_or(|bindings| bindings.len() == 1);
-            let key_path: &[&str] = if is_only_binding {
-                &[]
-            } else {
-                &["bindings", keystrokes_str]
-            };
-            let (replace_range, replace_value) = replace_top_level_array_value_in_json_text(
-                &keymap_contents,
-                key_path,
-                None,
-                None,
-                index,
-                tab_size,
-            )
-            .context("Failed to remove keybinding")?;
-            keymap_contents.replace_range(replace_range, &replace_value);
-            return Ok(keymap_contents);
-        }
+        // Jetzt format-preservierend mit toml_edit arbeiten
+        let mut doc: DocumentMut = keymap_contents
+            .parse()
+            .unwrap_or_else(|_| DocumentMut::new());
 
-        if let KeybindUpdateOperation::Replace { source, target, .. } = operation {
-            let target_action_value = target
-                .action_value()
-                .context("Failed to generate target action JSON value")?;
-            let source_action_value = source
-                .action_value()
-                .context("Failed to generate source action JSON value")?;
-
-            if let Some((index, keystrokes_str)) =
-                find_binding(&keymap, &target, &target_action_value)
-            {
-                if target.context == source.context {
-                    // if we are only changing the keybinding (common case)
-                    // not the context, etc. Then just update the binding in place
-
-                    let (replace_range, replace_value) =
-                        replace_top_level_array_value_in_json_text(
-                            &keymap_contents,
-                            &["bindings", keystrokes_str],
-                            Some(&source_action_value),
-                            Some(&source.keystrokes_unparsed()),
-                            index,
-                            tab_size,
-                        )
-                        .context("Failed to replace keybinding")?;
-                    keymap_contents.replace_range(replace_range, &replace_value);
-
-                    return Ok(keymap_contents);
-                } else if keymap.0[index]
-                    .bindings
-                    .as_ref()
-                    .is_none_or(|bindings| bindings.len() == 1)
-                {
-                    // if we are replacing the only binding in the section,
-                    // just update the section in place, updating the context
-                    // and the binding
-
-                    let (replace_range, replace_value) =
-                        replace_top_level_array_value_in_json_text(
-                            &keymap_contents,
-                            &["bindings", keystrokes_str],
-                            Some(&source_action_value),
-                            Some(&source.keystrokes_unparsed()),
-                            index,
-                            tab_size,
-                        )
-                        .context("Failed to replace keybinding")?;
-                    keymap_contents.replace_range(replace_range, &replace_value);
-
-                    let (replace_range, replace_value) =
-                        replace_top_level_array_value_in_json_text(
-                            &keymap_contents,
-                            &["context"],
-                            source.context.map(Into::into).as_ref(),
-                            None,
-                            index,
-                            tab_size,
-                        )
-                        .context("Failed to replace keybinding")?;
-                    keymap_contents.replace_range(replace_range, &replace_value);
-                    return Ok(keymap_contents);
-                } else {
-                    // if we are replacing one of multiple bindings in a section
-                    // with a context change, remove the existing binding from the
-                    // section, then treat this operation as an add operation of the
-                    // new binding with the updated context.
-
-                    let (replace_range, replace_value) =
-                        replace_top_level_array_value_in_json_text(
-                            &keymap_contents,
-                            &["bindings", keystrokes_str],
-                            None,
-                            None,
-                            index,
-                            tab_size,
-                        )
-                        .context("Failed to replace keybinding")?;
-                    keymap_contents.replace_range(replace_range, &replace_value);
-                    operation = KeybindUpdateOperation::Add {
-                        source,
-                        from: Some(target),
-                    };
-                }
-            } else {
-                log::warn!(
-                    "Failed to find keybinding to update `{:?} -> {}` creating new binding for `{:?} -> {}` instead",
-                    target.keystrokes,
-                    target_action_value,
-                    source.keystrokes,
-                    source_action_value,
-                );
-                operation = KeybindUpdateOperation::Add {
-                    source,
-                    from: Some(target),
-                };
+        // Hilfsfunktionen für Sections/Bindings
+        fn ensure_sections<'d>(doc: &'d mut DocumentMut) -> &'d mut ArrayOfTables {
+            if !doc["sections"].is_array_of_tables() {
+                doc["sections"] = Item::ArrayOfTables(ArrayOfTables::new());
             }
+            doc["sections"].as_array_of_tables_mut().unwrap()
         }
 
-        if let KeybindUpdateOperation::Add {
-            source: keybinding,
-            from,
-        } = operation
-        {
-            let mut value = serde_json::Map::with_capacity(4);
-            if let Some(context) = keybinding.context {
-                value.insert("context".to_string(), context.into());
+        fn section_context(tbl: &Table) -> String {
+            tbl.get("context")
+                .and_then(|i| i.as_str())
+                .unwrap_or("")
+                .to_string()
+        }
+
+        fn find_section_index<'a>(aot: &'a ArrayOfTables, wanted: Option<&str>) -> Option<usize> {
+            let want = wanted.unwrap_or("").trim();
+            aot.iter().position(|t| section_context(t) == want)
+        }
+
+        fn ensure_bindings_table<'t>(tbl: &'t mut Table) -> &'t mut Table {
+            if !tbl.contains_key("bindings") || !tbl["bindings"].is_table_like() {
+                tbl["bindings"] = Item::Table(Table::new());
             }
-            // let use_key_equivalents = from.and_then(|from| {
-            //     let action_value = from.action_value().context("Failed to serialize action value. `use_key_equivalents` on new keybinding may be incorrect.").log_err()?;
-            //     let (index, _) = find_binding(&keymap, &from, &action_value)?;
-            //     Some(keymap.0[index].use_key_equivalents)
-            // }).unwrap_or(false);
-            // if use_key_equivalents {
-            //     value.insert("use_key_equivalents".to_string(), true.into());
-            // }
-
-            value.insert("bindings".to_string(), {
-                let mut bindings = serde_json::Map::new();
-                let action = keybinding.action_value()?;
-                bindings.insert(keybinding.keystrokes_unparsed(), action);
-                bindings.into()
-            });
-
-            let (replace_range, replace_value) = append_top_level_array_value_in_json_text(
-                &keymap_contents,
-                &value.into(),
-                tab_size,
-            )?;
-            keymap_contents.replace_range(replace_range, &replace_value);
+            tbl["bindings"].as_table_mut().unwrap()
         }
-        return Ok(keymap_contents);
 
-        fn find_binding<'a, 'b>(
-            keymap: &'b KeymapFile,
-            target: &KeybindUpdateTarget<'a>,
-            target_action_value: &Value,
-        ) -> Option<(usize, &'b str)> {
-            let target_context_parsed =
-                KeyBindingContextPredicate::parse(target.context.unwrap_or("")).ok();
-            for (index, section) in keymap.sections().enumerate() {
-                let section_context_parsed =
-                    KeyBindingContextPredicate::parse(&section.context).ok();
-                if section_context_parsed != target_context_parsed {
-                    continue;
-                }
-                let Some(bindings) = &section.bindings else {
-                    continue;
-                };
-                for (keystrokes_str, action) in bindings {
-                    let Ok(keystrokes) = keystrokes_str
-                        .split_whitespace()
-                        .map(Keystroke::parse)
-                        .collect::<Result<Vec<_>, _>>()
-                    else {
-                        continue;
-                    };
-                    if keystrokes.len() != target.keystrokes.len()
-                        || !keystrokes
-                            .iter()
-                            .zip(target.keystrokes)
-                            .all(|(a, b)| a.should_match(b))
+        // String der Keystrokes aus Target/Source
+        let mut doc_changed = false;
+
+        match operation {
+            KeybindUpdateOperation::Remove { target, .. } => {
+                let keymap = ensure_sections(&mut doc);
+                let target_context = target.context;
+                let target_key = target.keystrokes_unparsed();
+
+                if let Some(ix) = find_section_index(keymap, target_context) {
+                    let tbl = keymap.get_mut(ix).expect("checked index");
+                    if let Some(bindings) =
+                        tbl.get_mut("bindings").and_then(|i| i.as_table_like_mut())
                     {
-                        continue;
+                        if bindings.remove(&target_key).is_some() {
+                            doc_changed = true;
+
+                            // Optional: leere Section entfernen
+                            let empty = bindings.is_empty()
+                                && tbl.iter().all(|(k, _)| k == "context" || k == "bindings");
+                            if empty {
+                                // ArrayOfTables bietet kein remove by index; Workaround: rebuild
+                                let mut new_aot = ArrayOfTables::new();
+                                for (j, t) in keymap.iter().enumerate() {
+                                    if j != ix {
+                                        new_aot.push(t.clone());
+                                    }
+                                }
+                                doc["sections"] = Item::ArrayOfTables(new_aot);
+                            }
+                        }
                     }
-                    if &action.0 != target_action_value {
-                        continue;
-                    }
-                    return Some((index, keystrokes_str));
                 }
             }
-            None
+
+            KeybindUpdateOperation::Replace { source, target, .. } => {
+                // 1) erst den alten Binding entfernen
+                {
+                    let keymap = ensure_sections(&mut doc);
+                    let target_context = target.context;
+                    let target_key = target.keystrokes_unparsed();
+
+                    if let Some(ix) = find_section_index(keymap, target_context) {
+                        let tbl = keymap.get_mut(ix).expect("checked index");
+                        if let Some(bindings) =
+                            tbl.get_mut("bindings").and_then(|i| i.as_table_like_mut())
+                        {
+                            if bindings.remove(&target_key).is_some() {
+                                doc_changed = true;
+                            }
+                        }
+                    }
+                }
+
+                // 2) neuen Binding hinzufügen
+                {
+                    let keymap = ensure_sections(&mut doc);
+                    let src_context = source.context;
+                    let src_key = source.keystrokes_unparsed();
+                    let action_val = source
+                        .action_value()
+                        .context("Failed to generate source action TOML value")?;
+
+                    let ix = if let Some(ix) = find_section_index(keymap, src_context) {
+                        ix
+                    } else {
+                        keymap.push(Table::new());
+                        let ix = keymap.len() - 1;
+                        if let Some(ctx) = src_context {
+                            keymap[ix]["context"] = Item::Value(toml_edit::value(ctx));
+                        }
+                        ix
+                    };
+
+                    let tbl = keymap.get_mut(ix).expect("checked index");
+                    let bindings = ensure_bindings_table(tbl);
+                    bindings.insert(&src_key, Item::Value(action_val));
+                    doc_changed = true;
+                }
+            }
+
+            KeybindUpdateOperation::Add { source, .. } => {
+                let keymap = ensure_sections(&mut doc);
+                let src_context = source.context;
+                let src_key = source.keystrokes_unparsed();
+                let action_val = source
+                    .action_value()
+                    .context("Failed to serialize action TOML value")?;
+
+                let ix = if let Some(ix) = find_section_index(keymap, src_context) {
+                    ix
+                } else {
+                    keymap.push(Table::new());
+                    let ix = keymap.len() - 1;
+                    if let Some(ctx) = src_context {
+                        keymap[ix]["context"] = Item::Value(toml_edit::value(ctx));
+                    }
+                    ix
+                };
+
+                let tbl = keymap.get_mut(ix).expect("checked index");
+                let bindings = ensure_bindings_table(tbl);
+                bindings.insert(&src_key, Item::Value(action_val));
+                doc_changed = true;
+            }
+        }
+
+        if doc_changed {
+            keymap_contents = doc.to_string();
+        }
+        Ok(keymap_contents)
+    }
+}
+
+fn toml_value_from_edit(v: &toml_edit::Value) -> Result<toml::Value, String> {
+    let doc_str = format!("__v__ = {}", v.to_string());
+    let table: toml::value::Table =
+        toml::from_str(&doc_str).map_err(|e| format!("TOML parse error: {e}"))?;
+    table
+        .get("__v__")
+        .cloned()
+        .ok_or_else(|| "failed to extract value".into())
+}
+
+// "ctrl-shift-p" oder "ctrl+shift+p"
+fn parse_keystroke(token: &str) -> Result<KeystrokeSpec, String> {
+    let norm = token.replace('-', "+");
+    let mut parts = norm.split('+').filter(|s| !s.is_empty()).peekable();
+    let mut mods = Modifiers::empty();
+    let mut key_part: Option<&str> = None;
+
+    while let Some(p) = parts.next() {
+        if parts.peek().is_some() {
+            match p.to_ascii_lowercase().as_str() {
+                "ctrl" | "control" => mods.insert(Modifiers::CTRL),
+                "alt" => mods.insert(Modifiers::ALT),
+                "shift" => mods.insert(Modifiers::SHIFT),
+                "cmd" | "super" | "win" => mods.insert(Modifiers::SUPER),
+                other => {
+                    // Unbekannter Modifier: wir ignorieren ihn bewusst
+                    log::warn!("unknown modifier in keystroke: {}", other);
+                }
+            }
+        } else {
+            key_part = Some(p);
         }
     }
+
+    let key = key_part.ok_or_else(|| "missing key".to_string())?;
+    let key_code = if key.chars().count() == 1 {
+        KeyCodeSpec::Char(key.chars().next().unwrap())
+    } else {
+        KeyCodeSpec::Named(key.to_string())
+    };
+
+    Ok(KeystrokeSpec {
+        mods,
+        key: key_code,
+    })
 }
