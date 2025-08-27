@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use toml::Value;
+use toml_edit::Value;
 
 #[derive(Debug, Deserialize, Default, Clone)]
 #[serde(transparent)]

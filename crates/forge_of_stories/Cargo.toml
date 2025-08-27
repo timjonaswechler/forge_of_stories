@@ -13,7 +13,6 @@ path = "src/client.rs"
 name = "forge_of_stories_server"
 path = "src/server.rs"
 
-
 [dependencies]
 wizard = { workspace = true, optional = true }
 illusion = { workspace = true, optional = true }

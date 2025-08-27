@@ -14,14 +14,16 @@ local-server = []
 dedicated-server = []
 
 [dependencies]
+anyhow.workspace = true
 bitflags.workspace = true
 log.workspace = true
 futures.workspace = true
+paths.workspace = true
 util.workspace = true
 rust-embed.workspace = true
 serde.workspace = true
-tokio.workspace = true
+tree-sitter = "0.25.8"
 toml.workspace = true
 toml_edit.workspace = true
-anyhow.workspace = true
+thiserror = "1.0.38"
 [dev-dependencies]

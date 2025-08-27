@@ -57,9 +57,16 @@ impl StatsHistory {
         self.buf.is_empty()
     }
 }
+#[derive(Debug)]
+pub enum ContextType {
+    Client,
+    DedicatedServer,
+    LocalServer,
+    None,
+}
 
 pub struct App {
-    context: AppContext,
+    context: ContextType,
     config: Config,
     tick_rate: f64,
     frame_rate: f64,
@@ -93,7 +100,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(tick_rate: f64, frame_rate: f64, cx: AppContext) -> Result<Self> {
+    pub fn new(tick_rate: f64, frame_rate: f64) -> Result<Self> {
         let (action_tx, action_rx) = mpsc::unbounded_channel();
 
         let pages: HashMap<String, Box<dyn Page>> = {
@@ -118,7 +125,7 @@ impl App {
         let aether_rx = sup.take_event_receiver();
 
         Ok(Self {
-            context: cx,
+            context: ContextType::DedicatedServer,
             config: Config::new()?,
             tick_rate,
             frame_rate,

@@ -1,43 +1,35 @@
-use std::{
-    fmt::{Debug, Display, Formatter, Result as FmtResult},
-    path::Path,
-};
+//! SettingsLocation (für lokale/kontextspezifische Werte).
+//! MVP: Placeholder – du kannst später SaveGameId/Projektpfade anschließen.
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
-pub struct SaveGameId(usize);
+use std::path::{Path, PathBuf};
 
-impl From<SaveGameId> for usize {
-    fn from(value: SaveGameId) -> Self {
-        value.0
-    }
-}
+/// Optional: SaveGameId/Projekt/World – jetzt nur Hilfstypen.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct SaveGameId(pub usize);
 
 impl SaveGameId {
-    pub fn from_usize(handle_id: usize) -> Self {
-        Self(handle_id)
+    pub fn from_usize(x: usize) -> Self {
+        SaveGameId(x)
     }
-
-    pub fn from_proto(id: u64) -> Self {
-        Self(id as usize)
-    }
-
-    pub fn to_proto(&self) -> u64 {
-        self.0 as u64
-    }
-
-    pub fn to_usize(&self) -> usize {
+    pub fn to_usize(self) -> usize {
         self.0
     }
 }
 
-impl Display for SaveGameId {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        Display::fmt(&self.0, f)
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
+/// Ein Ort, relativ zu dem ein Setting ausgewertet wird.
+/// MVP: Wird noch nicht genutzt; API ist vorbereitet.
+#[derive(Clone, Debug)]
 pub struct SettingsLocation<'a> {
     pub savegame_id: SaveGameId,
     pub path: &'a Path,
+}
+
+impl<'a> SettingsLocation<'a> {
+    pub fn new(savegame_id: SaveGameId, path: &'a Path) -> Self {
+        Self { savegame_id, path }
+    }
+
+    pub fn to_owned(&self) -> (SaveGameId, PathBuf) {
+        (self.savegame_id, self.path.to_path_buf())
+    }
 }

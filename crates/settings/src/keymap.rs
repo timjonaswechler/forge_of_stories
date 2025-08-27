@@ -13,8 +13,9 @@ use super::{
 use crate::keymap::binding_adapter::{
     ActionSpec, BindingSpec, KeyCodeSpec, KeystrokeSpec, Modifiers,
 };
+use anyhow::Result;
 use serde::Deserialize;
-use std::{collections::BTreeMap, fmt::Write, sync::Arc};
+use std::{collections::BTreeMap, fmt::Write};
 use toml_edit::Value;
 use update::KeybindUpdateOperation;
 use util::asset_str;
@@ -203,20 +204,15 @@ impl KeymapFile {
         self.sections.iter()
     }
 
-    // toml_edit::Value -> toml::Value (über kleines Trick-Dokument)
-
     // paths wird noch erstellt diese Funktion braucht keine Änderung
-    pub async fn load_keymap_file(fs: &Arc<dyn Fs>) -> Result<String> {
-        match fs.load(paths::keymap_file()).await {
-            result @ Ok(_) => result,
-            Err(err) => {
-                if let Some(e) = err.downcast_ref::<std::io::Error>()
-                    && e.kind() == std::io::ErrorKind::NotFound
-                {
-                    return Ok(crate::assets::default_keymap().to_string());
-                }
-                Err(err)
+    pub async fn load_keymap_file() -> Result<String> {
+        let path = keymap_file();
+        match tokio::fs::read_to_string(&path).await {
+            Ok(s) => Ok(s),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                Ok(crate::assets::default_keymap().to_string())
             }
+            Err(err) => Err(err.into()),
         }
     }
 
@@ -401,6 +397,9 @@ impl KeymapFile {
         }
         Ok(keymap_contents)
     }
+}
+fn keymap_file() -> std::path::PathBuf {
+    paths::data_dir().join("keymap.toml")
 }
 
 fn toml_value_from_edit(v: &toml_edit::Value) -> Result<toml::Value, String> {

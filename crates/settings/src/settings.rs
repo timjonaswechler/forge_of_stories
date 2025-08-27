@@ -1,63 +1,57 @@
+//! Minimal Settings-MVP: Trait, Error, und Basis-Hilfen (ohne gpui/Async).
+
 mod location;
-pub mod source;
+mod read_write;
+mod source;
 mod store;
-pub(crate) mod toml;
 mod value;
 
 use crate::settings::source::SettingsSources;
-use crate::settings::store::SettingsStore;
-use anyhow::Result;
-pub use location::SettingsLocation;
 use serde::{Serialize, de::DeserializeOwned};
+use std::path::PathBuf;
 
-/// A value that can be defined as a user setting.
-///
-/// Settings can be loaded from a combination of multiple JSON files.
+/// Einheitlicher Fehler für das Settings-MVP.
+#[derive(thiserror::Error, Debug)]
+pub enum SettingsError {
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("TOML parse error: {0}")]
+    TomlParse(#[from] toml::de::Error),
+    #[error("TOML serialize error: {0}")]
+    TomlSerialize(#[from] toml::ser::Error),
+    #[error("Invalid settings structure: {0}")]
+    InvalidStructure(&'static str),
+    #[error("Unknown setting type")]
+    UnknownSettingType,
+    #[error("Not implemented")]
+    NotImplemented,
+}
+
+pub type SettingsResult<T> = Result<T, SettingsError>;
+
+/// Settings-Trait: typisiert, TOML-basiert, ohne gpui.
 pub trait Settings: 'static + Send + Sync {
-    /// The name of a key within the JSON file from which this setting should
-    /// be deserialized. If this is `None`, then the setting will be deserialized
-    /// from the root object.
+    /// Optionaler Schlüssel, unter dem das FileContent im TOML lebt (z. B. "video", "audio").
+    /// None bedeutet: das Root-Objekt entspricht FileContent.
     const KEY: Option<&'static str>;
 
+    /// Optionaler Fallback-Key, wenn KEY im Dokument fehlt (Migration).
     const FALLBACK_KEY: Option<&'static str> = None;
 
-    /// The name of the keys in the [`FileContent`](Self::FileContent) that should
-    /// always be written to a settings file, even if their value matches the default
-    /// value.
-    ///
-    /// This is useful for tagged [`FileContent`](Self::FileContent)s where the tag
-    /// is a "version" field that should always be persisted, even if the current
-    /// user settings match the current version of the settings.
+    /// Schlüssel in FileContent, die immer persistiert werden sollen, auch wenn Default.
     const PRESERVED_KEYS: Option<&'static [&'static str]> = None;
 
-    /// The type that is stored in an individual JSON file.
+    /// Der Typ, der aus einem einzelnen TOML-Dokument geladen/geschrieben wird.
     type FileContent: Clone + Default + Serialize + DeserializeOwned;
 
-    /// The logic for combining together values from one or more JSON files into the
-    /// final value for this setting.
-    fn load(sources: SettingsSources<Self::FileContent>) -> Result<Self>
+    /// Merge-Logik: aus Sources (default + user + später evtl. mehr) das finale Setting bauen.
+    fn load(sources: SettingsSources<Self::FileContent>) -> SettingsResult<Self>
     where
         Self: Sized;
+}
 
-    fn missing_default() -> anyhow::Error {
-        anyhow::anyhow!("missing default")
-    }
-
-    #[track_caller]
-    fn register(cx: &mut App)
-    where
-        Self: Sized,
-    {
-        SettingsStore::update_global(cx, |store, cx| {
-            store.register_setting::<Self>(cx);
-        });
-    }
-
-    #[track_caller]
-    fn get<'a>(path: Option<SettingsLocation>, cx: &'a App) -> &'a Self
-    where
-        Self: Sized,
-    {
-        cx.global::<SettingsStore>().get(path)
-    }
+/// Standardpfad für die Settings-Datei (MVP: eine Datei).
+pub fn settings_file() -> PathBuf {
+    // Für MVP: config/settings.toml
+    paths::config_dir().join("settings.toml")
 }

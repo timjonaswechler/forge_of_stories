@@ -1,21 +1,16 @@
+//! Quellenstapel für Settings – jetzt mit server/admin o. ä.
+
 #[derive(Clone, Copy, Debug)]
 pub struct SettingsSources<'a, T> {
-    /// The default Zed settings.
-    pub default: &'a T,
-    /// Global settings (loaded before user settings).
-    pub global: Option<&'a T>,
-    /// Settings provided by extensions.
-    pub extensions: Option<&'a T>,
-    /// The user settings.
-    pub user: Option<&'a T>,
-    /// The user settings for the current release channel.
-    // pub release_channel: Option<&'a T>,
-    // /// The user settings for the current operating system.
-    // pub operating_system: Option<&'a T>,
-    // /// The settings associated with an enabled settings profile
-    // pub profile: Option<&'a T>,
-    /// The server's settings.
-    pub server: Option<&'a T>,
-    /// The project settings, ordered from least specific to most specific.
-    pub project: &'a [&'a T],
+    pub default: &'a T,      // eingebettete Defaults (global.toml)
+    pub user: Option<&'a T>, // User-Config (settings.toml)
+
+    // Weitere Dateien („Domains“):
+    pub server: Option<&'a T>, // server.toml (autoritative Werte)
+    pub admin: Option<&'a T>,  // admin.toml (TUI/Web-Config)
+
+                               // Erweiterbar:
+                               // pub global: Option<&'a T>,
+                               // pub extensions: Option<&'a T>,
+                               // pub project: &'a [&'a T],
 }

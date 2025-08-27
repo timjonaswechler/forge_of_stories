@@ -6,7 +6,7 @@ use ratatui::{
 use std::{any::Any, sync::Arc};
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::{action::Action, config::Config, style::Theme, tui::Event};
+use crate::{action::Action, style::Theme, tui::Event};
 
 mod home;
 mod login;
@@ -24,11 +24,6 @@ pub trait Page {
 
     fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
         let _ = tx;
-        Ok(())
-    }
-
-    fn register_config_handler(&mut self, config: Config) -> Result<()> {
-        let _ = config;
         Ok(())
     }
 

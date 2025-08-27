@@ -51,7 +51,7 @@
 /// }
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
-use toml::Value as TomlValue;
+use toml_edit::Value;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BindingSpec {
@@ -68,7 +68,7 @@ pub struct KeystrokeSpec {
 }
 
 bitflags! {
-    #[derive(Serialize, Deserialize)]
+    #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Copy, Debug)]
     pub struct Modifiers: u8 {
         const CTRL  = 0b0001;
         const ALT   = 0b0010;
@@ -84,9 +84,9 @@ pub enum KeyCodeSpec {
     Named(String), // "Escape", "F1", "ArrowUp", ...
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ActionSpec {
     NoAction,
     Name(String),
-    WithArgs { name: String, args: TomlValue },
+    WithArgs { name: String, args: Value },
 }

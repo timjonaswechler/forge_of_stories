@@ -17,7 +17,7 @@
 
 
 # done
-- [x] Keymap // außer Fs und paths fehler
+- [x] Keymap
   - [x] action.rs
   - [x] base_key.rs
   - [x] binding_adapter.rs

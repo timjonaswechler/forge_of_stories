@@ -1,37 +1,35 @@
-use fs::Fs;
-use gpui::{App, RenderOnce, SharedString};
+//! UI-unabhängiges EditableSettingControl – MVP-Variante ohne gpui.
+//! Default write() nutzt den Store und update_settings_file.
 
-use crate::{Settings, update_settings_file};
+use crate::settings::{Settings, SettingsError, store::SettingsStore};
+use std::path::Path;
 
-/// A UI control that can be used to edit a setting.
-pub trait EditableSettingControl: RenderOnce {
-    /// The type of the setting value.
-    type Value: Send;
+pub trait EditableSettingControl {
+    /// Wert, der in der UI verändert wird.
+    type Value: Send + 'static;
+    /// Zugehöriges Setting.
+    type Setting: Settings;
 
-    /// The settings type to which this setting belongs.
-    type Settings: Settings;
+    /// Anzeigename/Label in der UI (oder intern).
+    fn name(&self) -> &'static str;
 
-    /// Returns the name of this setting.
-    fn name(&self) -> SharedString;
+    /// Aktuellen Wert aus dem Store lesen (z. B. für UI-Initialisierung).
+    fn read(store: &SettingsStore) -> Self::Value;
 
-    /// Reads the setting value from the settings.
-    fn read(cx: &App) -> Self::Value;
+    /// Semantik: Wie wird ein Value in das FileContent überführt?
+    fn apply(file: &mut <Self::Setting as Settings>::FileContent, value: Self::Value);
 
-    /// Applies the given setting file to the settings file contents.
-    ///
-    /// This will be called when writing the setting value back to the settings file.
-    fn apply(
-        settings: &mut <Self::Settings as Settings>::FileContent,
+    /// Default-Schreiblogik: Settings-Datei auf Pfad aktualisieren.
+    fn write(
+        store: &SettingsStore,
+        settings_path: &Path,
         value: Self::Value,
-        cx: &App,
-    );
-
-    /// Writes the given setting value to the settings files.
-    fn write(value: Self::Value, cx: &App) {
-        let fs = <dyn Fs>::global(cx);
-
-        update_settings_file::<Self::Settings>(fs, cx, move |settings, cx| {
-            Self::apply(settings, value, cx);
-        });
+    ) -> Result<(), SettingsError> {
+        // Schrittweise:
+        // 1) Closure bauen, die `apply` auf FileContent anwendet
+        // 2) store.update_settings_file::<Self::Setting>(settings_path, closure)
+        store.update_settings_file::<Self::Setting>(settings_path, |file| {
+            Self::apply(file, value);
+        })
     }
 }
