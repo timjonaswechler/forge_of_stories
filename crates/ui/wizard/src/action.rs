@@ -1,37 +1,44 @@
 use serde::{Deserialize, Serialize};
 use strum::Display;
 
-use crate::messages::AetherToWizard;
+type Command = String;
+type Args = Option<String>;
 
-#[derive(Debug, Clone, PartialEq, Eq, Display, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Display, Deserialize)]
 pub enum Action {
     Tick,
     Render,
-    /// Navigate to a page by id/name. The string should match a registered page id.
-    Navigate(String),
     Resize(u16, u16),
     Suspend,
     Resume,
     Quit,
-    Reload,
-    Save,
-    ClearScreen,
+    Refresh,
     Error(String),
-    IdleTimeout,
     Help,
-    AetherEvent(AetherToWizard),
-    // Server control (triggered by UI; handled centrally in App)
-    StartServer,
-    StopServer,
-    RestartServer,
-
-    // Settings gating (set by Settings/Setup flow)
-    SettingsReady,
-    SettingsInvalid(String),
-
-    // Supervisor events (forwarded from AetherSupervisor into the App action loop)
-    ApplyRuntimeSetting {
-        key: String,
-        value: String,
-    },
+    FocusNext,
+    FocusPrev,
+    Focus,
+    UnFocus,
+    Up,
+    Down,
+    Submit,
+    Update,
+    Tab(u32),
+    TabNext,
+    TabPrev,
+    Go,
+    Back,
+    ToggleFullScreen,
+    StatusLine(String),
+    TimedStatusLine(String, u64),
+    FocusFooter(Command, Args),
+    FooterResult(Command, Args),
+    Noop,
+    NewCall(Option<String>),
+    HangUp(Option<String>),
+    Dial,
+    OpenPopup,
+    ClosePopup,
+    Navigate(usize),
+    IdleTimeout,
 }

@@ -7867,6 +7867,7 @@ dependencies = [
  "json5",
  "lazy_static",
  "libc",
+ "log",
  "paths",
  "pretty_assertions",
  "rand 0.8.5",

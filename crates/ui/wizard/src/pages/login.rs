@@ -2,7 +2,7 @@ use color_eyre::Result;
 
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout, Rect, Size},
+    layout::{Constraint, Direction, Layout, Rect},
 };
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -10,8 +10,7 @@ use crate::{
     action::Action,
     components::{Component, auth::AuthComponent, logo::LogoComponent},
     config::Config,
-    style::Theme,
-    tui::Event,
+    state::State,
 };
 
 use super::Page;
@@ -20,80 +19,59 @@ use super::Page;
 /// - Left side: username/password form (create-admin on first run, otherwise login)
 /// - Right side: ASCII logo
 pub struct LoginPage {
-    auth: AuthComponent,
-    logo: LogoComponent,
+    command_tx: Option<UnboundedSender<Action>>,
+    config: Config,
+    components: Vec<Box<dyn Component>>,
+    focused_pane_index: usize,
 }
 
 impl LoginPage {
-    pub fn new() -> Self {
-        Self {
-            auth: AuthComponent::new(),
-            logo: LogoComponent::new(),
-        }
-    }
-}
-
-impl Default for LoginPage {
-    fn default() -> Self {
-        Self::new()
+    pub fn new() -> Result<Self> {
+        Ok(Self {
+            command_tx: None,
+            config: Config::default(),
+            components: vec![
+                Box::new(AuthComponent::new()),
+                Box::new(LogoComponent::new()),
+            ],
+            focused_pane_index: 1,
+        })
     }
 }
 
 impl Page for LoginPage {
-    fn name(&self) -> &str {
-        "login"
+    fn init(&mut self, state: &State) -> Result<()> {
+        for pane in self.components.iter_mut() {
+            pane.init(state)?;
+        }
+        Ok(())
+    }
+
+    fn on_enter(&mut self, state: &mut State) -> Result<()> {
+        state.input_mode = InputMode::Insert;
+        Ok(())
     }
 
     fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
-        self.auth.register_action_handler(tx.clone())?;
-        self.logo.register_action_handler(tx)?;
+        self.command_tx = Some(tx);
         Ok(())
     }
 
     fn register_config_handler(&mut self, config: Config) -> Result<()> {
-        self.auth.register_config_handler(config.clone())?;
-        self.logo.register_config_handler(config)?;
-        Ok(())
-    }
-    fn register_theme(&mut self, theme: Theme) -> Result<()> {
-        self.auth.register_theme(theme.clone())?;
-        self.logo.register_theme(theme)?;
-        Ok(())
-    }
-    fn get_shortcuts(&self) -> Option<(&'static str, Box<[crate::services::shortcuts::Shortcut]>)> {
-        // Aktuell ist AuthComponent die interaktivste Komponente.
-        self.auth.register_shortcuts()
-    }
-
-    fn init(&mut self, area: Size) -> Result<()> {
-        self.auth.init(area)?;
-        self.logo.init(area)?;
+        self.config = config;
         Ok(())
     }
 
-    fn handle_events(&mut self, event: Option<Event>) -> Result<Option<Action>> {
-        if let Some(a) = self.auth.handle_events(event.clone())? {
-            return Ok(Some(a));
-        }
-        if let Some(a) = self.logo.handle_events(event)? {
-            return Ok(Some(a));
-        }
-        Ok(None)
-    }
-
-    fn update(&mut self, action: Action) -> Result<Option<Action>> {
+    fn update(&mut self, action: Action, state: &mut State) -> Result<Option<Action>> {
         // Only show top info when we actually timed out
         if let Action::IdleTimeout = action {}
-        if let Some(a) = self.auth.update(action.clone())? {
-            return Ok(Some(a));
-        }
-        if let Some(a) = self.logo.update(action)? {
-            return Ok(Some(a));
+        for component in self.components.iter_mut() {
+            component.update(action.clone(), state)?;
         }
         Ok(None)
     }
 
-    fn draw(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
+    fn draw(&mut self, frame: &mut Frame, area: Rect, state: &State) -> Result<()> {
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
@@ -107,8 +85,8 @@ impl Page for LoginPage {
             .direction(Direction::Horizontal)
             .constraints([Constraint::Min(60), Constraint::Min(71)])
             .split(chunks[1]);
-        self.auth.draw(frame, part[0])?;
-        self.logo.draw(frame, part[1])?;
+        self.components[0].draw(frame, part[0], state)?;
+        self.components[1].draw(frame, part[1], state)?;
 
         Ok(())
     }

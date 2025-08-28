@@ -4,7 +4,7 @@ use tracing_error::ErrorLayer;
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 lazy_static::lazy_static! {
-    pub static ref LOG_ENV: String = format!("{}_LOG_LEVEL", config::PROJECT_NAME.clone());
+    pub static ref LOG_ENV: String = format!("FORGE_OF_STORIES_LOG_LEVEL");
     pub static ref LOG_FILE: String = format!("{}.log", env!("CARGO_PKG_NAME"));
 }
 

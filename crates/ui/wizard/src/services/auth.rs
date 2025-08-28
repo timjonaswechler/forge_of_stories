@@ -8,8 +8,6 @@ use color_eyre::{Result, eyre::eyre};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 
-use crate::config::get_data_dir;
-
 #[derive(Debug, Serialize, Deserialize)]
 struct Credentials {
     username: String,
@@ -17,7 +15,7 @@ struct Credentials {
 }
 
 fn credentials_path() -> PathBuf {
-    get_data_dir().join("auth.json")
+    paths::data_dir().join("auth.json")
 }
 
 pub fn exists() -> bool {

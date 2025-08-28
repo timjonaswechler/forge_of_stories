@@ -1,3 +1,7 @@
 /target
-.*/
+.**
+WARP.md
+AGENTS.md
 Cargo.lock
+Dockerfile
+docker-compose.yaml

@@ -1,5 +1,5 @@
 use super::Component;
-use crate::{action::Action, config::Config};
+use crate::{action::Action, state::State, tui::Frame};
 use color_eyre::Result;
 use ratatui::{prelude::*, widgets::*};
 use std::collections::HashMap;
@@ -8,7 +8,6 @@ use tokio::sync::mpsc::UnboundedSender;
 #[derive(Default)]
 pub struct LogoComponent {
     command_tx: Option<UnboundedSender<Action>>,
-    config: Config,
 }
 
 impl LogoComponent {
@@ -18,30 +17,11 @@ impl LogoComponent {
 }
 
 impl Component for LogoComponent {
-    fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
-        self.command_tx = Some(tx);
-        Ok(())
+    fn height_constraint(&self) -> Constraint {
+        Constraint::Max(1)
     }
 
-    fn register_config_handler(&mut self, config: Config) -> Result<()> {
-        self.config = config;
-        Ok(())
-    }
-
-    fn update(&mut self, action: Action) -> Result<Option<Action>> {
-        match action {
-            Action::Tick => {
-                // add any logic here that should run on every tick
-            }
-            Action::Render => {
-                // add any logic here that should run on every render
-            }
-            _ => {}
-        }
-        Ok(None)
-    }
-
-    fn draw(&mut self, frame: &mut Frame, body: Rect) -> Result<()> {
+    fn draw(&mut self, frame: &mut Frame, body: Rect, state: &State) -> Result<()> {
         let vertical = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Min(0), Constraint::Max(16), Constraint::Min(0)])
@@ -149,7 +129,6 @@ impl Component for LogoComponent {
 #[derive(Default)]
 pub struct WizardLogoComponent {
     command_tx: Option<UnboundedSender<Action>>,
-    config: Config,
 }
 impl WizardLogoComponent {
     pub fn new() -> Self {
@@ -160,30 +139,11 @@ impl WizardLogoComponent {
     }
 }
 impl Component for WizardLogoComponent {
-    fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
-        self.command_tx = Some(tx);
-        Ok(())
+    fn height_constraint(&self) -> Constraint {
+        Constraint::Max(1)
     }
 
-    fn register_config_handler(&mut self, config: Config) -> Result<()> {
-        self.config = config;
-        Ok(())
-    }
-
-    fn update(&mut self, action: Action) -> Result<Option<Action>> {
-        match action {
-            Action::Tick => {
-                // add any logic here that should run on every tick
-            }
-            Action::Render => {
-                // add any logic here that should run on every render
-            }
-            _ => {}
-        }
-        Ok(None)
-    }
-
-    fn draw(&mut self, frame: &mut Frame, body: Rect) -> Result<()> {
+    fn draw(&mut self, frame: &mut Frame, body: Rect, state: &State) -> Result<()> {
         let vertical = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Min(0), Constraint::Max(16), Constraint::Min(0)])

@@ -1,68 +1,75 @@
-use color_eyre::Result;
-use ratatui::{
-    Frame,
-    layout::{Rect, Size},
-};
-use std::{any::Any, sync::Arc};
+use color_eyre::eyre::Result;
+use crossterm::event::{KeyEvent, MouseEvent};
+use ratatui::layout::Rect;
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::{action::Action, style::Theme, tui::Event};
+use crate::{
+    action::Action,
+    config::Config,
+    state::State,
+    tui::{Event, EventResponse, Frame},
+};
 
-mod home;
-mod login;
-mod setup;
+pub mod login;
 
-pub use home::HomePage;
-pub use login::LoginPage;
-pub use setup::SetupPage;
-
-/// A `Page` composes multiple `Component`s and exposes a lifecycle similar to the
-/// existing `Component` trait but at the page level.
 pub trait Page {
-    #[allow(dead_code)]
-    fn name(&self) -> &str;
-
+    #[allow(unused_variables)]
     fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
-        let _ = tx;
         Ok(())
     }
 
-    fn register_theme(&mut self, theme: Theme) -> Result<()> {
-        let _ = theme;
+    #[allow(unused_variables)]
+    fn register_config_handler(&mut self, config: Config) -> Result<()> {
         Ok(())
     }
 
-    fn register_shared_state(&mut self, _state: Arc<dyn Any + Send + Sync>) -> Result<()> {
-        Ok(())
-    }
-    fn get_shortcuts(&self) -> Option<(&'static str, Box<[crate::services::shortcuts::Shortcut]>)> {
-        None
-    }
-    fn init(&mut self, area: Size) -> Result<()> {
-        let _ = area;
+    fn init(&mut self, _state: &State) -> Result<()> {
         Ok(())
     }
 
-    fn handle_events(&mut self, event: Option<Event>) -> Result<Option<Action>> {
-        let _ = event;
+    fn focus(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    fn unfocus(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    fn handle_events(
+        &mut self,
+        event: Event,
+        state: &mut State,
+    ) -> Result<Option<EventResponse<Action>>> {
+        let r = match event {
+            Event::Key(key_event) => self.handle_key_events(key_event, state)?,
+            Event::Mouse(mouse_event) => self.handle_mouse_events(mouse_event, state)?,
+            _ => None,
+        };
+        Ok(r)
+    }
+
+    #[allow(unused_variables)]
+    fn handle_key_events(
+        &mut self,
+        key: KeyEvent,
+        state: &mut State,
+    ) -> Result<Option<EventResponse<Action>>> {
         Ok(None)
     }
 
-    fn update(&mut self, action: Action) -> Result<Option<Action>> {
-        let _ = action;
+    #[allow(unused_variables)]
+    fn handle_mouse_events(
+        &mut self,
+        mouse: MouseEvent,
+        state: &mut State,
+    ) -> Result<Option<EventResponse<Action>>> {
         Ok(None)
     }
 
-    /// Draw the page using the provided `Frame` and `area`.
-    fn draw(&mut self, frame: &mut Frame, area: Rect) -> Result<()>;
-
-    /// Called when the page becomes active.
-    fn on_enter(&mut self) -> Result<()> {
-        Ok(())
+    #[allow(unused_variables)]
+    fn update(&mut self, action: Action, state: &mut State) -> Result<Option<Action>> {
+        Ok(None)
     }
 
-    /// Called when the page is leaving / being replaced.
-    fn on_exit(&mut self) -> Result<()> {
-        Ok(())
-    }
+    fn draw(&mut self, f: &mut Frame<'_>, area: Rect, state: &State) -> Result<()>;
 }
