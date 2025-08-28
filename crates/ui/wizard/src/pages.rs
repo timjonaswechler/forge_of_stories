@@ -11,6 +11,7 @@ use crate::{
 };
 
 pub mod login;
+pub mod setup;
 
 pub trait Page {
     #[allow(unused_variables)]

@@ -22,7 +22,7 @@ pub struct LoginPage {
     command_tx: Option<UnboundedSender<Action>>,
     config: Config,
     components: Vec<Box<dyn Component>>,
-    focused_pane_index: usize,
+    focused_component_index: usize,
 }
 
 impl LoginPage {
@@ -31,10 +31,10 @@ impl LoginPage {
             command_tx: None,
             config: Config::default(),
             components: vec![
-                Box::new(AuthComponent::new()),
                 Box::new(LogoComponent::new()),
+                Box::new(AuthComponent::new()),
             ],
-            focused_pane_index: 1,
+            focused_component_index: 1,
         })
     }
 }
@@ -47,9 +47,17 @@ impl Page for LoginPage {
         Ok(())
     }
 
-    fn on_enter(&mut self, state: &mut State) -> Result<()> {
-        state.input_mode = InputMode::Insert;
-        Ok(())
+    fn handle_events(
+        &mut self,
+        event: crate::tui::Event,
+        state: &mut State,
+    ) -> Result<Option<crate::tui::EventResponse<Action>>> {
+        if let Some(r) =
+            self.components[self.focused_component_index].handle_events(event, state)?
+        {
+            return Ok(Some(r));
+        }
+        Ok(None)
     }
 
     fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
@@ -85,8 +93,8 @@ impl Page for LoginPage {
             .direction(Direction::Horizontal)
             .constraints([Constraint::Min(60), Constraint::Min(71)])
             .split(chunks[1]);
-        self.components[0].draw(frame, part[0], state)?;
-        self.components[1].draw(frame, part[1], state)?;
+        self.components[1].draw(frame, part[0], state)?;
+        self.components[0].draw(frame, part[1], state)?;
 
         Ok(())
     }

@@ -1,0 +1,23 @@
+[global]
+key_bindings = [
+    { key = "ctrl+c", command = "Quit" },
+    { key = "?", command = "Help" },
+]
+[login]
+key_bindings = [
+    { key = "enter", command = "Submit" },
+    { key = "tab", command = "NextField" },
+    { key = "shift+tab", command = "PreviousField" },
+    { key = "up", command = "PreviousField" },
+    { key = "down", command = "NextField" },
+    { key = "ctrl+r", command = "ResetFields" },
+]
+[setup]
+key_bindings = [
+    { key = "enter", command = "Submit" },
+    { key = "tab", command = "NextField" },
+    { key = "shift+tab", command = "PreviousField" },
+    { key = "up", command = "PreviousField" },
+    { key = "down", command = "NextField" },
+    { key = "ctrl+r", command = "ResetFields" },
+]

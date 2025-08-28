@@ -245,7 +245,7 @@ impl App {
                         action_tx.send(action)?
                     };
                 } else if let Some(page) = self.pages.get_mut(self.active_page) {
-                    if let Some(action) = page.handle_events(action.clone(), &mut self.state)? {
+                    if let Some(action) = page.update(action.clone(), &mut self.state)? {
                         action_tx.send(action)?
                     };
                 }

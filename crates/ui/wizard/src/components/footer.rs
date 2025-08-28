@@ -128,34 +128,6 @@ impl Component for FooterComponent {
 
     fn update(&mut self, action: Action, state: &mut State) -> Result<Option<Action>> {
         match action {
-            Action::FocusFooter(cmd, args) => {
-                self.focused = true;
-                state.input_mode = InputMode::Command;
-                if let Some(args) = args {
-                    self.input = self.input.clone().with_value(args);
-                } else {
-                    self.input = self.input.clone().with_value("".into());
-                }
-                self.command = cmd;
-                Ok(Some(Action::Update))
-            }
-            Action::FooterResult(..) => {
-                state.input_mode = InputMode::Normal;
-                self.focused = false;
-                Ok(Some(Action::Update))
-            }
-            Action::StatusLine(status_line) => {
-                self.status_line = status_line;
-                Ok(None)
-            }
-            Action::TimedStatusLine(status_line, show_time) => {
-                self.timed_status_line = Some(TimedStatusLine {
-                    status_line,
-                    show_time,
-                    created: Instant::now(),
-                });
-                Ok(None)
-            }
             _ => Ok(None),
         }
     }
