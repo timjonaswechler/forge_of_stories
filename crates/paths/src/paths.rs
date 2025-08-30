@@ -58,8 +58,9 @@ pub fn set_custom_config_dir(dir: &str) -> &'static PathBuf {
 }
 
 /// Returns the path to the configuration directory used by Forge_of_Stories.
+/// Automatically creates the directory if it doesn't exist.
 pub fn config_dir() -> &'static PathBuf {
-    CURRENT_CONFIG_DIR.get_or_init(|| {
+    let path = CURRENT_CONFIG_DIR.get_or_init(|| {
         // 1) ENV overrides
         if let Ok(p) = std::env::var(ENV_CONFIG_DIR).or_else(|_| std::env::var(ENV_CONFIG_DIR_ALT))
         {
@@ -85,12 +86,19 @@ pub fn config_dir() -> &'static PathBuf {
         } else {
             home_dir().join(".config").join("Forge_of_Stories")
         }
-    })
+    });
+
+    if !path.exists() {
+        std::fs::create_dir_all(path).expect("failed to create config directory");
+    }
+
+    path
 }
 
 /// Returns the path to the data directory used by Forge_of_Stories.
+/// Automatically creates the directory if it doesn't exist.
 pub fn data_dir() -> &'static PathBuf {
-    CURRENT_DATA_DIR.get_or_init(|| {
+    let path = CURRENT_DATA_DIR.get_or_init(|| {
         // 1) Runtime override via custom data dir
         if let Some(custom_dir) = CUSTOM_DATA_DIR.get() {
             custom_dir.clone()
@@ -116,13 +124,20 @@ pub fn data_dir() -> &'static PathBuf {
         } else {
             config_dir().clone() // Fallback
         }
-    })
+    });
+
+    if !path.exists() {
+        std::fs::create_dir_all(path).expect("failed to create data directory");
+    }
+
+    path
 }
 
 /// Returns the path to the temp directory used by Forge_of_Stories.
+/// Automatically creates the directory if it doesn't exist.
 pub fn temp_dir() -> &'static PathBuf {
     static TEMP_DIR: OnceLock<PathBuf> = OnceLock::new();
-    TEMP_DIR.get_or_init(|| {
+    let path = TEMP_DIR.get_or_init(|| {
         if cfg!(target_os = "macos") {
             return dirs::cache_dir()
                 .expect("failed to determine cachesDirectory directory")
@@ -145,57 +160,62 @@ pub fn temp_dir() -> &'static PathBuf {
         }
 
         home_dir().join(".cache").join("Forge_of_Stories")
-    })
+    });
+
+    if !path.exists() {
+        std::fs::create_dir_all(path).expect("failed to create temp directory");
+    }
+
+    path
 }
 
 /// Returns the path to the logs directory.
+/// Automatically creates the directory if it doesn't exist.
 pub fn logs_dir() -> &'static PathBuf {
     static LOGS_DIR: OnceLock<PathBuf> = OnceLock::new();
-    LOGS_DIR.get_or_init(|| {
+    let path = LOGS_DIR.get_or_init(|| {
         if cfg!(target_os = "macos") {
             home_dir().join("Library/Logs/Forge_of_Stories")
         } else {
             data_dir().join("logs")
         }
-    })
-}
+    });
 
-/// Ensures that the base data and config directories exist.
-pub fn ensure_base_dirs() -> std::io::Result<()> {
-    let dd = data_dir().clone();
-    let cd = config_dir().clone();
-    if !dd.exists() {
-        std::fs::create_dir_all(&dd)?;
+    if !path.exists() {
+        std::fs::create_dir_all(path).expect("failed to create logs directory");
     }
-    if !cd.exists() {
-        std::fs::create_dir_all(&cd)?;
-    }
-    Ok(())
-}
 
-/// Ensures that the logs directory exists and returns it.
-pub fn ensure_logs_dir() -> std::io::Result<PathBuf> {
-    let ld = logs_dir().clone();
-    if !ld.exists() {
-        std::fs::create_dir_all(&ld)?;
-    }
-    Ok(ld)
+    path
 }
 
 /// Returns the path to the extensions directory.
+/// Automatically creates the directory if it doesn't exist.
 ///
 /// This is where installed extensions are stored.
 pub fn extensions_dir() -> &'static PathBuf {
     static EXTENSIONS_DIR: OnceLock<PathBuf> = OnceLock::new();
-    EXTENSIONS_DIR.get_or_init(|| data_dir().join("extensions"))
+    let path = EXTENSIONS_DIR.get_or_init(|| data_dir().join("extensions"));
+
+    if !path.exists() {
+        std::fs::create_dir_all(path).expect("failed to create extensions directory");
+    }
+
+    path
 }
 
 /// Returns the path to the languages directory.
+/// Automatically creates the directory if it doesn't exist.
 ///
 /// This is where language servers are downloaded to for languages built-in to Forge_of_Stories.
 pub fn languages_dir() -> &'static PathBuf {
     static LANGUAGES_DIR: OnceLock<PathBuf> = OnceLock::new();
-    LANGUAGES_DIR.get_or_init(|| data_dir().join("languages"))
+    let path = LANGUAGES_DIR.get_or_init(|| data_dir().join("languages"));
+
+    if !path.exists() {
+        std::fs::create_dir_all(path).expect("failed to create languages directory");
+    }
+
+    path
 }
 
 /// Returns the path to the user's home directory.

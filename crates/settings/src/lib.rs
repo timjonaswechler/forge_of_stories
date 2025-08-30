@@ -1,3 +1,3 @@
-mod assets;
-// mod keymap;
-mod settings;
+pub(crate) mod embedded;
+pub(crate) mod keymap;
+pub(crate) mod settings;

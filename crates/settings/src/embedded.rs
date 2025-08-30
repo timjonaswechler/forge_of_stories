@@ -10,9 +10,24 @@ use util::asset_str;
 pub struct SettingsAssets;
 
 pub fn default_settings() -> Cow<'static, str> {
-    asset_str::<SettingsAssets>("settings/default.toml")
+    asset_str::<SettingsAssets>("settings/global.toml")
 }
 
+pub fn default_settings_client() -> Cow<'static, str> {
+    asset_str::<SettingsAssets>("settings/client-default.toml")
+}
+
+pub fn default_settings_server() -> Cow<'static, str> {
+    asset_str::<SettingsAssets>("settings/server-default.toml")
+}
+
+pub fn default_settings_cli() -> Cow<'static, str> {
+    asset_str::<SettingsAssets>("settings/cli-default.toml")
+}
+
+pub fn default_wizard_setting() -> Cow<'static, str> {
+    asset_str::<SettingsAssets>("settings/wizard.toml")
+}
 #[cfg(target_os = "macos")]
 pub const DEFAULT_KEYMAP_PATH: &str = "keymaps/default-macos.toml";
 
@@ -27,6 +42,11 @@ pub const DEFAULT_GAMEPAD_KEYMAP_PATH: &str = "keymaps/default-gamepad.toml";
 pub fn default_keymap() -> Cow<'static, str> {
     asset_str::<SettingsAssets>(DEFAULT_KEYMAP_PATH)
 }
+
 pub fn default_gamepad_keymap() -> Cow<'static, str> {
     asset_str::<SettingsAssets>(DEFAULT_GAMEPAD_KEYMAP_PATH)
+}
+
+pub fn default_wizard_keymap() -> Cow<'static, str> {
+    asset_str::<SettingsAssets>("keymaps/default-wizard.toml")
 }
