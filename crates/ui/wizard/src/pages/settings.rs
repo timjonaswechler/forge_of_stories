@@ -16,13 +16,13 @@ use super::Page;
 /// LoginPage shows the authentication screen:
 /// - Left side: username/password form (create-admin on first run, otherwise login)
 /// - Right side: ASCII logo
-pub struct SetupPage {
+pub struct SettingsPage {
     command_tx: Option<UnboundedSender<Action>>,
     components: Vec<Box<dyn Component>>,
     focused_component_index: usize,
 }
 
-impl SetupPage {
+impl SettingsPage {
     pub fn new() -> Result<Self> {
         Ok(Self {
             command_tx: None,
@@ -35,7 +35,7 @@ impl SetupPage {
     }
 }
 
-impl Page for SetupPage {
+impl Page for SettingsPage {
     fn init(&mut self) -> Result<()> {
         for pane in self.components.iter_mut() {
             pane.init()?;
@@ -86,7 +86,7 @@ impl Page for SetupPage {
     }
 
     fn keymap_context(&self) -> &'static str {
-        "setup"
+        "settings"
     }
 
     fn focused_component_name(&self) -> &'static str {

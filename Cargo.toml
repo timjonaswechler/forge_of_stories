@@ -14,7 +14,7 @@ members = [
     "crates/ui/oracle",
     "crates/ui/wizard",
 ]
-default-members = ["crates/forge_of_stories"]
+default-members = ["crates/forge_of_stories", "crates/ui/wizard"]
 
 [workspace.package]
 version = "0.1.0"

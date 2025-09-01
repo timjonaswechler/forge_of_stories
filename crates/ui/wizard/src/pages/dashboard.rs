@@ -8,7 +8,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
     action::Action,
-    components::{Component, logo::LogoComponent, welcome::WelcomeComponent},
+    components::{Component, logo::LogoComponent},
 };
 
 use super::Page;
@@ -16,26 +16,23 @@ use super::Page;
 /// LoginPage shows the authentication screen:
 /// - Left side: username/password form (create-admin on first run, otherwise login)
 /// - Right side: ASCII logo
-pub struct SetupPage {
+pub struct DashboardPage {
     command_tx: Option<UnboundedSender<Action>>,
     components: Vec<Box<dyn Component>>,
     focused_component_index: usize,
 }
 
-impl SetupPage {
+impl DashboardPage {
     pub fn new() -> Result<Self> {
         Ok(Self {
             command_tx: None,
-            components: vec![
-                Box::new(WelcomeComponent::new()),
-                Box::new(LogoComponent::new()),
-            ],
+            components: vec![Box::new(LogoComponent::new())],
             focused_component_index: 0,
         })
     }
 }
 
-impl Page for SetupPage {
+impl Page for DashboardPage {
     fn init(&mut self) -> Result<()> {
         for pane in self.components.iter_mut() {
             pane.init()?;
@@ -59,10 +56,22 @@ impl Page for SetupPage {
     }
 
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
-        match action {
-            Action::Submit => Ok(Some(Action::Navigate(1))),
-            _ => Ok(None),
+        // Only show top info when we actually timed out
+        if let Action::IdleTimeout = action {}
+        for component in self.components.iter_mut() {
+            component.update(action.clone())?;
         }
+        Ok(None)
+    }
+
+    fn focused_component_name(&self) -> &'static str {
+        // This page currently only contains the logo component.
+        // If more components are added later, switch on focused_component_index or use their name().
+        "logo"
+    }
+
+    fn keymap_context(&self) -> &'static str {
+        "dashboard"
     }
 
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
@@ -79,21 +88,9 @@ impl Page for SetupPage {
             .direction(Direction::Horizontal)
             .constraints([Constraint::Min(60), Constraint::Min(71)])
             .split(chunks[1]);
-        self.components[0].draw(frame, part[0])?;
-        self.components[1].draw(frame, part[1])?;
+
+        self.components[0].draw(frame, part[1])?;
 
         Ok(())
-    }
-
-    fn keymap_context(&self) -> &'static str {
-        "setup"
-    }
-
-    fn focused_component_name(&self) -> &'static str {
-        match self.focused_component_index {
-            0 => "start",
-            1 => "logo",
-            _ => "unknown",
-        }
     }
 }

@@ -2,15 +2,38 @@
 
 [general]
 locale = "en"
-
-[wizard]
-tick_rate = 20
-fps = 60
+tick_rate = 60
 autostart = false
-max_login_tries = 10
 
-# Beispiel: Gameplay-/Shared-Werte würden hier liegen (server-autoritative)
-#[gameplay]
-#max_players = 16
-#allow_mods = false
+[network]
+ip_address = "0.0.0.0"
+udp_port = 443
+max_idle_timeout = 300
+max_concurrent_bidi_streams = 100
+max_concurrent_uni_streams = 100
+keep_alive_interval = 60
+client_ip_migration = true
+zero_rtt_resumption = true
+initial_congestion_window = 10000
+mtu = 1400
+qos_traffic_prioritization = true
+nat_traversal = true
 
+[security]
+tls_cert_path = "/path/to/cert.pem"
+tls_key_path = "/path/to/key.pem"
+self_signed = true
+tls_cert_algorithm = "ecdsa"
+log_level = "info"
+log_file = "/path/to/logfile.log"
+key_rotation_interval = 30
+client_auth = true
+
+[monitoring]
+metrics_enabled = true
+
+[uds]
+path = "/path/to/uds.sock"
+group = "game"
+user = "game"
+permissions = "rw-rw-r--"

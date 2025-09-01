@@ -1,9 +1,14 @@
+[meta]
+devices = ["keyboard"]
+
 [global]
 Quit = ["ctrl+c"]
-Help = ["?"]
+Help = ["ctrl+h"]
 
-[login]
+[start]
 Submit = ["enter"]
-NextField = ["tab", "down"]
-PreviousField = ["shift+tab", "up"]
-ResetFields = ["ctrl+r"]
+# NextField = ["tab", "down"]
+# PreviousField = ["shift+tab", "up"]
+# ResetFields = ["ctrl+r"]
+
+[logo]

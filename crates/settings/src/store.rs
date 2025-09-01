@@ -31,22 +31,65 @@ pub struct Layer {
     pub kind: LayerKind,
 }
 
+#[derive(Clone)]
+struct RegisteredEntry {
+    section: &'static str,
+    rebuild: fn(&Value) -> Result<Box<dyn Any + Send + Sync>, SettingsError>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum MergeArraysPolicy {
+    Replace,
+    Concat,
+    Set,
+}
+
 pub struct SettingsStoreBuilder {
-    app_id: String,
     watch_files: bool,
     layers: Vec<Layer>, // Reihenfolge = Priorität (letztes gewinnt)
+    merge_arrays_policy: MergeArraysPolicy,
+    env_layers_enabled: bool,
 }
 
 impl SettingsStoreBuilder {
-    pub fn new(app_id: impl Into<String>) -> Self {
+    pub fn new() -> Self {
         Self {
-            app_id: app_id.into(),
             watch_files: false,
             layers: vec![],
+            merge_arrays_policy: MergeArraysPolicy::Replace,
+            env_layers_enabled: true,
         }
     }
     pub fn watch_files(mut self, yes: bool) -> Self {
         self.watch_files = yes;
+        self
+    }
+    pub fn merge_arrays_policy(mut self, policy: MergeArraysPolicy) -> Self {
+        self.merge_arrays_policy = policy;
+        self
+    }
+
+    pub fn enable_env_layers(mut self, yes: bool) -> Self {
+        self.env_layers_enabled = yes;
+        self
+    }
+
+    /// Resolve platform-specific user config directory and register optional
+    /// per-user settings and keymap files under `<config_dir>/<app_id>/`.
+    ///
+    /// Files:
+    /// - settings: `<config_dir>/<app_id>/settings.toml`
+    /// - keymap:   `<config_dir>/<app_id>/keymap.toml`
+    ///
+    /// Missing/empty files are treated as neutral layers.
+    pub fn with_user_config_dir(mut self) -> Self {
+        let app_dir = paths::config_dir().clone();
+        self.layers.push(Layer {
+            kind: LayerKind::SettingsFile(app_dir.join("settings.toml")),
+        });
+        self.layers.push(Layer {
+            kind: LayerKind::KeyMapFile(app_dir.join("keymap.toml")),
+        });
         self
     }
 
@@ -117,7 +160,6 @@ impl SettingsStoreBuilder {
 }
 
 pub struct SettingsStore {
-    app_id: String,
     layers: RwLock<Vec<Layer>>,
 
     // Effektive, bereits gemergte Sicht:
@@ -126,22 +168,28 @@ pub struct SettingsStore {
 
     // Registrierte Abschnitte => Snapshots der Modelle
     snapshots: RwLock<HashMap<TypeId, Box<dyn Any + Send + Sync>>>,
+    registrations: RwLock<HashMap<TypeId, RegisteredEntry>>,
+    // Merge policy for arrays in settings deep-merge
+    merge_arrays_policy: MergeArraysPolicy,
+    env_layers_enabled: bool,
     // TODO: optional Watcher/Events
     keymap_state: RwLock<KeymapState>,
 }
 
 impl SettingsStore {
-    pub fn builder(app_id: impl Into<String>) -> SettingsStoreBuilder {
-        SettingsStoreBuilder::new(app_id)
+    pub fn builder() -> SettingsStoreBuilder {
+        SettingsStoreBuilder::new()
     }
 
     fn from_builder(b: SettingsStoreBuilder) -> Result<Self, SettingsError> {
         let store = Self {
-            app_id: b.app_id,
             layers: RwLock::new(b.layers),
             effective_settings: RwLock::new(HashMap::new()),
             effective_keymaps: RwLock::new(MergedKeymaps::default()),
             snapshots: RwLock::new(HashMap::new()),
+            registrations: RwLock::new(HashMap::new()),
+            merge_arrays_policy: b.merge_arrays_policy,
+            env_layers_enabled: b.env_layers_enabled,
             keymap_state: RwLock::new(KeymapState::default()),
         };
         store.reload_all()?; // initialer Load+Merge
@@ -162,11 +210,56 @@ impl SettingsStore {
     }
 
     pub fn reload_all(&self) -> Result<(), SettingsError> {
+        // 1) Laden und mergen ohne Locks zu halten
         let layers = self.layers.read().unwrap().clone();
-        let (merged_settings, merged_keymaps) = load_and_merge_layers(&layers)?;
-        *self.effective_settings.write().unwrap() = merged_settings;
-        *self.effective_keymaps.write().unwrap() = merged_keymaps;
-        // registrierte Models neu bauen/validieren/broadcasten (optional)
+        let (new_settings, new_keymaps) =
+            load_and_merge_layers(&layers, self.merge_arrays_policy, self.env_layers_enabled)?;
+
+        // 2) Diff der Sections bestimmen, um nur geänderte Snapshots neu zu bauen
+        let old_settings = self.effective_settings.read().unwrap().clone();
+        let mut changed_sections = std::collections::BTreeSet::new();
+        for (k, v_new) in &new_settings {
+            match old_settings.get(k) {
+                Some(v_old) if v_old == v_new => {}
+                _ => {
+                    changed_sections.insert(k.clone());
+                }
+            }
+        }
+        for k in old_settings.keys() {
+            if !new_settings.contains_key(k) {
+                changed_sections.insert(k.clone());
+            }
+        }
+
+        // 3) Registrierte Einträge lesen und neue Snapshots für geänderte Sections vorbereiten
+        let regs = self.registrations.read().unwrap().clone();
+        let mut rebuilt: Vec<(TypeId, Box<dyn Any + Send + Sync>)> = Vec::new();
+        for (type_id, entry) in regs.into_iter() {
+            if changed_sections.contains(entry.section) {
+                let merged = new_settings
+                    .get(entry.section)
+                    .cloned()
+                    .unwrap_or(Value::Table(Default::default()));
+                let snap = (entry.rebuild)(&merged)?;
+                rebuilt.push((type_id, snap));
+            }
+        }
+
+        // 4) Unter konsistenter Lock-Reihenfolge effektiv tauschen und Snapshots aktualisieren
+        {
+            let mut es = self.effective_settings.write().unwrap();
+            let mut ek = self.effective_keymaps.write().unwrap();
+            let mut snaps = self.snapshots.write().unwrap();
+
+            *es = new_settings;
+            *ek = new_keymaps;
+
+            for (tid, snap) in rebuilt {
+                snaps.insert(tid, snap);
+            }
+        }
+
         Ok(())
     }
 
@@ -175,6 +268,7 @@ impl SettingsStore {
     where
         S::Model: Send + Sync,
     {
+        // aktuelles Merged-Section holen
         let merged = self
             .effective_settings
             .read()
@@ -182,13 +276,29 @@ impl SettingsStore {
             .get(S::SECTION)
             .cloned()
             .unwrap_or(Value::Table(Default::default()));
+
+        // Model bauen und validieren
         let migrated = S::migrate(merged)?;
         let model: S::Model = toml::from_str(&toml::to_string(&migrated)?)?;
         S::validate(&model)?;
+
+        // Registrierung mit Rebuild-Funktion ablegen
+        let type_id = TypeId::of::<S::Model>();
+        let rebuild_fn: fn(&Value) -> Result<Box<dyn Any + Send + Sync>, SettingsError> =
+            build_registered_model::<S>;
+        self.registrations.write().unwrap().insert(
+            type_id,
+            RegisteredEntry {
+                section: S::SECTION,
+                rebuild: rebuild_fn,
+            },
+        );
+
+        // Snapshot ablegen
         self.snapshots
             .write()
             .unwrap()
-            .insert(TypeId::of::<S::Model>(), Box::new(Arc::new(model)));
+            .insert(type_id, Box::new(Arc::new(model)));
         Ok(())
     }
     pub fn get<S: Settings>(&self) -> Result<Arc<S::Model>, SettingsError> {
@@ -206,7 +316,7 @@ impl SettingsStore {
         self.keymap_state.write().unwrap().scheme = scheme;
     }
 
-    /// Exportiere (global + kontext) für eine Eingabeart als Action -> ["chord", ...]
+    /// Exportiere (global + aktiver Kontext) für eine Eingabeart als Action -> ["chord", ...]. Kontext last-wins pro Gerät.
     pub fn export_keymap_for(
         &self,
         device: DeviceFilter,
@@ -231,7 +341,10 @@ impl SettingsStore {
                 for (action, device_map) in actions {
                     if let Some(list) = device_map.get(&want_device) {
                         // ggf. für Gamepad nach Kind filtern
-                        let chords: Vec<String> = list
+                        // Dedupliziere stabil in Einfügereihenfolge nach String-Repräsentation
+                        let mut seen = std::collections::HashSet::new();
+                        let mut chords: Vec<String> = Vec::new();
+                        for s in list
                             .iter()
                             .filter(|ch| match &device {
                                 DeviceFilter::GamepadKind(kind) => ch
@@ -242,7 +355,11 @@ impl SettingsStore {
                                 _ => true,
                             })
                             .map(stringify_chord)
-                            .collect();
+                        {
+                            if seen.insert(s.clone()) {
+                                chords.push(s);
+                            }
+                        }
 
                         if !chords.is_empty() {
                             // last-wins: spätere Kontexte überschreiben die Action
@@ -259,53 +376,193 @@ impl SettingsStore {
     }
 }
 
+// Helfer: generische Rebuild-Funktion für registrierte Settings
+fn build_registered_model<S: Settings>(
+    merged: &Value,
+) -> Result<Box<dyn Any + Send + Sync>, SettingsError>
+where
+    S::Model: Send + Sync,
+{
+    let migrated = S::migrate(merged.clone())?;
+    let model: S::Model = toml::from_str(&toml::to_string(&migrated)?)?;
+    S::validate(&model)?;
+    Ok(Box::new(Arc::new(model)))
+}
+
 // ---------- Laden & Mergen ----------
 
 // ---- atomarer Write (einfach & portabel) ----
 fn write_atomic(path: &PathBuf, contents: &str) -> Result<(), SettingsError> {
-    use std::fs::{File, create_dir_all, rename};
+    use std::fs::create_dir_all;
     use std::io::Write;
+
     let parent = path
         .parent()
         .ok_or(SettingsError::Invalid("invalid path"))?;
     create_dir_all(parent)?;
+
+    // Unique temp file next to the destination to ensure same-filesystem rename/replace.
     let tmp = parent.join(format!(
         ".{}.{}.tmp",
         path.file_name().unwrap().to_string_lossy(),
         std::process::id()
     ));
+
+    // 1) Write file contents fully and durably to the temp file.
     {
-        let mut f = File::create(&tmp)?;
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true) // never clobber any pre-existing temp file
+            .open(&tmp)?;
         f.write_all(contents.as_bytes())?;
-        f.sync_all()?;
+        f.sync_all()?; // flush data + metadata of the temp file
     }
-    rename(&tmp, path)?; // atomic on same fs
+
+    // 2) Atomically install it and ensure durability of the directory entry.
+    #[cfg(target_family = "unix")]
+    {
+        std::fs::rename(&tmp, path)?; // atomic replace on POSIX
+        // fsync the containing directory to persist the rename
+        fsync_dir(parent)?;
+        return Ok(());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // If target exists, use ReplaceFileW for atomic overwrite; otherwise, rename is fine.
+        if path.exists() {
+            replace_file_atomic(path.as_path(), tmp.as_path())?;
+        } else {
+            std::fs::rename(&tmp, path)?; // atomic move when dest absent
+        }
+        return Ok(());
+    }
+
+    // Fallback for other targets: best-effort atomic move.
+    #[allow(unreachable_code)]
+    {
+        std::fs::rename(&tmp, path)?;
+        Ok(())
+    }
+}
+
+#[cfg(target_family = "unix")]
+fn fsync_dir(dir: &std::path::Path) -> std::io::Result<()> {
+    // On Unix, opening a directory and calling sync_all() fsyncs the directory entry updates.
+    use std::fs::File;
+    let f = File::open(dir)?;
+    f.sync_all()
+}
+
+#[cfg(target_os = "windows")]
+fn replace_file_atomic(dest: &std::path::Path, tmp: &std::path::Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+
+    fn to_wide(os: &std::ffi::OsStr) -> Vec<u16> {
+        let mut v: Vec<u16> = os.encode_wide().collect();
+        v.push(0);
+        v
+    }
+
+    // REPLACEFILE_WRITE_THROUGH ensures the operation is flushed to disk.
+    const REPLACEFILE_WRITE_THROUGH: u32 = 0x00000001;
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn ReplaceFileW(
+            lpReplacedFileName: *const u16,
+            lpReplacementFileName: *const u16,
+            lpBackupFileName: *const u16,
+            dwReplaceFlags: u32,
+            lpExclude: *mut std::ffi::c_void,
+            lpReserved: *mut std::ffi::c_void,
+        ) -> i32;
+    }
+
+    let dest_w = to_wide(dest.as_os_str());
+    let tmp_w = to_wide(tmp.as_os_str());
+    let ok = unsafe {
+        ReplaceFileW(
+            dest_w.as_ptr(),
+            tmp_w.as_ptr(),
+            std::ptr::null(),
+            REPLACEFILE_WRITE_THROUGH,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        )
+    };
+    if ok == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
     Ok(())
 }
 
+/// Load all layers (embedded text/assets, files, env) and merge them.
+/// Layer order is priority-ordered: later layers override earlier ones (last-wins).
+/// Missing or empty files are treated as neutral (empty table).
+/// Returns:
+/// - Settings merged per section using deep-merge: tables recurse, arrays/scalars replace (last-wins).
+/// - Keymaps merged with context/action device-bucket semantics (see `deep_merge_keymaps`).
 fn load_and_merge_layers(
     layers: &[Layer],
+    arrays_policy: MergeArraysPolicy,
+    env_layers_enabled: bool,
 ) -> Result<(HashMap<String, Value>, MergedKeymaps), SettingsError> {
     let mut settings_stack: Vec<Value> = vec![];
     let mut keymap_stack: Vec<Value> = vec![];
 
-    for layer in layers {
+    for (idx, layer) in layers.iter().enumerate() {
         use LayerKind::*;
         let v = match &layer.kind {
             EmbeddedSettingText(s) | EmbeddedKeyMapText(s) => {
                 if s.trim().is_empty() {
                     Value::Table(Default::default())
                 } else {
-                    toml::from_str::<Value>(s)?
+                    match toml::from_str::<Value>(s) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            log::warn!("settings: layer {} embedded TOML parse error: {}", idx, e);
+                            Value::Table(Default::default())
+                        }
+                    }
                 }
             }
-            SettingsFile(p) | KeyMapFile(p) => {
-                match std::fs::read_to_string(p) {
-                    Ok(txt) if !txt.trim().is_empty() => toml::from_str::<Value>(&txt)?,
-                    _ => Value::Table(Default::default()), // fehlend/leer -> neutral
+            SettingsFile(p) | KeyMapFile(p) => match std::fs::read_to_string(p) {
+                Ok(txt) if !txt.trim().is_empty() => match toml::from_str::<Value>(&txt) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        log::warn!(
+                            "settings: layer {} file {} TOML parse error: {}",
+                            idx,
+                            p.display(),
+                            e
+                        );
+                        Value::Table(Default::default())
+                    }
+                },
+                Ok(_) => Value::Table(Default::default()),
+                Err(e) => {
+                    log::warn!(
+                        "settings: layer {} file {} read error: {}",
+                        idx,
+                        p.display(),
+                        e
+                    );
+                    Value::Table(Default::default())
+                }
+            },
+            EnvPrefix(prefix) => {
+                if env_layers_enabled {
+                    env_to_toml(prefix)
+                } else {
+                    log::warn!(
+                        "settings: layer {} env disabled; ignoring prefix '{}'",
+                        idx,
+                        prefix
+                    );
+                    Value::Table(Default::default())
                 }
             }
-            EnvPrefix(prefix) => env_to_toml(prefix),
         };
 
         match &layer.kind {
@@ -315,15 +572,21 @@ fn load_and_merge_layers(
     }
 
     Ok((
-        deep_merge_settings_by_section(&settings_stack)?,
+        deep_merge_settings_by_section(&settings_stack, arrays_policy)?,
         deep_merge_keymaps(&keymap_stack)?,
     ))
 }
 
 // ---- Settings: deep-merge nach Section (last-wins) ----
 
+/// Deep-merge settings by top-level section (table).
+/// Rules:
+/// - Tables are merged recursively (last-wins per key).
+/// - Arrays and scalars are replaced entirely (last-wins).
+/// Only top-level tables are considered sections; non-table top-level entries are ignored.
 fn deep_merge_settings_by_section(
     stack: &[Value],
+    arrays_policy: MergeArraysPolicy,
 ) -> Result<HashMap<String, Value>, SettingsError> {
     let mut out: HashMap<String, Value> = HashMap::new();
     for v in stack {
@@ -335,12 +598,16 @@ fn deep_merge_settings_by_section(
             let entry = out
                 .entry(k.clone())
                 .or_insert(Value::Table(Default::default()));
-            *entry = deep_merge(entry.clone(), val.clone());
+            *entry = deep_merge(entry.clone(), val.clone(), arrays_policy);
         }
     }
     Ok(out)
 }
 
+/// Merge keymaps across layers with last-wins semantics:
+/// - Meta fields (devices, gamepad, mouse_enabled) are simple last-wins replacements.
+/// - Contexts: for each action, parse chord strings into device buckets; for each device bucket, later
+///   layers replace earlier ones (last-wins per device). Non-table/non-array entries are ignored.
 fn deep_merge_keymaps(stack: &[Value]) -> Result<MergedKeymaps, SettingsError> {
     let mut out = MergedKeymaps::default();
 
@@ -379,12 +646,16 @@ fn deep_merge_keymaps(stack: &[Value]) -> Result<MergedKeymaps, SettingsError> {
                     Value::Array(a) => a,
                     _ => continue,
                 };
-                // Sammle neue Buckets pro Gerät
+                // Sammle neue Buckets pro Gerät (mit stabiler Deduplizierung pro Gerät)
                 let mut new_buckets: HashMap<DeviceKind, Vec<KeyChord>> = HashMap::new();
+                let mut seen = std::collections::HashSet::<(DeviceKind, Mods, String)>::new();
                 for s in chords {
                     if let Value::String(s) = s {
                         if let Some(ch) = parse_chord(s) {
-                            new_buckets.entry(ch.device).or_default().push(ch);
+                            let key_id = (ch.device, ch.mods, ch.key.clone());
+                            if seen.insert(key_id) {
+                                new_buckets.entry(ch.device).or_default().push(ch);
+                            }
                         }
                     }
                 }
@@ -399,7 +670,10 @@ fn deep_merge_keymaps(stack: &[Value]) -> Result<MergedKeymaps, SettingsError> {
     Ok(out)
 }
 
-fn deep_merge(a: Value, b: Value) -> Value {
+/// Core deep-merge primitive used for settings:
+/// - If both sides are tables, merge recursively (last-wins per key).
+/// - Otherwise (arrays and scalars), return the right-hand side (replace).
+fn deep_merge(a: Value, b: Value, arrays_policy: MergeArraysPolicy) -> Value {
     match (a, b) {
         (Value::Table(mut ta), Value::Table(tb)) => {
             for (k, v2) in tb {
@@ -407,14 +681,29 @@ fn deep_merge(a: Value, b: Value) -> Value {
                 ta.insert(
                     k,
                     match v1 {
-                        Some(v1) => deep_merge(v1, v2),
+                        Some(v1) => deep_merge(v1, v2, arrays_policy),
                         None => v2,
                     },
                 );
             }
             Value::Table(ta)
         }
-        // Arrays/Scalars: ersetzen (last-wins)
+        (Value::Array(mut aa), Value::Array(bb)) => match arrays_policy {
+            MergeArraysPolicy::Replace => Value::Array(bb),
+            MergeArraysPolicy::Concat => {
+                aa.extend(bb);
+                Value::Array(aa)
+            }
+            MergeArraysPolicy::Set => {
+                for v in bb {
+                    if !aa.contains(&v) {
+                        aa.push(v);
+                    }
+                }
+                Value::Array(aa)
+            }
+        },
+        // Scalars or differing types: replace (last-wins)
         (_v1, v2) => v2,
     }
 }
@@ -454,11 +743,33 @@ fn parse_chord(s: &str) -> Option<KeyChord> {
     for part in rest.split('+') {
         let part_lower = part.to_ascii_lowercase();
         match part_lower.as_str() {
-            "ctrl" => mods |= Mods::CTRL,
-            "shift" => mods |= Mods::SHIFT,
-            "alt" => mods |= Mods::ALT,
-            "meta" => mods |= Mods::META,
-            _ => key = part.to_string(),
+            "ctrl" => {
+                mods |= Mods::CTRL;
+            }
+            "shift" => {
+                mods |= Mods::SHIFT;
+            }
+            "alt" => {
+                mods |= Mods::ALT;
+            }
+            "meta" => {
+                mods |= Mods::META;
+            }
+            // Key-Synonyme/Normalisierung
+            "esc" | "escape" => {
+                key = "esc".to_string();
+            }
+            "enter" | "return" => {
+                key = "enter".to_string();
+            }
+            "space" | "spc" => {
+                key = "space".to_string();
+            }
+            _ => {
+                // Einzelne Zeichen wie '?' als Literal behandeln.
+                // Keine Layout-spezifische Expansion (z. B. shift+/ vs. shift+ß).
+                key = part.to_string();
+            }
         }
     }
     if key.is_empty() {

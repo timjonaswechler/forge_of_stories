@@ -1,24 +1,29 @@
 mod action;
 mod app;
+mod cli;
 mod components;
-mod config;
 mod errors;
 mod logging;
 mod messages;
 mod pages;
 mod services;
-mod state;
+mod settings;
+
 mod tui;
 
 use crate::app::App;
+use crate::cli::Cli;
+use clap::Parser;
 use color_eyre::Result;
 
 #[tokio::main]
-pub async fn run() -> Result<()> {
+pub async fn main() -> Result<()> {
     crate::errors::init()?;
     crate::logging::init()?;
 
-    let mut app = App::new()?;
+    let args = Cli::parse();
+
+    let mut app = App::new(args)?;
     app.run().await?;
     Ok(())
 }

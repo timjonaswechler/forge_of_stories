@@ -1,5 +1,3 @@
-pub(crate) mod store;
-
 use serde::{Serialize, de::DeserializeOwned};
 use toml::Value;
 

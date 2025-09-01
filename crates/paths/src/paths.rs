@@ -187,7 +187,16 @@ pub fn logs_dir() -> &'static PathBuf {
 
     path
 }
-
+/// Returns the path to the `<id>.log` file.
+pub fn log_file(id: &str) -> &'static PathBuf {
+    static LOG_FILE: OnceLock<PathBuf> = OnceLock::new();
+    LOG_FILE.get_or_init(|| logs_dir().join(format!("{}.log", id)))
+}
+/// Returns the path to the `<id>.log.old` file.
+pub fn old_log_file(id: &str) -> &'static PathBuf {
+    static OLD_LOG_FILE: OnceLock<PathBuf> = OnceLock::new();
+    OLD_LOG_FILE.get_or_init(|| logs_dir().join(format!("{}.log.old", id)))
+}
 /// Returns the path to the extensions directory.
 /// Automatically creates the directory if it doesn't exist.
 ///

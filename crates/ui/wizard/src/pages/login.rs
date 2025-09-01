@@ -8,9 +8,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
     action::Action,
-    components::{Component, auth::AuthComponent, logo::LogoComponent},
-    config::Config,
-    state::State,
+    components::{Component, logo::LogoComponent},
 };
 
 use super::Page;
@@ -20,7 +18,6 @@ use super::Page;
 /// - Right side: ASCII logo
 pub struct LoginPage {
     command_tx: Option<UnboundedSender<Action>>,
-    config: Config,
     components: Vec<Box<dyn Component>>,
     focused_component_index: usize,
 }
@@ -29,20 +26,16 @@ impl LoginPage {
     pub fn new() -> Result<Self> {
         Ok(Self {
             command_tx: None,
-            config: Config::default(),
-            components: vec![
-                Box::new(LogoComponent::new()),
-                Box::new(AuthComponent::new()),
-            ],
-            focused_component_index: 1,
+            components: vec![Box::new(LogoComponent::new())],
+            focused_component_index: 0,
         })
     }
 }
 
 impl Page for LoginPage {
-    fn init(&mut self, state: &State) -> Result<()> {
+    fn init(&mut self) -> Result<()> {
         for pane in self.components.iter_mut() {
-            pane.init(state)?;
+            pane.init()?;
         }
         Ok(())
     }
@@ -50,11 +43,8 @@ impl Page for LoginPage {
     fn handle_events(
         &mut self,
         event: crate::tui::Event,
-        state: &mut State,
     ) -> Result<Option<crate::tui::EventResponse<Action>>> {
-        if let Some(r) =
-            self.components[self.focused_component_index].handle_events(event, state)?
-        {
+        if let Some(r) = self.components[self.focused_component_index].handle_events(event)? {
             return Ok(Some(r));
         }
         Ok(None)
@@ -65,21 +55,16 @@ impl Page for LoginPage {
         Ok(())
     }
 
-    fn register_config_handler(&mut self, config: Config) -> Result<()> {
-        self.config = config;
-        Ok(())
-    }
-
-    fn update(&mut self, action: Action, state: &mut State) -> Result<Option<Action>> {
+    fn update(&mut self, action: Action) -> Result<Option<Action>> {
         // Only show top info when we actually timed out
         if let Action::IdleTimeout = action {}
         for component in self.components.iter_mut() {
-            component.update(action.clone(), state)?;
+            component.update(action.clone())?;
         }
         Ok(None)
     }
 
-    fn draw(&mut self, frame: &mut Frame, area: Rect, state: &State) -> Result<()> {
+    fn draw(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
@@ -93,8 +78,8 @@ impl Page for LoginPage {
             .direction(Direction::Horizontal)
             .constraints([Constraint::Min(60), Constraint::Min(71)])
             .split(chunks[1]);
-        self.components[1].draw(frame, part[0], state)?;
-        self.components[0].draw(frame, part[1], state)?;
+
+        self.components[0].draw(frame, part[1])?;
 
         Ok(())
     }

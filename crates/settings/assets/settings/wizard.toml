@@ -1,7 +1,6 @@
 [wizard]
 tick_rate = 4
 fps = 60
-autostart = false    # Whether the Game Server(Aether) should start automatically
 max_login_tries = 10 # Maximum number of login attempts before exiting
 
 [client]

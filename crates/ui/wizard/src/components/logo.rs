@@ -1,5 +1,5 @@
 use super::Component;
-use crate::{action::Action, state::State, tui::Frame};
+use crate::{action::Action, tui::Frame};
 use color_eyre::Result;
 use ratatui::{prelude::*, widgets::*};
 use std::collections::HashMap;
@@ -21,7 +21,11 @@ impl Component for LogoComponent {
         Constraint::Max(1)
     }
 
-    fn draw(&mut self, frame: &mut Frame, body: Rect, state: &State) -> Result<()> {
+    fn name(&self) -> &'static str {
+        "logo"
+    }
+
+    fn draw(&mut self, frame: &mut Frame, body: Rect) -> Result<()> {
         let vertical = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Min(0), Constraint::Max(16), Constraint::Min(0)])
@@ -100,10 +104,11 @@ impl Component for LogoComponent {
 
             for (j, &logo_char) in logo_chars.iter().enumerate() {
                 let color = if j < color_chars.len() {
-                    color_map
-                        .get(&color_chars[j])
-                        .copied()
-                        .unwrap_or(Color::White)
+                    // color_map
+                    //     .get(&color_chars[j])
+                    //     .copied()
+                    //     .unwrap_or(Color::White)
+                    Color::DarkGray
                 } else {
                     Color::White
                 };
@@ -143,7 +148,11 @@ impl Component for WizardLogoComponent {
         Constraint::Max(1)
     }
 
-    fn draw(&mut self, frame: &mut Frame, body: Rect, state: &State) -> Result<()> {
+    fn name(&self) -> &'static str {
+        "wizard_logo"
+    }
+
+    fn draw(&mut self, frame: &mut Frame, body: Rect) -> Result<()> {
         let vertical = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Min(0), Constraint::Max(16), Constraint::Min(0)])
