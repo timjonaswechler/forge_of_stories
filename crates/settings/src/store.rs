@@ -3,6 +3,7 @@ use crate::{
     keymap::{DeviceFilter, DeviceKind, InputScheme, KeyChord, KeymapState, MergedKeymaps, Mods},
     settings::{Settings, SettingsError},
 };
+use paths::asset_str;
 use std::any::Any;
 use std::any::TypeId;
 use std::collections::HashMap;
@@ -10,7 +11,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::RwLock;
 use toml::Value;
-use util::asset_str;
 
 use std::collections::BTreeMap;
 

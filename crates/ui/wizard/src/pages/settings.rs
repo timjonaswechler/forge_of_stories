@@ -1,21 +1,16 @@
+use crate::{
+    action::Action,
+    components::{Component, logo::LogoComponent, welcome::WelcomeComponent},
+};
 use color_eyre::Result;
-
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
 };
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::{
-    action::Action,
-    components::{Component, logo::LogoComponent, welcome::WelcomeComponent},
-};
-
 use super::Page;
 
-/// LoginPage shows the authentication screen:
-/// - Left side: username/password form (create-admin on first run, otherwise login)
-/// - Right side: ASCII logo
 pub struct SettingsPage {
     command_tx: Option<UnboundedSender<Action>>,
     components: Vec<Box<dyn Component>>,
@@ -60,28 +55,35 @@ impl Page for SettingsPage {
 
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
+            Action::FocusNext | Action::Down => {
+                if !self.components.is_empty() {
+                    self.focused_component_index =
+                        (self.focused_component_index + 1) % self.components.len();
+                }
+                Ok(None)
+            }
+            Action::FocusPrev | Action::Up => {
+                if !self.components.is_empty() {
+                    if self.focused_component_index == 0 {
+                        self.focused_component_index = self.components.len() - 1;
+                    } else {
+                        self.focused_component_index -= 1;
+                    }
+                }
+                Ok(None)
+            }
+            Action::PreflightResults(_) => {
+                for component in self.components.iter_mut() {
+                    component.update(action.clone())?;
+                }
+                Ok(None)
+            }
             Action::Submit => Ok(Some(Action::Navigate(1))),
             _ => Ok(None),
         }
     }
 
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
-        let chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Fill(1),
-                Constraint::Min(151),
-                Constraint::Fill(1),
-            ])
-            .split(area);
-
-        let part = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Min(60), Constraint::Min(71)])
-            .split(chunks[1]);
-        self.components[0].draw(frame, part[0])?;
-        self.components[1].draw(frame, part[1])?;
-
         Ok(())
     }
 
@@ -90,10 +92,9 @@ impl Page for SettingsPage {
     }
 
     fn focused_component_name(&self) -> &'static str {
-        match self.focused_component_index {
-            0 => "start",
-            1 => "logo",
-            _ => "unknown",
-        }
+        self.components
+            .get(self.focused_component_index)
+            .map(|c| c.name())
+            .unwrap_or("unknown")
     }
 }

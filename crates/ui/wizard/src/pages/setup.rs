@@ -60,6 +60,29 @@ impl Page for SetupPage {
 
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
+            Action::FocusNext | Action::Down => {
+                if !self.components.is_empty() {
+                    self.focused_component_index =
+                        (self.focused_component_index + 1) % self.components.len();
+                }
+                Ok(None)
+            }
+            Action::FocusPrev | Action::Up => {
+                if !self.components.is_empty() {
+                    if self.focused_component_index == 0 {
+                        self.focused_component_index = self.components.len() - 1;
+                    } else {
+                        self.focused_component_index -= 1;
+                    }
+                }
+                Ok(None)
+            }
+            Action::PreflightResults(_) => {
+                for component in self.components.iter_mut() {
+                    component.update(action.clone())?;
+                }
+                Ok(None)
+            }
             Action::Submit => Ok(Some(Action::Navigate(1))),
             _ => Ok(None),
         }
@@ -90,10 +113,9 @@ impl Page for SetupPage {
     }
 
     fn focused_component_name(&self) -> &'static str {
-        match self.focused_component_index {
-            0 => "start",
-            1 => "logo",
-            _ => "unknown",
-        }
+        self.components
+            .get(self.focused_component_index)
+            .map(|c| c.name())
+            .unwrap_or("unknown")
     }
 }

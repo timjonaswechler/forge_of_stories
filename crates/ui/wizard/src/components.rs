@@ -23,7 +23,7 @@ pub trait Component {
 
     /// Human-readable component name (for diagnostics/logs)
     fn name(&self) -> &'static str {
-        "component"
+        std::any::type_name::<Self>()
     }
 
     /// Keymap context used to look up shortcuts for this component

@@ -1,3 +1,6 @@
+[meta]
+version = "0.1.0"
+
 [wizard]
 tick_rate = 4
 fps = 60

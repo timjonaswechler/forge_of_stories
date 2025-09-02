@@ -15,11 +15,3 @@ path = "src/server.rs"
 
 
 [dependencies]
-wizard = { workspace = true, optional = true }
-illusion = { workspace = true, optional = true }
-
-
-[features]
-server = ["wizard"]
-client = ["illusion"]
-default = []

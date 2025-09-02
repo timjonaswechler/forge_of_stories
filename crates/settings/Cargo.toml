@@ -9,9 +9,7 @@ path = "src/lib.rs"
 # doctest = false # Enable if you want to skip doctests initially.
 
 [features]
-default = []
-local-server = []
-dedicated-server = []
+
 
 [dependencies]
 anyhow.workspace = true
@@ -19,7 +17,6 @@ bitflags.workspace = true
 log.workspace = true
 futures.workspace = true
 paths.workspace = true
-util.workspace = true
 rust-embed.workspace = true
 serde.workspace = true
 tree-sitter = "0.25.8"

@@ -12,7 +12,7 @@ path = "src/main.rs"
 path = "src/lib.rs"
 
 [dependencies]
-wizard.workspace = true
+app.workspace = true
 shared = { workspace = true }
 anyhow = { workspace = true }
 settings = { workspace = true }

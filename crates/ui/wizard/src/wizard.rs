@@ -1,12 +1,12 @@
 use crate::{
-    action::Action,
+    action::{Action, PreflightItem},
     cli::{Cli, Cmd, RunMode},
     components::Component,
-    pages::{DashboardPage, HealthPage, Page, SetupPage},
-    settings::build_wizard_settings_store,
+    pages::{DashboardPage, HealthPage, Page, SettingsPage, SetupPage},
     tui::{EventResponse, Tui},
 };
-use color_eyre::{Result, owo_colors::OwoColorize};
+use app::{AppBase, Application};
+use color_eyre::Result;
 use ratatui::{
     Frame,
     layout::{Constraint, Layout},
@@ -14,57 +14,73 @@ use ratatui::{
     style::{Color, Style, Stylize},
 };
 use settings::DeviceFilter;
-use settings::SettingsStore;
 use std::collections::HashMap;
 use tokio::sync::mpsc;
 
+impl Application for App {
+    type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
+
+    const APP_ID: &'static str = "wizard";
+
+    // eingebettete Assets für Wizard
+    const EMBEDDED_SETTINGS_ASSET: Option<&'static str> = Some("settings/wizard.toml");
+    const EMBEDDED_KEYMAP_ASSET: Option<&'static str> = Some("keymaps/default-wizard.toml");
+
+    // ENV-Integration wie in deinem bisherigen build_wizard_settings_store()
+    const ENV_LAYERS_VAR: Option<&'static str> = Some("FOS_WIZARD_ENV_LAYERS");
+    const ENV_PREFIX: Option<&'static str> = Some("FOS_WIZARD");
+
+    fn init_platform() -> Result<(), Self::Error> {
+        // Falls du die Init gern hier zentral haben willst:
+        crate::errors::init()?;
+        crate::logging::init()?;
+        Ok(())
+    }
+}
+
 pub struct App {
-    pub settings: SettingsStore,
+    pub base: AppBase,
     pub pages: Vec<Box<dyn Page>>,
-    pub history: HashMap<String, Box<dyn Page>>,
     pub active_page: usize,
-    pub footer_context: String,
     pub popup: Option<Box<dyn Component>>,
     pub should_quit: bool,
     pub should_suspend: bool,
+    pub preflight: Vec<PreflightItem>,
 }
 
 impl App {
-    pub fn new(cli: Cli) -> Result<Self> {
-        let settings = build_wizard_settings_store()?;
+    pub fn new(cli: Cli, base: AppBase) -> Result<Self> {
+        let preflight = crate::components::welcome::run_preflight();
 
         match cli.cmd {
             Cmd::Run { mode } => match mode {
                 RunMode::Setup => Ok(Self {
-                    settings,
-                    pages: vec![Box::new(SetupPage::new()?), Box::new(DashboardPage::new()?)],
-                    history: HashMap::default(),
-                    footer_context: "setup".to_string(),
+                    base,
+                    pages: vec![Box::new(SetupPage::new()?), Box::new(SettingsPage::new()?)],
                     active_page: 0,
                     popup: None,
                     should_quit: false,
                     should_suspend: false,
+                    preflight,
                 }),
                 RunMode::Dashboard => Ok(Self {
-                    settings,
+                    base,
                     pages: vec![Box::new(DashboardPage::new()?)],
-                    history: HashMap::default(),
                     active_page: 0,
-                    footer_context: "dashboard".to_string(),
                     popup: None,
                     should_quit: false,
                     should_suspend: false,
+                    preflight,
                 }),
             },
             Cmd::Health => Ok(Self {
-                settings,
+                base,
                 pages: vec![Box::new(HealthPage::new()?)],
-                history: HashMap::default(),
                 active_page: 0,
-                footer_context: "health".to_string(),
                 popup: None,
                 should_quit: false,
                 should_suspend: false,
+                preflight,
             }),
         }
     }
@@ -81,6 +97,10 @@ impl App {
         for page in self.pages.iter_mut() {
             page.focus()?;
         }
+        // Pass preflight results to the active page(s) so they can render immediately
+        action_tx
+            .send(Action::PreflightResults(self.preflight.clone()))
+            .ok();
 
         loop {
             if let Some(e) = tui.next().await {
@@ -133,7 +153,7 @@ impl App {
                                     ("global", "root")
                                 };
                             if let Some(a) = crate::services::keymap_binding::action_from_key(
-                                &self.settings,
+                                &self.base.settings,
                                 focused,
                                 key,
                             ) {
@@ -198,6 +218,9 @@ impl App {
                     }
                     Action::Navigate(page) => {
                         self.active_page = page;
+                        action_tx
+                            .send(Action::PreflightResults(self.preflight.clone()))
+                            .ok();
                     }
                     _ => {}
                 }
@@ -243,6 +266,7 @@ impl App {
         };
         // println!("{}", focused);
         let keymap = self
+            .base
             .settings
             .export_keymap_for(DeviceFilter::Keyboard, focused);
 

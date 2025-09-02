@@ -8,6 +8,7 @@ edition.workspace = true
 path = "src/paths.rs"
 
 [dependencies]
+rust-embed.workspace = true
 dirs.workspace = true
 regex.workspace = true
 globset.workspace = true

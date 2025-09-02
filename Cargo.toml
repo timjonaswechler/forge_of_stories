@@ -5,7 +5,7 @@ members = [
     "crates/forge_of_stories",
     "crates/paths",
     "crates/settings",
-    "crates/util",
+    "crates/app",
     "crates/network/client",
     "crates/network/server",
     "crates/network/shared",
@@ -23,17 +23,17 @@ edition = "2024"
 
 [workspace.dependencies]
 aether.path = "crates/aether"
+app.path = "crates/app"
 client.path = "crates/network/client"
 fate.path = "crates/ui/fate"
 fos.path = "crates/forge_of_stories"
-illusion = { path = "crates/ui/illusion" }
-oracle = { path = "crates/ui/oracle" }
-paths = { path = "crates/paths" }
-settings = { path = "crates/settings" }
-shared = { path = "crates/network/shared" }
-server = { path = "crates/network/server" }
-util = { path = "crates/util" }
-wizard = { path = "crates/ui/wizard" }
+illusion.path = "crates/ui/illusion"
+oracle.path = "crates/ui/oracle"
+paths.path = "crates/paths"
+settings.path = "crates/settings"
+shared.path = "crates/network/shared"
+server.path = "crates/network/server"
+wizard.path = "crates/ui/wizard"
 
 
 #

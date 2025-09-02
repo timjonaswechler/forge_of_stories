@@ -1,0 +1,12 @@
+[package]
+name = "app"
+version = "0.1.0"
+edition.workspace = true
+
+
+[lib]
+path = "src/app.rs"
+
+[dependencies]
+settings.workspace = true
+paths.workspace = true

@@ -1,5 +1,4 @@
 mod action;
-mod app;
 mod cli;
 mod components;
 mod errors;
@@ -8,22 +7,20 @@ mod messages;
 mod pages;
 mod services;
 mod settings;
-
 mod tui;
+mod wizard;
 
-use crate::app::App;
 use crate::cli::Cli;
+use crate::wizard::App;
+
 use clap::Parser;
 use color_eyre::Result;
 
 #[tokio::main]
 pub async fn main() -> Result<()> {
-    crate::errors::init()?;
-    crate::logging::init()?;
-
     let args = Cli::parse();
-
-    let mut app = App::new(args)?;
+    let base = app::init::<App>().expect("Inizialisation went wrong");
+    let mut app = App::new(args, base)?;
     app.run().await?;
     Ok(())
 }

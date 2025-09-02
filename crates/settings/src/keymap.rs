@@ -36,6 +36,7 @@ pub enum DeviceFilter {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct KeymapMeta {
     pub devices: Vec<DeviceKind>,        // optional: bevorzugte Geräte
+    pub version: String,                 //
     pub gamepad_profile: Option<String>, // "xbox" | "dualshock" | ...
     pub mouse_enabled: Option<bool>,
 }

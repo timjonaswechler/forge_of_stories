@@ -83,6 +83,11 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 [[package]]
 name = "aether"
 version = "0.1.0"
+dependencies = [
+ "paths",
+ "server",
+ "settings",
+]
 
 [[package]]
 name = "ahash"
@@ -214,6 +219,14 @@ name = "anyhow"
 version = "1.0.99"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b0674a1ddeecb70197781e945de4b3b8ffb61fa939a5597bcf48503737663100"
+
+[[package]]
+name = "app"
+version = "0.1.0"
+dependencies = [
+ "paths",
+ "settings",
+]
 
 [[package]]
 name = "approx"
@@ -2522,10 +2535,6 @@ checksum = "aa9a19cbb55df58761df49b23516a86d432839add4af60fc256da840f66ed35b"
 [[package]]
 name = "forge_of_stories"
 version = "0.1.0"
-dependencies = [
- "illusion",
- "wizard",
-]
 
 [[package]]
 name = "fs_extra"
@@ -3929,6 +3938,7 @@ dependencies = [
  "dirs",
  "globset",
  "regex",
+ "rust-embed",
  "serde",
  "unicase",
 ]
@@ -4945,6 +4955,7 @@ name = "server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "app",
  "bevy",
  "clap",
  "color-eyre",
@@ -4962,7 +4973,6 @@ dependencies = [
  "toml 0.9.5",
  "toml_edit 0.23.3",
  "tui-textarea",
- "wizard",
 ]
 
 [[package]]
@@ -4980,7 +4990,6 @@ dependencies = [
  "toml 0.9.5",
  "toml_edit 0.23.3",
  "tree-sitter 0.25.8",
- "util",
 ]
 
 [[package]]
@@ -5865,13 +5874,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
-name = "util"
-version = "0.1.0"
-dependencies = [
- "rust-embed",
-]
-
-[[package]]
 name = "uuid"
 version = "1.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6632,6 +6634,7 @@ dependencies = [
 name = "wizard"
 version = "0.1.0"
 dependencies = [
+ "app",
  "argon2",
  "better-panic",
  "chrono",
@@ -6668,7 +6671,6 @@ dependencies = [
  "tui-big-text",
  "tui-input",
  "tui-prompts",
- "util",
 ]
 
 [[package]]

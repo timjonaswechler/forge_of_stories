@@ -14,9 +14,6 @@ pub fn init() -> Result<()> {
     let log_path = directory.join(LOG_FILE.clone());
     let log_file = std::fs::File::create(log_path)?;
     let env_filter = EnvFilter::builder().with_default_directive(tracing::Level::INFO.into());
-    // If the `RUST_LOG` environment variable is set, use that as the default, otherwise use the
-    // value of the `LOG_ENV` environment variable. If the `LOG_ENV` environment variable contains
-    // errors, then this will return an error.
     let env_filter = env_filter
         .try_from_env()
         .or_else(|_| env_filter.with_env_var(LOG_ENV.clone()).from_env())?;
@@ -27,9 +24,13 @@ pub fn init() -> Result<()> {
         .with_target(false)
         .with_ansi(false)
         .with_filter(env_filter);
-    tracing_subscriber::registry()
+    let registry = tracing_subscriber::registry()
         .with(file_subscriber)
-        .with(ErrorLayer::default())
-        .try_init()?;
+        .with(ErrorLayer::default());
+
+    // Bereits initialisiert? => ignorieren
+    if let Err(_already_set) = registry.try_init() {
+        // no-op
+    }
     Ok(())
 }

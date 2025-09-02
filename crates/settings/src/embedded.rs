@@ -1,6 +1,6 @@
+use paths::asset_str;
 use rust_embed::RustEmbed;
 use std::{borrow::Cow, str};
-use util::asset_str;
 
 #[derive(RustEmbed)]
 #[folder = "assets/"]

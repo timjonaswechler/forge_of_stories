@@ -1,21 +1,16 @@
+use crate::{
+    action::Action,
+    components::{Component, logo::LogoComponent},
+};
 use color_eyre::Result;
-
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
 };
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::{
-    action::Action,
-    components::{Component, logo::LogoComponent},
-};
-
 use super::Page;
 
-/// LoginPage shows the authentication screen:
-/// - Left side: username/password form (create-admin on first run, otherwise login)
-/// - Right side: ASCII logo
 pub struct DashboardPage {
     command_tx: Option<UnboundedSender<Action>>,
     components: Vec<Box<dyn Component>>,

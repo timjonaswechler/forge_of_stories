@@ -1,7 +1,8 @@
 //! Paths to locations used by Forge_of_Stories.
+mod assets;
+pub use assets::asset_str;
 
 use globset::{Glob, GlobSet, GlobSetBuilder};
-
 use std::cmp::{self, Ordering};
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf, StripPrefixError};
