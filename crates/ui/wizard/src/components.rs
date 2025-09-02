@@ -8,6 +8,8 @@ use ratatui::{
 use crate::{action::Action, tui::Event, tui::EventResponse};
 
 pub mod logo;
+pub mod settings_categories;
+pub mod settings_details;
 pub mod welcome;
 
 /// `Component` is a trait that represents a visual and interactive element of the user interface.

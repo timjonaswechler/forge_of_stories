@@ -1,8 +1,12 @@
 use crate::{
     action::Action,
-    components::{Component, logo::LogoComponent, welcome::WelcomeComponent},
+    components::{
+        Component,
+        settings_categories::{Category, SettingsCategoriesComponent},
+        settings_details::SettingsDetailsComponent,
+    },
 };
-use aether_config::build_server_settings_store;
+use aether_config::{ServerSettings, build_server_settings_store, load_typed_server_settings};
 use color_eyre::Result;
 use ratatui::{
     Frame,
@@ -13,44 +17,51 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use super::Page;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Focus {
+    Left,
+    Right,
+}
+
 pub struct SettingsPage {
     command_tx: Option<UnboundedSender<Action>>,
-    components: Vec<Box<dyn Component>>,
-    focused_component_index: usize,
-    server_settings: SettingsStore,
+    server_store: SettingsStore,
+    server: ServerSettings,
+    left: SettingsCategoriesComponent,
+    right: SettingsDetailsComponent,
+    focus: Focus,
 }
 
 impl SettingsPage {
     pub fn new() -> Result<Self> {
-        let aether_settings = build_server_settings_store()?;
+        let store = build_server_settings_store()?;
+        let server = load_typed_server_settings(&store)?;
+
+        let left = SettingsCategoriesComponent::new();
+        let mut right = SettingsDetailsComponent::new();
+        right.set_from_server(Category::General, &server);
 
         Ok(Self {
             command_tx: None,
-            components: vec![
-                Box::new(WelcomeComponent::new()),
-                Box::new(LogoComponent::new()),
-            ],
-            focused_component_index: 0,
-            server_settings: aether_settings,
+            server_store: store,
+            server,
+            left,
+            right,
+            focus: Focus::Left,
         })
     }
 }
 
 impl Page for SettingsPage {
     fn init(&mut self) -> Result<()> {
-        for pane in self.components.iter_mut() {
-            pane.init()?;
-        }
         Ok(())
     }
 
     fn handle_events(
         &mut self,
-        event: crate::tui::Event,
+        _event: crate::tui::Event,
     ) -> Result<Option<crate::tui::EventResponse<Action>>> {
-        if let Some(r) = self.components[self.focused_component_index].handle_events(event)? {
-            return Ok(Some(r));
-        }
+        // Events werden zentral in wizard.rs in Actions übersetzt
         Ok(None)
     }
 
@@ -61,35 +72,44 @@ impl Page for SettingsPage {
 
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
-            Action::FocusNext | Action::Down => {
-                if !self.components.is_empty() {
-                    self.focused_component_index =
-                        (self.focused_component_index + 1) % self.components.len();
-                }
-                Ok(None)
+            Action::FocusNext => {
+                self.focus = match self.focus {
+                    Focus::Right => Focus::Left,
+                    Focus::Left => Focus::Right,
+                };
             }
-            Action::FocusPrev | Action::Up => {
-                if !self.components.is_empty() {
-                    if self.focused_component_index == 0 {
-                        self.focused_component_index = self.components.len() - 1;
-                    } else {
-                        self.focused_component_index -= 1;
+            Action::FocusPrev => {
+                self.focus = match self.focus {
+                    Focus::Right => Focus::Left,
+                    Focus::Left => Focus::Right,
+                };
+            }
+            Action::Up | Action::Down => {
+                match self.focus {
+                    Focus::Left => {
+                        // navigiere links und aktualisiere rechts
+                        self.left.update(action.clone())?;
+                        let cat = self.left.selected();
+                        self.right.set_from_server(cat, &self.server);
+                    }
+                    Focus::Right => {
+                        self.right.update(action.clone())?;
                     }
                 }
-                Ok(None)
             }
-            Action::PreflightResults(_) => {
-                for component in self.components.iter_mut() {
-                    component.update(action.clone())?;
-                }
-                Ok(None)
-            }
-            Action::Submit => Ok(Some(Action::Navigate(1))),
-            _ => Ok(None),
+            _ => {}
         }
+        Ok(None)
     }
 
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
+        let chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
+            .split(area);
+
+        self.left.draw(frame, chunks[0])?;
+        self.right.draw(frame, chunks[1])?;
         Ok(())
     }
 
@@ -98,9 +118,7 @@ impl Page for SettingsPage {
     }
 
     fn focused_component_name(&self) -> &'static str {
-        self.components
-            .get(self.focused_component_index)
-            .map(|c| c.name())
-            .unwrap_or("unknown")
+        // wichtig: Wizard verwendet diesen Namen als Keymap-Kontext
+        "settings"
     }
 }

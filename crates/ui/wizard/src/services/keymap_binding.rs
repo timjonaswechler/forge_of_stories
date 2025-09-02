@@ -15,6 +15,7 @@ pub fn map_label_to_action(label: &str) -> Option<Action> {
         "ResetFields" => Some(Action::Refresh),
         "FocusNext" => Some(Action::FocusNext),
         "FocusPrev" => Some(Action::FocusPrev),
+        "FocusPrevious" => Some(Action::FocusPrev),
         "Up" => Some(Action::Up),
         "Down" => Some(Action::Down),
         _ => None,
