@@ -90,6 +90,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "aether_config"
+version = "0.1.0"
+dependencies = [
+ "color-eyre",
+ "paths",
+ "serde",
+ "settings",
+]
+
+[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6634,6 +6644,7 @@ dependencies = [
 name = "wizard"
 version = "0.1.0"
 dependencies = [
+ "aether_config",
  "app",
  "argon2",
  "better-panic",

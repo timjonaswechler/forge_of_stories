@@ -14,7 +14,6 @@ use ratatui::{
     style::{Color, Style, Stylize},
 };
 use settings::DeviceFilter;
-use std::collections::HashMap;
 use tokio::sync::mpsc;
 
 impl Application for App {
@@ -23,8 +22,8 @@ impl Application for App {
     const APP_ID: &'static str = "wizard";
 
     // eingebettete Assets für Wizard
-    const EMBEDDED_SETTINGS_ASSET: Option<&'static str> = Some("settings/wizard.toml");
-    const EMBEDDED_KEYMAP_ASSET: Option<&'static str> = Some("keymaps/default-wizard.toml");
+    const EMBEDDED_SETTINGS_ASSET: Option<&'static str> = Some("settings/wizard-default.toml");
+    const EMBEDDED_KEYMAP_ASSET: Option<&'static str> = Some("keymaps/wizard-default.toml");
 
     // ENV-Integration wie in deinem bisherigen build_wizard_settings_store()
     const ENV_LAYERS_VAR: Option<&'static str> = Some("FOS_WIZARD_ENV_LAYERS");

@@ -11,6 +11,7 @@ authors = ["your name <author@example.com>"]
 
 [dependencies]
 app.workspace = true
+aether_config.workspace = true
 better-panic = "0.3.0"
 clap = { version = "4.5.20", features = [
     "derive",
@@ -20,7 +21,7 @@ clap = { version = "4.5.20", features = [
     "string",
     "unstable-styles",
 ] }
-color-eyre = "0.6.3"
+color-eyre.workspace = true
 config = "0.14.0"
 chrono = "0.4.41"
 crossterm = { version = "0.28.1", features = ["serde", "event-stream"] }

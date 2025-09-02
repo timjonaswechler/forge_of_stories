@@ -2,11 +2,13 @@ use crate::{
     action::Action,
     components::{Component, logo::LogoComponent, welcome::WelcomeComponent},
 };
+use aether_config::build_server_settings_store;
 use color_eyre::Result;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
 };
+use settings::SettingsStore;
 use tokio::sync::mpsc::UnboundedSender;
 
 use super::Page;
@@ -15,10 +17,13 @@ pub struct SettingsPage {
     command_tx: Option<UnboundedSender<Action>>,
     components: Vec<Box<dyn Component>>,
     focused_component_index: usize,
+    server_settings: SettingsStore,
 }
 
 impl SettingsPage {
     pub fn new() -> Result<Self> {
+        let aether_settings = build_server_settings_store()?;
+
         Ok(Self {
             command_tx: None,
             components: vec![
@@ -26,6 +31,7 @@ impl SettingsPage {
                 Box::new(LogoComponent::new()),
             ],
             focused_component_index: 0,
+            server_settings: aether_settings,
         })
     }
 }

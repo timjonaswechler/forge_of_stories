@@ -4,4 +4,4 @@ pub(crate) mod settings;
 pub(crate) mod store;
 
 pub use keymap::DeviceFilter;
-pub use store::SettingsStore;
+pub use settings::{Settings, SettingsStore};

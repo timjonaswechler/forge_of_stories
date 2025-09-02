@@ -1,3 +1,4 @@
+pub use crate::store::*;
 use serde::{Serialize, de::DeserializeOwned};
 use toml::Value;
 

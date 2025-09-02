@@ -5,5 +5,3 @@ version = "0.1.0"
 tick_rate = 4
 fps = 60
 max_login_tries = 10 # Maximum number of login attempts before exiting
-
-[client]

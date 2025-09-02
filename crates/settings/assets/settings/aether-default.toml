@@ -4,6 +4,7 @@
 locale = "en"
 tick_rate = 60
 autostart = false
+version = "0.1.0"
 
 [network]
 ip_address = "0.0.0.0"
