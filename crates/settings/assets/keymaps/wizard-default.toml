@@ -8,8 +8,11 @@ Help = ["ctrl+h"]
 
 [start]
 Submit = ["enter"]
-# NextField = ["tab", "down"]
-# PreviousField = ["shift+tab", "up"]
-# ResetFields = ["ctrl+r"]
+
+[settings]
+NextField = ["down"]
+PreviousField = ["up"]
+FocusNext = ["tab"]
+FocusPrevious = ["shift+tab"]
 
 [logo]

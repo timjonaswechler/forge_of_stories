@@ -18,11 +18,11 @@ pub fn default_settings_client() -> Cow<'static, str> {
 }
 
 pub fn default_settings_server() -> Cow<'static, str> {
-    asset_str::<SettingsAssets>("settings/server-default.toml")
+    asset_str::<SettingsAssets>("settings/aether-default.toml")
 }
 
 pub fn default_settings_cli() -> Cow<'static, str> {
-    asset_str::<SettingsAssets>("settings/cli-default.toml")
+    asset_str::<SettingsAssets>("settings/wizard-default.toml")
 }
 
 pub fn default_wizard_setting() -> Cow<'static, str> {

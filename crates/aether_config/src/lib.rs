@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
+use settings::default_settings_server;
 use settings::{Settings, SettingsStore};
-use std::{result::Result, sync::Arc};
+use std::iter::Empty;
+use std::sync::Arc;
 
 // 1) Typisierte Modelle
 #[derive(Clone, Default, Serialize, Deserialize)]
@@ -73,7 +75,7 @@ pub const ENV_PREFIX: &str = "FOS_SERVER";
 // 3) Zentraler Builder: überall gleich aufrufbar (Wizard & Runtime)
 pub fn build_server_settings_store() -> color_eyre::Result<SettingsStore> {
     let mut builder = SettingsStore::builder()
-        .with_embedded_setting_asset("settings/server-default.toml")
+        .with_embedded_setting_asset("settings/aether-default.toml")
         .with_settings_file_optional("aether.toml".into());
 
     let env_layers_enabled = std::env::var(ENV_LAYERS_VAR)
