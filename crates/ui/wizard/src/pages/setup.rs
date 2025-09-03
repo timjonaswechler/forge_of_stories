@@ -79,7 +79,7 @@ impl Page for SetupPage {
             }
             Action::PreflightResults(_) => {
                 for component in self.components.iter_mut() {
-                    component.update(action.clone())?;
+                    component.update(Action::Update)?;
                 }
                 Ok(None)
             }

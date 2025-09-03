@@ -1,3 +1,4 @@
+use crate::components::Component;
 use serde::{Deserialize, Serialize};
 use strum::Display;
 
@@ -19,7 +20,15 @@ pub struct PreflightItem {
     pub message: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Display, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PopupResult {
+    AlertClosed,
+    Confirmed,
+    Cancelled,
+    InputSubmitted(String),
+}
+
+#[derive(Serialize, Display)]
 pub enum Action {
     Tick,
     Render,
@@ -39,8 +48,9 @@ pub enum Action {
     Submit,
     SwitchInputMode,
     Update,
-    OpenPopup,
+    OpenPopup(#[serde(skip)] Box<dyn Component>),
     ClosePopup,
+    PopupResult(PopupResult),
     Navigate(usize),
     /// Deliver results of pre-start preflight checks to the UI
     PreflightResults(Vec<PreflightItem>),

@@ -1,7 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use settings::{DeviceFilter, SettingsStore};
 
-use crate::action::Action;
+use crate::action::{Action, PopupResult};
 
 /// Map a TOML action label (from keymap) to the `Action` enum used by the wizard.
 /// Extend this mapping as you introduce new action labels in your keymaps.
@@ -20,6 +20,10 @@ pub fn map_label_to_action(label: &str) -> Option<Action> {
         "Down" => Some(Action::Down),
         "SwitchInputMode" => Some(Action::SwitchInputMode),
         "Switch" => Some(Action::FocusNext),
+        "OpenPopup" => Some(Action::OpenPopup(Box::new(
+            crate::components::popups::confirm::ConfirmPopup::new("", ""),
+        ))),
+        "Cancel" => Some(Action::PopupResult(PopupResult::Cancelled)),
         _ => None,
     }
 }

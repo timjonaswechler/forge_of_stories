@@ -119,8 +119,8 @@ impl WizardApp {
                         _ => false,
                     })
                     .unwrap_or(false);
-                stop_event_propagation = stop_event_propagation
-                    || self
+                if !stop_event_propagation {
+                    stop_event_propagation = self
                         .pages
                         .get_mut(self.active_page)
                         .and_then(|page| page.handle_events(e.clone()).ok())
@@ -136,26 +136,53 @@ impl WizardApp {
                             _ => false,
                         })
                         .unwrap_or(false);
+                }
 
                 if !stop_event_propagation {
                     match e {
-                        crate::tui::Event::Quit => action_tx.send(Action::Quit)?,
-                        crate::tui::Event::Tick => action_tx.send(Action::Tick)?,
-                        crate::tui::Event::Render => action_tx.send(Action::Render)?,
-                        crate::tui::Event::Resize(x, y) => action_tx.send(Action::Resize(x, y))?,
+                        crate::tui::Event::Quit => {
+                            action_tx.send(Action::Quit).ok();
+                        }
+                        crate::tui::Event::Tick => {
+                            action_tx.send(Action::Tick).ok();
+                        }
+                        crate::tui::Event::Render => {
+                            action_tx.send(Action::Render).ok();
+                        }
+                        crate::tui::Event::Resize(x, y) => {
+                            action_tx.send(Action::Resize(x, y)).ok();
+                        }
                         crate::tui::Event::Key(key) => {
                             // Centralized key handling via services::keymap_binding
-                            let (context, focused) =
-                                if let Some(page) = self.pages.get(self.active_page) {
-                                    (page.keymap_context(), page.focused_component_name())
-                                } else {
-                                    ("global", "root")
-                                };
-                            if let Some(a) = crate::services::keymap_binding::action_from_key(
+                            let (context, focused) = if let Some(popup) = self.popup.as_deref() {
+                                (popup.keymap_context(), popup.name())
+                            } else if let Some(page) = self.pages.get(self.active_page) {
+                                (page.keymap_context(), page.focused_component_name())
+                            } else {
+                                ("global", "root")
+                            };
+                            if let Some(mut a) = crate::services::keymap_binding::action_from_key(
                                 &self.base.settings,
                                 context,
                                 key,
                             ) {
+                                // If this is an OpenPopup trigger, build the demo ConfirmPopup here
+                                if core::mem::discriminant(&a)
+                                    == core::mem::discriminant(&Action::OpenPopup(Box::new(
+                                        crate::components::popups::confirm::ConfirmPopup::new(
+                                            "", "",
+                                        ),
+                                    )))
+                                {
+                                    let popup =
+                                        crate::components::popups::confirm::ConfirmPopup::new(
+                                            "Confirm",
+                                            "Exit wizard?",
+                                        )
+                                        .ok_label("Exit")
+                                        .cancel_label("Cancel");
+                                    a = Action::OpenPopup(Box::new(popup));
+                                }
                                 action_tx.send(a).ok();
                             }
                         }
@@ -165,8 +192,9 @@ impl WizardApp {
             }
 
             while let Ok(action) = action_rx.try_recv() {
-                if action != Action::Tick && action != Action::Render {
-                    log::debug!("{action:?}");
+                match action {
+                    Action::Tick | Action::Render => {}
+                    _ => log::debug!("{action}"),
                 }
                 match action {
                     Action::Tick => {
@@ -195,24 +223,25 @@ impl WizardApp {
                         })?;
                     }
 
-                    Action::OpenPopup => {
-                        // let operation_ids = self
-                        //     .state
-                        //     .openapi_operations
-                        //     .iter()
-                        //     .filter(|operation_item| {
-                        //         let op_id = operation_item.operation.operation_id.clone();
-                        //         self.history
-                        //             .keys()
-                        //             .any(|operation_id| op_id.eq(&Some(operation_id.clone())))
-                        //     })
-                        //     .collect::<Vec<_>>();
-                        // let history_popup = HistoryPane::new(operation_ids);
-                        // self.popup = Some(Box::new(history_popup));
+                    Action::OpenPopup(popup) => {
+                        self.popup = Some(popup);
+                        continue;
                     }
                     Action::ClosePopup => {
                         if self.popup.is_some() {
                             self.popup = None;
+                        }
+                    }
+                    Action::PopupResult(ref result) => {
+                        // Forward popup results to the active page even while a popup is open
+                        if let Some(page) = self.pages.get_mut(self.active_page) {
+                            if let Some(next) = page.update(Action::PopupResult(result.clone()))? {
+                                action_tx.send(next).ok();
+                            }
+                        }
+                        // Demo: if user confirmed the demo exit popup, quit the wizard
+                        if matches!(result, crate::action::PopupResult::Confirmed) {
+                            self.should_quit = true;
                         }
                     }
                     Action::Navigate(page) => {
@@ -225,19 +254,25 @@ impl WizardApp {
                 }
 
                 if let Some(popup) = &mut self.popup {
-                    if let Some(action) = popup.update(action.clone())? {
-                        action_tx.send(action)?
+                    if let Some(action) = popup.update(action)? {
+                        action_tx.send(action).ok();
+                        Some(())
+                    } else {
+                        None
                     };
                 } else if let Some(page) = self.pages.get_mut(self.active_page) {
-                    if let Some(action) = page.update(action.clone())? {
-                        action_tx.send(action)?
+                    if let Some(action) = page.update(action)? {
+                        action_tx.send(action).ok();
+                        Some(())
+                    } else {
+                        None
                     };
                 }
             }
 
             if self.should_suspend {
                 tui.suspend()?;
-                action_tx.send(Action::Resume)?;
+                action_tx.send(Action::Resume).ok();
                 tui = crate::tui::Tui::new()?;
                 tui.enter()?;
             } else if self.should_quit {
@@ -256,14 +291,23 @@ impl WizardApp {
         if let Some(page) = self.pages.get_mut(self.active_page) {
             page.draw(frame, vertical_layout[0])?;
         };
+        // If a popup is active, draw a backdrop and the popup centered on top of the page
+        if let Some(popup) = self.popup.as_mut() {
+            crate::components::popups::render_backdrop(frame, vertical_layout[0]);
+            let w = 60.min(vertical_layout[0].width);
+            let h = 10.min(vertical_layout[0].height);
+            let dialog = crate::components::popups::centered_rect_fixed(vertical_layout[0], w, h);
+            popup.draw(frame, dialog)?;
+        }
 
-        // Determine active page context and focused component for footer
-        let (context, focused) = if let Some(page) = self.pages.get(self.active_page) {
+        // Determine active keymap context and focused component for footer
+        let (context, focused) = if let Some(popup) = self.popup.as_deref() {
+            (popup.keymap_context(), popup.name())
+        } else if let Some(page) = self.pages.get(self.active_page) {
             (page.keymap_context(), page.focused_component_name())
         } else {
             ("global", "root")
         };
-        // println!("{}", focused);
         let keymap = self
             .base
             .settings

@@ -47,6 +47,15 @@ impl SettingsDetailsComponent {
         self.store = Some(store);
     }
 
+    pub fn selected_field(&self) -> Option<ServerSettingField> {
+        let idx = self.state.selected()?;
+        self.field_for(self.current_category, idx)
+    }
+
+    pub fn current_category(&self) -> Category {
+        self.current_category
+    }
+
     pub fn set_from_server(&mut self, cat: Category, store: &SettingsStore) -> Result<()> {
         self.current_category = cat;
         self.title = cat.title().to_string();

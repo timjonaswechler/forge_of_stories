@@ -1,12 +1,13 @@
 use crate::{
-    action::Action,
+    action::{Action, PopupResult},
     components::{
         Component,
+        popups::bool_choice::BoolChoicePopup,
         settings_categories::{Category, SettingsCategoriesComponent},
         settings_details::SettingsDetailsComponent,
     },
 };
-use aether_config::build_server_settings_store;
+use aether_config::{ServerSettingField, apply_server_setting, build_server_settings_store};
 use color_eyre::Result;
 use ratatui::{
     Frame,
@@ -88,7 +89,19 @@ impl Page for SettingsPage {
             }
             // Forward input mode toggles and submits to the right component
             Action::Submit | Action::SwitchInputMode => {
-                if let Some(a) = self.right.update(action.clone())? {
+                // If Autostart is selected in General settings, open a boolean popup instead of inline edit
+                if self.right.current_category() == Category::General {
+                    if let Some(field) = self.right.selected_field() {
+                        if matches!(field, ServerSettingField::GeneralAutostart) {
+                            let popup = BoolChoicePopup::new("Autostart")
+                                .question("Enable autostart for the server?")
+                                .true_label("On")
+                                .false_label("Off");
+                            return Ok(Some(Action::OpenPopup(Box::new(popup))));
+                        }
+                    }
+                }
+                if let Some(a) = self.right.update(action)? {
                     return Ok(Some(a));
                 }
             }
@@ -96,17 +109,40 @@ impl Page for SettingsPage {
                 match self.focus {
                     Focus::Left => {
                         // navigiere links und aktualisiere rechts
-                        self.left.update(action.clone())?;
+                        self.left.update(action)?;
+
                         let cat = self.left.selected();
                         self.right.set_store(self.server_store.clone());
                         self.right.set_from_server(cat, &self.server_store)?;
                     }
                     Focus::Right => {
-                        if let Some(a) = self.right.update(action.clone())? {
+                        if let Some(a) = self.right.update(action)? {
                             return Ok(Some(a));
                         }
                     }
                 }
+            }
+            Action::PopupResult(PopupResult::InputSubmitted(val)) => {
+                // Apply Autostart only if the current selection is the Autostart field
+                if self.right.current_category() == Category::General {
+                    if let Some(field) = self.right.selected_field() {
+                        if matches!(field, ServerSettingField::GeneralAutostart) {
+                            let s = if val == "true" { "true" } else { "false" }.to_string();
+                            apply_server_setting(
+                                &self.server_store,
+                                ServerSettingField::GeneralAutostart,
+                                &s,
+                            )?;
+                            // Refresh the right pane from store
+                            let cat = self.left.selected();
+                            self.right.set_store(self.server_store.clone());
+                            self.right.set_from_server(cat, &self.server_store)?;
+                        }
+                    }
+                }
+            }
+            Action::PopupResult(PopupResult::Cancelled) => {
+                // No-op for cancel
             }
             _ => {}
         }

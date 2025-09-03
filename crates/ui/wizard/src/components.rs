@@ -8,6 +8,9 @@ use ratatui::{
 use crate::{action::Action, tui::Event, tui::EventResponse};
 
 pub mod logo;
+pub mod popup;
+pub mod popups;
+pub use popups::{centered_rect_fixed, draw_popup_frame, render_backdrop};
 pub mod settings_categories;
 pub mod settings_details;
 pub mod welcome;
@@ -16,7 +19,7 @@ pub mod welcome;
 ///
 /// Implementors of this trait can be registered with the main application loop and will be able to
 /// receive events, update state, and be rendered on the screen.
-pub trait Component {
+pub trait Component: Send {
     fn init(&mut self) -> Result<()> {
         Ok(())
     }
@@ -55,4 +58,23 @@ pub trait Component {
     }
 
     fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()>;
+}
+
+pub trait PopupComponent: Component {
+    /// Whether the popup is modal (blocks page interactions). Defaults to true.
+    fn is_modal(&self) -> bool {
+        true
+    }
+
+    /// Action to emit when the popup is confirmed/submitted (e.g., Enter).
+    /// Default closes the popup; specific popups can override to return a richer action.
+    fn submit_action(&mut self) -> Option<Action> {
+        Some(Action::ClosePopup)
+    }
+
+    /// Action to emit when the popup is cancelled/closed (e.g., Esc).
+    /// Default closes the popup.
+    fn cancel_action(&mut self) -> Option<Action> {
+        Some(Action::ClosePopup)
+    }
 }

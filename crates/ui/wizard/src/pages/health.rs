@@ -59,7 +59,7 @@ impl Page for HealthPage {
         // Only show top info when we actually timed out
         if let Action::IdleTimeout = action {}
         for component in self.components.iter_mut() {
-            component.update(action.clone())?;
+            component.update(Action::Update)?;
         }
         Ok(None)
     }
