@@ -42,7 +42,7 @@ wizard.path = "crates/ui/wizard"
 futures = { version = "0.3.28" }
 anyhow = { version = "1.0.80" }
 axum = { version = "0.8.4", features = ["json", "ws"] }
-bitflags = "2.9.3"
+bitflags = { version = "2.9.3", features = ["serde"] }
 clap = { version = "4.5.43", features = ["derive"] }
 color-eyre = "0.6"
 crossterm = "0.29.0"

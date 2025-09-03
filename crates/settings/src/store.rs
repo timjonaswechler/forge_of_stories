@@ -209,6 +209,110 @@ impl SettingsStore {
         self.reload_all()
     }
 
+    /// Update a typed settings section by applying a mutation closure to the current model
+    /// and persisting only the differences to the highest-priority writable settings file.
+    ///
+    /// Rules:
+    /// - Writes to the last `LayerKind::SettingsFile` (ENV/Embedded layers are ignored for writing).
+    /// - Creates the file if it does not exist (e.g., registered via `with_settings_file_optional`).
+    /// - Only values that differ from the embedded defaults are written (minimal delta per section).
+    pub fn update<S: Settings>(&self, f: impl FnOnce(&mut S::Model)) -> Result<(), SettingsError> {
+        // 1) Resolve current merged section for S
+        let merged_section = self
+            .effective_settings
+            .read()
+            .unwrap()
+            .get(S::SECTION)
+            .cloned()
+            .unwrap_or(Value::Table(Default::default()));
+
+        // 2) Build current model with migration + validation
+        let migrated = S::migrate(merged_section)?;
+        let mut model: S::Model = toml::from_str(&toml::to_string(&migrated)?)?;
+        // Apply mutation
+        f(&mut model);
+        // Validate updated model
+        S::validate(&model)?;
+
+        // 3) Serialize updated model back to TOML Value (section value)
+        let updated_section_value: Value = toml_model_to_value(&model)?;
+
+        // 4) Determine default section value from embedded defaults
+        let default_section_value = self.default_section_value::<S>();
+
+        // 5) Compute delta (only values differing from defaults)
+        let delta_opt = toml_diff(&default_section_value, &updated_section_value);
+
+        // 6) Determine highest-priority writable settings file
+        let Some(target_path) = self.highest_priority_settings_file() else {
+            return Err(SettingsError::Invalid("no writable settings file registered"));
+        };
+
+        // 7) Load existing file (if present) or start with empty table
+        let root = match std::fs::read_to_string(&target_path) {
+            Ok(txt) if !txt.trim().is_empty() => toml::from_str::<Value>(&txt).unwrap_or(Value::Table(Default::default())),
+            _ => Value::Table(Default::default()),
+        };
+        let mut root_tbl = match root {
+            Value::Table(t) => t,
+            _ => Default::default(),
+        };
+
+        // 8) Apply delta for this section
+        match delta_opt {
+            Some(delta) => {
+                root_tbl.insert(S::SECTION.to_string(), delta);
+            }
+            None => {
+                // No differences to defaults; remove section if present.
+                root_tbl.remove(S::SECTION);
+            }
+        }
+
+        // 9) Persist atomically
+        let new_text = toml::to_string_pretty(&Value::Table(root_tbl))?;
+        write_atomic(&target_path, &new_text)?;
+
+        // 10) Reload effective state and snapshots
+        self.reload_all()
+    }
+
+    /// Returns the last SettingsFile layer as write target (highest priority), if any.
+    fn highest_priority_settings_file(&self) -> Option<PathBuf> {
+        let layers = self.layers.read().unwrap();
+        for layer in layers.iter().rev() {
+            if let LayerKind::SettingsFile(p) = &layer.kind {
+                return Some(p.clone());
+            }
+        }
+        None
+    }
+
+    /// Compute the default section value for a given `Settings` type by merging only
+    /// embedded setting layers (read-only defaults).
+    fn default_section_value<S: Settings>(&self) -> Value {
+        let layers = self.layers.read().unwrap().clone();
+        let mut stack: Vec<Value> = Vec::new();
+        for layer in layers {
+            match layer.kind {
+                LayerKind::EmbeddedSettingText(ref s) => {
+                    let v = if s.trim().is_empty() {
+                        Value::Table(Default::default())
+                    } else {
+                        toml::from_str::<Value>(s).unwrap_or(Value::Table(Default::default()))
+                    };
+                    stack.push(v);
+                }
+                _ => {}
+            }
+        }
+        let merged = deep_merge_settings_by_section(&stack, self.merge_arrays_policy)
+            .unwrap_or_default();
+        merged
+            .get(S::SECTION)
+            .cloned()
+            .unwrap_or(Value::Table(Default::default()))
+    }
     pub fn reload_all(&self) -> Result<(), SettingsError> {
         // 1) Laden und mergen ohne Locks zu halten
         let layers = self.layers.read().unwrap().clone();
@@ -781,6 +885,182 @@ fn parse_chord(s: &str) -> Option<KeyChord> {
         key,
         origin_prefix,
     })
+}
+
+// ---------- TOML diff (write only deviations from defaults) ----------
+
+/// Convert a serializable model to a TOML `Value` by round-tripping through string form.
+fn toml_model_to_value<T: serde::Serialize>(m: &T) -> Result<Value, SettingsError> {
+    let s = toml::to_string(m)?;
+    Ok(toml::from_str::<Value>(&s)?)}
+
+/// Compute the difference from `default` to `current`.
+/// Returns `None` if identical, or a `Value` containing only keys that differ.
+fn toml_diff(default: &Value, current: &Value) -> Option<Value> {
+    match (default, current) {
+        (Value::Table(a), Value::Table(b)) => {
+            let mut out = toml::map::Map::new();
+            for (k, v_curr) in b.iter() {
+                match a.get(k) {
+                    Some(v_def) => {
+                        if let Some(sub) = toml_diff(v_def, v_curr) {
+                            out.insert(k.clone(), sub);
+                        }
+                    }
+                    None => {
+                        out.insert(k.clone(), v_curr.clone());
+                    }
+                }
+            }
+            if out.is_empty() {
+                None
+            } else {
+                Some(Value::Table(out))
+            }
+        }
+        // Arrays and scalars: include only if different
+        (a, b) => {
+            if a == b {
+                None
+            } else {
+                Some(b.clone())
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+    struct TestModel {
+        a: i64,
+        b: String,
+        nested: Option<Nested>,
+        arr: Vec<i64>,
+    }
+
+    #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+    struct Nested {
+        x: i64,
+        y: String,
+    }
+
+    struct TestSettings;
+    impl Settings for TestSettings {
+        const SECTION: &'static str = "test";
+        type Model = TestModel;
+    }
+
+    fn build_store_with_layers(user_file: &std::path::Path) -> SettingsStore {
+        let default_toml = r#"
+            [test]
+            a = 1
+            b = "x"
+            arr = [1,2]
+            [test.nested]
+            x = 10
+            y = "yo"
+        "#;
+        SettingsStore::builder()
+            .with_embedded_setting_text(default_toml)
+            .with_settings_file_optional(user_file.to_path_buf())
+            .build()
+            .unwrap()
+    }
+
+    fn test_dir(name: &str) -> std::path::PathBuf {
+        let mut p = std::env::current_dir().unwrap();
+        p.push("target");
+        p.push("settings_tests");
+        p.push(name);
+        p
+    }
+
+    #[test]
+    fn toml_diff_scalars_and_tables() {
+        let def: Value = toml::from_str(
+            r#"
+            [test]
+            a = 1
+            b = "x"
+            [test.nested]
+            x = 10
+            y = "yo"
+        "#,
+        )
+        .unwrap();
+
+        let cur: Value = toml::from_str(
+            r#"
+            [test]
+            a = 2
+            b = "x"
+            [test.nested]
+            x = 10
+            y = "hi"
+        "#,
+        )
+        .unwrap();
+
+        let d = toml_diff(def.get("test").unwrap(), cur.get("test").unwrap()).unwrap();
+        let tbl = d.as_table().unwrap();
+        assert_eq!(tbl.get("a").unwrap(), &Value::Integer(2));
+        assert!(tbl.get("b").is_none());
+        let nested = tbl.get("nested").unwrap().as_table().unwrap();
+        assert!(nested.get("x").is_none());
+        assert_eq!(nested.get("y").unwrap(), &Value::String("hi".into()));
+    }
+
+    #[test]
+    fn update_writes_only_delta_and_removes_when_default() {
+        let dir = test_dir("delta_write");
+        let file_path = dir.join("settings.toml");
+        // Ensure directory exists
+        std::fs::create_dir_all(dir).unwrap();
+
+        let store = build_store_with_layers(&file_path);
+        // Register to enable typed `get::<TestSettings>()`
+        store.register::<TestSettings>().unwrap();
+
+        // 1) Change only `a` (1 -> 2); others remain default
+        store
+            .update::<TestSettings>(|m| {
+                m.a = 2;
+            })
+            .unwrap();
+
+        let written = std::fs::read_to_string(&file_path).unwrap_or_default();
+        // Should contain only [test]\n a = 2
+        let v: Value = if written.trim().is_empty() {
+            Value::Table(Default::default())
+        } else {
+            toml::from_str(&written).unwrap()
+        };
+        let section = v.get("test").unwrap().as_table().unwrap();
+        assert_eq!(section.len(), 1);
+        assert_eq!(section.get("a"), Some(&Value::Integer(2)));
+
+        // 2) Revert to defaults => file should no longer contain the section
+        store
+            .update::<TestSettings>(|m| {
+                m.a = 1; // back to default
+            })
+            .unwrap();
+        let written2 = std::fs::read_to_string(&file_path).unwrap_or_default();
+        // Empty or no [test] table
+        if !written2.trim().is_empty() {
+            let v2: Value = toml::from_str(&written2).unwrap();
+            assert!(v2.get("test").is_none());
+        }
+
+        // 3) Ensure reload reflects defaults
+        let model = store.get::<TestSettings>().unwrap();
+        assert_eq!(model.a, 1);
+        assert_eq!(model.b, "x");
+    }
 }
 /// String-Repräsentation wie in deinen TOMLs
 fn stringify_chord(ch: &KeyChord) -> String {
