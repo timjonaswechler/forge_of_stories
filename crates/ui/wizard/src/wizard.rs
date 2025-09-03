@@ -16,7 +16,7 @@ use ratatui::{
 use settings::DeviceFilter;
 use tokio::sync::mpsc;
 
-impl Application for App {
+impl Application for WizardApp {
     type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 
     const APP_ID: &'static str = "wizard";
@@ -37,7 +37,7 @@ impl Application for App {
     }
 }
 
-pub struct App {
+pub struct WizardApp {
     pub base: AppBase,
     pub pages: Vec<Box<dyn Page>>,
     pub active_page: usize,
@@ -47,7 +47,7 @@ pub struct App {
     pub preflight: Vec<PreflightItem>,
 }
 
-impl App {
+impl WizardApp {
     pub fn new(cli: Cli, base: AppBase) -> Result<Self> {
         let preflight = crate::components::welcome::run_preflight();
 
@@ -153,7 +153,7 @@ impl App {
                                 };
                             if let Some(a) = crate::services::keymap_binding::action_from_key(
                                 &self.base.settings,
-                                focused,
+                                context,
                                 key,
                             ) {
                                 action_tx.send(a).ok();
@@ -267,7 +267,7 @@ impl App {
         let keymap = self
             .base
             .settings
-            .export_keymap_for(DeviceFilter::Keyboard, focused);
+            .export_keymap_for(DeviceFilter::Keyboard, context);
 
         let title = format!(" {} [{}] ", context, focused);
         let keybinds_block = ratatui::widgets::Block::bordered()

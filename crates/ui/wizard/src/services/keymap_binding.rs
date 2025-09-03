@@ -18,6 +18,8 @@ pub fn map_label_to_action(label: &str) -> Option<Action> {
         "FocusPrevious" => Some(Action::FocusPrev),
         "Up" => Some(Action::Up),
         "Down" => Some(Action::Down),
+        "SwitchInputMode" => Some(Action::SwitchInputMode),
+        "Switch" => Some(Action::FocusNext),
         _ => None,
     }
 }

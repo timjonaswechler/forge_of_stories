@@ -69,7 +69,7 @@ pub fn init<A: Application>() -> Result<AppBase, A::Error> {
     builder = builder.with_user_config_dir();
 
     let env_layers_enabled = match A::ENV_LAYERS_VAR {
-        Some(var) => read_bool_env(var).unwrap_or(true),
+        Some(var) => settings::parse_bool(var).unwrap_or(true),
         None => true,
     };
     builder = builder.enable_env_layers(env_layers_enabled);
@@ -93,14 +93,4 @@ pub fn init<A: Application>() -> Result<AppBase, A::Error> {
         data_dir,
         logs_dir,
     })
-}
-
-fn read_bool_env(var: &str) -> Option<bool> {
-    let s = env::var(var).ok()?;
-    let v = s.trim().to_ascii_lowercase();
-    match v.as_str() {
-        "1" | "true" | "yes" | "on" => Some(true),
-        "0" | "false" | "no" | "off" => Some(false),
-        _ => None,
-    }
 }

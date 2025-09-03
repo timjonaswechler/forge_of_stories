@@ -37,6 +37,7 @@ pub enum Action {
     Up,
     Down,
     Submit,
+    SwitchInputMode,
     Update,
     OpenPopup,
     ClosePopup,
