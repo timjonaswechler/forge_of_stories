@@ -5,6 +5,8 @@ version = "0.1.0"
 edition.workspace = true
 
 [dependencies]
-paths.workspace = true
-settings.workspace = true
+aether_config.workspace = true
+app.workspace = true
+color-eyre.workspace = true
 server.workspace = true
+tokio.workspace = true

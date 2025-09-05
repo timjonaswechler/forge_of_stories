@@ -26,6 +26,7 @@ pub enum PopupResult {
     Confirmed,
     Cancelled,
     InputSubmitted(String),
+    FormSubmitted(serde_json::Value),
 }
 
 #[derive(Serialize, Display)]

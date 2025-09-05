@@ -1,5 +1,6 @@
 use crate::{
     action::{Action, PopupResult},
+    components::popups::certificate_wizard_popup,
     components::{
         Component,
         popups::bool_choice::BoolChoicePopup,
@@ -89,7 +90,17 @@ impl Page for SettingsPage {
             }
             // Forward input mode toggles and submits to the right component
             Action::Submit | Action::SwitchInputMode => {
-                // If Autostart is selected in General settings, open a boolean popup instead of inline edit
+                // Security: "create a self-signed certificate" → Form-Popup öffnen
+                if self.right.current_category() == Category::Security {
+                    if let Some(label) = self.right.selected_entry_label() {
+                        if label == "create a self-signed certificate" {
+                            let popup = certificate_wizard_popup();
+                            return Ok(Some(Action::OpenPopup(Box::new(popup))));
+                        }
+                    }
+                }
+
+                // General/Autostart → Bool-Choice-Popup (wie gehabt)
                 if self.right.current_category() == Category::General {
                     if let Some(field) = self.right.selected_field() {
                         if matches!(field, ServerSettingField::GeneralAutostart) {
@@ -101,6 +112,7 @@ impl Page for SettingsPage {
                         }
                     }
                 }
+
                 if let Some(a) = self.right.update(action)? {
                     return Ok(Some(a));
                 }

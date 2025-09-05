@@ -8,6 +8,7 @@
 pub mod alert;
 pub mod bool_choice;
 pub mod confirm;
+pub mod form;
 pub mod input;
 pub mod single_choice;
 
@@ -15,3 +16,4 @@ pub mod single_choice;
 pub use crate::components::popup::{
     PopupComponent, centered_rect_fixed, draw_popup_frame, render_backdrop,
 };
+pub use crate::components::popups::form::certificate::certificate_wizard_popup;

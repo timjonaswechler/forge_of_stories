@@ -55,7 +55,30 @@ impl SettingsDetailsComponent {
     pub fn current_category(&self) -> Category {
         self.current_category
     }
+    fn select_up(&mut self) {
+        let i = self.state.selected().unwrap_or(0);
+        self.state.select(Some(i.saturating_sub(1)));
+    }
+    fn select_down(&mut self) {
+        let i = self.state.selected().unwrap_or(0);
+        let max = self.entries.len().saturating_sub(1);
+        self.state.select(Some((i + 1).min(max)));
+    }
 
+    fn start_editing(&mut self) {
+        if let Some(i) = self.state.selected() {
+            self.editing = Some(i);
+            self.input = Input::default();
+            if let Some((_k, v)) = self.entries.get(i) {
+                self.input = self.input.clone().with_value(v.clone());
+            }
+        }
+    }
+
+    pub fn selected_entry_label(&self) -> Option<&str> {
+        let idx = self.state.selected()?;
+        self.entries.get(idx).map(|(k, _)| k.as_str())
+    }
     pub fn set_from_server(&mut self, cat: Category, store: &SettingsStore) -> Result<()> {
         self.current_category = cat;
         self.title = cat.title().to_string();
@@ -83,7 +106,10 @@ impl SettingsDetailsComponent {
             }
             Category::Security => {
                 let s = store.get::<aether_config::Security>()?;
-                vec![("tls_cert_path".into(), s.tls_cert_path.clone())]
+                vec![
+                    ("tls_cert_path".into(), s.tls_cert_path.clone()),
+                    ("create a self-signed certificate".into(), "".to_string()),
+                ]
             }
             Category::Monitoring => {
                 let m = store.get::<aether_config::Monitoring>()?;
@@ -98,26 +124,6 @@ impl SettingsDetailsComponent {
             self.state.select(Some(0));
         }
         Ok(())
-    }
-
-    fn select_up(&mut self) {
-        let i = self.state.selected().unwrap_or(0);
-        self.state.select(Some(i.saturating_sub(1)));
-    }
-    fn select_down(&mut self) {
-        let i = self.state.selected().unwrap_or(0);
-        let max = self.entries.len().saturating_sub(1);
-        self.state.select(Some((i + 1).min(max)));
-    }
-
-    fn start_editing(&mut self) {
-        if let Some(i) = self.state.selected() {
-            self.editing = Some(i);
-            self.input = Input::default();
-            if let Some((_k, v)) = self.entries.get(i) {
-                self.input = self.input.clone().with_value(v.clone());
-            }
-        }
     }
 
     fn commit_edit(&mut self) -> Result<()> {

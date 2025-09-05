@@ -8,7 +8,7 @@ path = "src/lib.rs"
 
 
 [dependencies]
-shared = { workspace = true }
+network_shared = { workspace = true }
 settings = { workspace = true }
 bevy = { version = "0.16.1", default-features = false, features = [
     "std",

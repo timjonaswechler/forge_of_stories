@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/aether_main",
+    "crates/aether",
     "crates/aether_config",
     "crates/forge_of_stories",
     "crates/paths",
@@ -23,7 +23,7 @@ edition = "2024"
 
 
 [workspace.dependencies]
-aether_main.path = "crates/aether_main"
+aether.path = "crates/aether"
 aether_config.path = "crates/aether_config"
 app.path = "crates/app"
 client.path = "crates/network/client"
@@ -33,7 +33,7 @@ illusion.path = "crates/ui/illusion"
 oracle.path = "crates/ui/oracle"
 paths.path = "crates/paths"
 settings.path = "crates/settings"
-shared.path = "crates/network/shared"
+network_shared.path = "crates/network/shared"
 server.path = "crates/network/server"
 wizard.path = "crates/ui/wizard"
 

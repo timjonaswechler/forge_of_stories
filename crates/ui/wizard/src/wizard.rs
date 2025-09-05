@@ -294,8 +294,9 @@ impl WizardApp {
         // If a popup is active, draw a backdrop and the popup centered on top of the page
         if let Some(popup) = self.popup.as_mut() {
             crate::components::popups::render_backdrop(frame, vertical_layout[0]);
-            let w = 60.min(vertical_layout[0].width);
-            let h = 10.min(vertical_layout[0].height);
+            let (min_w, min_h) = popup.popup_min_size().unwrap_or((60, 10));
+            let w = min_w.min(vertical_layout[0].width);
+            let h = min_h.min(vertical_layout[0].height);
             let dialog = crate::components::popups::centered_rect_fixed(vertical_layout[0], w, h);
             popup.draw(frame, dialog)?;
         }

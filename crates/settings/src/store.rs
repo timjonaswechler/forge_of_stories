@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::RwLock;
 use toml::Value;
+use toml_edit::de;
 
 use std::collections::BTreeMap;
 
@@ -31,7 +32,7 @@ pub struct Layer {
     pub kind: LayerKind,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct RegisteredEntry {
     section: &'static str,
     rebuild: fn(&Value) -> Result<Box<dyn Any + Send + Sync>, SettingsError>,
@@ -159,6 +160,7 @@ impl SettingsStoreBuilder {
     }
 }
 
+#[derive(Debug)]
 pub struct SettingsStore {
     layers: RwLock<Vec<Layer>>,
 
@@ -245,12 +247,16 @@ impl SettingsStore {
 
         // 6) Determine highest-priority writable settings file
         let Some(target_path) = self.highest_priority_settings_file() else {
-            return Err(SettingsError::Invalid("no writable settings file registered"));
+            return Err(SettingsError::Invalid(
+                "no writable settings file registered",
+            ));
         };
 
         // 7) Load existing file (if present) or start with empty table
         let root = match std::fs::read_to_string(&target_path) {
-            Ok(txt) if !txt.trim().is_empty() => toml::from_str::<Value>(&txt).unwrap_or(Value::Table(Default::default())),
+            Ok(txt) if !txt.trim().is_empty() => {
+                toml::from_str::<Value>(&txt).unwrap_or(Value::Table(Default::default()))
+            }
             _ => Value::Table(Default::default()),
         };
         let mut root_tbl = match root {
@@ -306,8 +312,8 @@ impl SettingsStore {
                 _ => {}
             }
         }
-        let merged = deep_merge_settings_by_section(&stack, self.merge_arrays_policy)
-            .unwrap_or_default();
+        let merged =
+            deep_merge_settings_by_section(&stack, self.merge_arrays_policy).unwrap_or_default();
         merged
             .get(S::SECTION)
             .cloned()
@@ -892,7 +898,8 @@ fn parse_chord(s: &str) -> Option<KeyChord> {
 /// Convert a serializable model to a TOML `Value` by round-tripping through string form.
 fn toml_model_to_value<T: serde::Serialize>(m: &T) -> Result<Value, SettingsError> {
     let s = toml::to_string(m)?;
-    Ok(toml::from_str::<Value>(&s)?)}
+    Ok(toml::from_str::<Value>(&s)?)
+}
 
 /// Compute the difference from `default` to `current`.
 /// Returns `None` if identical, or a `Value` containing only keys that differ.

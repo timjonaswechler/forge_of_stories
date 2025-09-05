@@ -57,6 +57,12 @@ pub trait Component: Send {
         Ok(None)
     }
 
+    /// Optional hint for popups to request a minimum (width, height).
+    /// Default: None (caller decides). Popups can override to suggest their own size.
+    fn popup_min_size(&self) -> Option<(u16, u16)> {
+        None
+    }
+
     fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()>;
 }
 
