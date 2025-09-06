@@ -10,3 +10,11 @@ app.workspace = true
 color-eyre.workspace = true
 server.workspace = true
 tokio.workspace = true
+bevy = { version = "0.16.1", default-features = false, features = [
+    "std",
+    "multi_threaded",
+    "bevy_remote",
+    "bevy_state",
+    "bevy_log",
+    "serialize",
+] }

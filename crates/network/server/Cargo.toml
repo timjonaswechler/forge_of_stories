@@ -3,22 +3,11 @@ name = "server"
 version = "0.1.0"
 edition = "2024"
 
-# Dedicated Server Binary
-[[bin]]
-name = "server"
-path = "src/main.rs"
 
-[lib]
-path = "src/lib.rs"
 
 [dependencies]
 app.workspace = true
-network_shared = { workspace = true }
-anyhow = { workspace = true }
-settings = { workspace = true }
-
-paths = { workspace = true }
-time = { workspace = true }
+axum.workspace = true
 bevy = { version = "0.16.1", default-features = false, features = [
     "std",
     "multi_threaded",
@@ -27,23 +16,10 @@ bevy = { version = "0.16.1", default-features = false, features = [
     "bevy_log",
     "serialize",
 ] }
-
-# --- Assets ---
-serde = { workspace = true }
-
-color-eyre.workspace = true
+network_shared.workspace = true
+tokio.workspace = true
 
 
-# --- Certificate ---
-rustls = { workspace = true }
-rcgen = { workspace = true }
-
-# --- Server ---
-quinn = { workspace = true }
-tokio = { workspace = true }
-axum = { workspace = true }
-futures = { workspace = true }
-# settings = { workspace = true }
 
 [features]
 default = ["dedicated_server"]

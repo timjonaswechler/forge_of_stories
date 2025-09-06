@@ -1,7 +1,9 @@
 // use crate::{
 //     action::{Action},
 // };
+use crate::bevy::build_bevy_app;
 use app::{AppBase, Application};
+use bevy::prelude::App;
 use color_eyre::Result;
 
 impl Application for AetherApp {
@@ -27,14 +29,21 @@ impl Application for AetherApp {
 
 pub struct AetherApp {
     pub base: AppBase,
+    pub bevy: App,
 }
 
 impl AetherApp {
     pub fn init(base: AppBase) -> Result<Self> {
-        Ok(Self { base })
+        let mut bevy_app = App::new();
+        build_bevy_app(&mut bevy_app);
+        Ok(Self {
+            base,
+            bevy: bevy_app,
+        })
     }
 
     pub async fn run(&mut self) -> Result<()> {
+        self.bevy.run();
         Ok(())
     }
 }
