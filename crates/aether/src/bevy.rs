@@ -8,6 +8,7 @@ pub enum NetSets {
     Simulation,  // Gameplay (Aether)
     Replication, // Snapshots/Deltas bauen
     Send,        // ECS → Tokio (Outbound flush)
+    Control,     // Control-Plane (Separate)
 }
 
 // Optional: Control-Plane separat
@@ -47,25 +48,13 @@ pub(crate) fn heartbeat_fixed(
     let real_delta_s = real_delta.as_secs_f64();
     let real_delta_ms = real_delta_s * 1000.0;
 
-    // Seit Start vergangene echte Zeit
-    let since_start_real = now_real - stats.start_real.unwrap();
-    let since_start_ms = since_start_real.as_secs_f64() * 1000.0;
-
-    // Wichtig: ideal schon mit (ticks + 1) rechnen, weil dieser Fixed-Step gerade abgeschlossen wurde
-    let ideal_ms = ((stats.ticks + 1) as f64) * target_ms;
-
-    let jitter_ms = real_delta_ms - target_ms;
-    let drift_ms = since_start_ms - ideal_ms;
-
     info!(
-        "fixed_tick={} target=({:.3} ms|{:.3} s) real=({:.3} ms|{:.3} s) jitter_ms={:+.3} drift_ms={:+.3}",
+        "fixed_tick={} target=({:.3} ms|{:.3} s) real=({:.3} ms|{:.3} s)",
         stats.ticks + 1,
         target_ms,
         target_s,
         real_delta_ms,
         real_delta_s,
-        jitter_ms,
-        drift_ms
     );
 
     // Schritt als abgeschlossen markieren
@@ -86,6 +75,7 @@ pub(crate) fn build_bevy_app(app: &mut App) {
                 NetSets::Simulation,
                 NetSets::Replication,
                 NetSets::Send,
+                NetSets::Control,
             )
                 .chain(),
         )
