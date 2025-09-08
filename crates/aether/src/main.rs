@@ -1,5 +1,5 @@
 mod aether;
-mod bevy;
+pub mod bevy;
 
 use crate::aether::AetherApp;
 use color_eyre::Result;

@@ -11,7 +11,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::RwLock;
 use toml::Value;
-use toml_edit::de;
 
 use std::collections::BTreeMap;
 

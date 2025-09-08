@@ -8,9 +8,6 @@ edition.workspace = true
 path = "src/lib.rs"
 # doctest = false # Enable if you want to skip doctests initially.
 
-[features]
-
-
 [dependencies]
 anyhow.workspace = true
 bitflags.workspace = true
@@ -24,4 +21,9 @@ tree-sitter = "0.25.8"
 toml.workspace = true
 toml_edit.workspace = true
 thiserror = "1.0.38"
+bevy = {version = "0.16.1", default-features = false, optional= true }
 [dev-dependencies]
+
+
+[features]
+bevy = ["dep:bevy"]

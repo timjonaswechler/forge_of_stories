@@ -1,12 +1,13 @@
 use std::env;
 use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 pub struct AppBase {
     pub app_id: &'static str,
-    pub settings: settings::SettingsStore,
+    pub settings: Arc<settings::SettingsStore>,
     pub config_dir: PathBuf,
     pub data_dir: PathBuf,
     pub logs_dir: PathBuf,
@@ -25,28 +26,20 @@ impl Deref for AppBase {
     }
 }
 
-impl DerefMut for AppBase {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.settings
-    }
-}
-
+// impl DerefMut for AppBase {
+//     fn deref_mut(&mut self) -> &mut Self::Target {
+//         &mut self.settings
+//     }
+// }
 pub trait Application: Sized + 'static {
     type Error: From<BoxError> + std::fmt::Display + std::fmt::Debug + 'static;
 
-    // Pflicht: eindeutige ID der App
     const APP_ID: &'static str;
-
-    // Optional: eingebettete Defaults (Asset-Namen aus dem settings-Crate)
     const EMBEDDED_SETTINGS_ASSET: Option<&'static str> = None;
     const EMBEDDED_KEYMAP_ASSET: Option<&'static str> = None;
-
-    // Optional: ENV-Integration
-    // z. B. ENV_LAYERS_VAR="FOS_WIZARD_ENV_LAYERS", ENV_PREFIX="FOS_WIZARD"
     const ENV_LAYERS_VAR: Option<&'static str> = None;
     const ENV_PREFIX: Option<&'static str> = None;
 
-    // Optional: Logging/Errors/Plattform-Init
     fn init_platform() -> Result<(), Self::Error> {
         Ok(())
     }
@@ -79,9 +72,8 @@ pub fn init<A: Application>() -> Result<AppBase, A::Error> {
         }
     }
 
-    let settings = builder.build().expect("Build Settings Error");
+    let settings = Arc::new(builder.build().expect("Build Settings Error")); // <- Arc drum
 
-    // Per-App Plattformpfade
     let config_dir = paths::config_dir().join(app_id);
     let data_dir = paths::data_dir().join(app_id);
     let logs_dir = paths::logs_dir().join(app_id);

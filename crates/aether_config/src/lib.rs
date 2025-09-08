@@ -1,3 +1,6 @@
+#[cfg(feature = "bevy")]
+pub mod bevy;
+
 use serde::{Deserialize, Serialize};
 
 fn parse_bool(s: &str) -> color_eyre::Result<bool> {
@@ -53,9 +56,9 @@ pub fn apply_server_setting(
 
     match field {
         ServerSettingField::GeneralTickRate => {
-            let v: u32 = if s.is_empty() {
+            let v: f64 = if s.is_empty() {
                 default_value_for(field)
-                    .and_then(|v| v.as_integer().map(|n| n as u32))
+                    .and_then(|v| v.as_integer().map(|n| n as f64))
                     .unwrap_or_default()
             } else {
                 s.parse()?
@@ -132,7 +135,7 @@ use std::sync::Arc;
 // 1) Typisierte Modelle
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct GeneralCfg {
-    pub tick_rate: u32,
+    pub tick_rate: f64,
     pub autostart: bool,
 }
 #[derive(Clone, Default, Serialize, Deserialize)]

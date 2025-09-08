@@ -8,8 +8,13 @@ edition.workspace = true
 path = "src/lib.rs"
 
 [dependencies]
+bevy = {version = "0.16.1", default-features = false, optional= true }
 settings.workspace = true
 paths.workspace = true
 serde.workspace = true
 color-eyre = "0.6.3"
 toml.workspace = true
+
+[features]
+default = []
+bevy = ["dep:bevy", "settings/bevy"]

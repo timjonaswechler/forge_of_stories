@@ -1,3 +1,6 @@
+pub mod settings_bridge;
+
+use crate::bevy::settings_bridge::AetherSettingsPlugin;
 use bevy::prelude::*;
 use std::time::Duration;
 
@@ -64,10 +67,9 @@ pub(crate) fn heartbeat_fixed(
 
 // 3) Bevy-App Aufbau mit 30 Hz FixedUpdate (ohne UI)
 pub(crate) fn build_bevy_app(app: &mut App) {
-    app.add_plugins(DefaultPlugins) // vorerst okay; später für Headless WindowPlugin auf None setzen
-        // fester 30-Hz Fixed-Step
-        .insert_resource(Time::<Fixed>::from_hz(120.0))
-        // Reihenfolge unserer Netz-/Sim-Pipeline im FixedUpdate
+    app.add_plugins(DefaultPlugins)
+        .add_plugins(AetherSettingsPlugin)
+        .insert_resource(Time::<Fixed>::from_hz(10.0))
         .configure_sets(
             FixedUpdate,
             (
