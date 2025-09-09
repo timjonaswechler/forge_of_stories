@@ -35,37 +35,15 @@ use settings::{DeviceFilter, SettingsStore};
 
 use crate::action::{Action, UiOutcome};
 use crate::theme::Mode;
+pub mod mapper;
+use self::mapper::intent_for_label;
 
 /// Map a TOML action label (from keymap) to the `Action` enum used by the wizard.
 ///
 /// Extend this mapping as you introduce new action labels in your keymaps.
 pub fn map_label_to_action(label: &str) -> Option<Action> {
-    match label {
-        "Quit" => Some(Action::Quit),
-        "Help" => Some(Action::Help),
-        "Submit" => Some(Action::Submit),
-        "NextField" => Some(Action::Down),
-        "PreviousField" => Some(Action::Up),
-        "ResetFields" => Some(Action::Refresh),
-        "FocusNext" => Some(Action::FocusNext),
-        "FocusPrev" | "FocusPrevious" => Some(Action::FocusPrev),
-        "Up" => Some(Action::Up),
-        "Down" => Some(Action::Down),
-        "SwitchInputMode" => Some(Action::SwitchInputMode),
-        "Switch" => Some(Action::FocusNext),
-        "OpenPopup" => Some(Action::OpenPopup(Box::new(
-            crate::components::popups::confirm::ConfirmPopup::new("", ""),
-        ))),
-        "Cancel" => Some(Action::UiOutcome(UiOutcome::Cancelled)),
-        // Mode control (contextual)
-        "ModeCycle" | "ModeNext" => Some(Action::CycleMode),
-        "ModeNormal" => Some(Action::SetMode(Mode::Normal)),
-        "ModeInsert" => Some(Action::SetMode(Mode::Insert)),
-        "ModeVisual" => Some(Action::SetMode(Mode::Visual)),
-        // Overlay footer / keymap
-        "ToggleKeymap" | "Keymap" => Some(Action::ToggleKeymapOverlay),
-        _ => None,
-    }
+    // Phase 7.1: legacy function now delegates to static intent table in mapper.rs
+    intent_for_label(label)
 }
 
 /// Convert a crossterm `KeyEvent` into a chord string compatible with the keymap format.
