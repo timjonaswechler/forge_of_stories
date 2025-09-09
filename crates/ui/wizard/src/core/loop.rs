@@ -122,19 +122,25 @@ impl<'a> AppLoop<'a> {
                             action_tx.send(Action::Resize(w, h)).ok();
                         }
                         Event::Key(key) => {
-                            // Zentralisiertes Key-Handling (unverändert)
-                            let (context, _focused) = if let Some(popup) = self.app.popup.as_deref()
-                            {
-                                (popup.keymap_context(), popup.name())
-                            } else if let Some(page) = self.app.pages.get(self.app.active_page) {
-                                (page.keymap_context(), page.focused_component_name())
-                            } else {
-                                ("global", "root")
-                            };
+                            // Phase 7.2: Kontext-Fallback (popup > page > global)
+                            let mut context_chain: Vec<&str> = Vec::new();
+                            if let Some(popup) = self.app.popup.as_deref() {
+                                context_chain.push(popup.keymap_context());
+                            }
+                            if let Some(page) = self.app.pages.get(self.app.active_page) {
+                                context_chain.push(page.keymap_context());
+                            }
+                            // Always include global fallback last
+                            context_chain.push("global");
+
                             if let Some(mut a) =
-                                crate::ui::action_from_key(&self.app.base.settings, context, key)
+                                crate::ui::keymap::mapper::resolve_intent_with_fallback(
+                                    &self.app.base.settings,
+                                    &context_chain,
+                                    key,
+                                )
                             {
-                                // Demo-Popup öffnen falls generische OpenPopup-Markierung
+                                // Legacy demo popup logic retained
                                 if core::mem::discriminant(&a)
                                     == core::mem::discriminant(&Action::OpenPopup(Box::new(
                                         crate::components::popups::confirm::ConfirmPopup::new(
