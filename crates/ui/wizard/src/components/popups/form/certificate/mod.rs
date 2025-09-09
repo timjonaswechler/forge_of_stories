@@ -115,3 +115,81 @@ pub fn certificate_wizard_popup() -> FormPopup {
 
     FormPopup::new(schema).with_state(state)
 }
+
+#[cfg(test)]
+mod tests {
+    // Replicated validator logic (original closures are local to certificate_wizard_popup)
+    fn validate_country(s: &str) -> Result<(), String> {
+        let cc = s.trim();
+        if cc.len() != 2 || !cc.chars().all(|c| c.is_ascii_alphabetic()) {
+            Err("Country must be a 2-letter ISO code (A-Z)".to_string())
+        } else {
+            Ok(())
+        }
+    }
+
+    fn validate_number_in_range(s: &str, min: i64, max: i64) -> Result<(), String> {
+        match s.trim().parse::<i64>() {
+            Ok(n) if n >= min && n <= max => Ok(()),
+            _ => Err(format!("Must be a number in range [{min}..{max}]")),
+        }
+    }
+
+    fn validate_san_item(s: &str) -> Result<(), String> {
+        let v = s.trim();
+        if v.is_empty() {
+            return Err("SAN item must not be empty".to_string());
+        }
+        if v.chars().any(|c| c.is_whitespace()) {
+            return Err("SAN item must not contain whitespace".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn country_code_valid() {
+        for code in ["US", "de", "Gb", "FR"] {
+            assert!(validate_country(code).is_ok(), "expected OK for {code}");
+        }
+    }
+
+    #[test]
+    fn country_code_invalid() {
+        for code in ["", "U", "USA", "1A", "A1", "9Z", " D ", "U S"] {
+            assert!(validate_country(code).is_err(), "expected Err for {code:?}");
+        }
+    }
+
+    #[test]
+    fn number_range_valid() {
+        assert!(validate_number_in_range("1", 1, 825).is_ok());
+        assert!(validate_number_in_range("825", 1, 825).is_ok());
+        assert!(validate_number_in_range("365", 1, 825).is_ok());
+        // whitespace tolerance
+        assert!(validate_number_in_range(" 10 ", 1, 825).is_ok());
+    }
+
+    #[test]
+    fn number_range_invalid() {
+        for v in ["0", "826", "-1", "abc", "", "  "] {
+            assert!(
+                validate_number_in_range(v, 1, 825).is_err(),
+                "expected range error for {v:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn san_item_valid() {
+        for v in ["example.com", "sub.domain.org", "192.168.0.1"] {
+            assert!(validate_san_item(v).is_ok(), "expected OK for {v}");
+        }
+    }
+
+    #[test]
+    fn san_item_invalid() {
+        for v in ["", " ", " with space", "tab\titem"] {
+            assert!(validate_san_item(v).is_err(), "expected Err for {v:?}");
+        }
+    }
+}

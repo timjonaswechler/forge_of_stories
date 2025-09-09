@@ -323,3 +323,49 @@ pub fn format_field_value(state: &FormState, field: &FormField) -> String {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::compute_scrollbar_thumb;
+
+    #[test]
+    fn scrollbar_no_thumb_when_total_fits() {
+        assert_eq!(compute_scrollbar_thumb(5, 5, 0, 10), None);
+        assert_eq!(compute_scrollbar_thumb(3, 10, 0, 4), None);
+    }
+
+    #[test]
+    fn scrollbar_basic_progression() {
+        // total=20, visible=5 -> denom = 15
+        // track height 10 => max_thumb_y = 9
+        let track_h = 10;
+        let total = 20;
+        let visible = 5;
+        for scroll in [0, 1, 5, 10, 15] {
+            let y =
+                compute_scrollbar_thumb(total, visible, scroll, track_h).expect("thumb expected");
+            assert!(y <= 9, "thumb out of bounds (y={y}) for scroll={scroll}");
+        }
+    }
+
+    #[test]
+    fn scrollbar_extremes() {
+        let h = 8;
+        let total = 50;
+        let visible = 7;
+        let first = compute_scrollbar_thumb(total, visible, 0, h).unwrap();
+        let last = compute_scrollbar_thumb(total, visible, total - visible, h).unwrap();
+        assert!(first <= last, "first thumb should be at or above last");
+        assert!(last < h as usize, "last thumb must be within track");
+    }
+
+    #[test]
+    fn scrollbar_invalid_or_degenerate() {
+        // Degenerate sizes
+        assert_eq!(compute_scrollbar_thumb(0, 0, 0, 5), None);
+        assert_eq!(compute_scrollbar_thumb(10, 0, 0, 5), None);
+        assert_eq!(compute_scrollbar_thumb(10, 10, 0, 0), None);
+        // Track height zero
+        assert_eq!(compute_scrollbar_thumb(10, 5, 2, 0), None);
+    }
+}

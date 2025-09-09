@@ -43,11 +43,7 @@ pub mod state;
 // Public re-exports (stable API surface)
 pub use field::{FormField, FormFieldKind};
 pub use popup::FormPopup;
-/* (Phase 6.1)
-   Temporarily removing re-exports of render helpers to avoid unused warnings.
-   They will be reintroduced in Task 6.3 once scrollbar logic is finalized and
-   call sites begin using them explicitly.
-*/
+pub use render::{FormRenderMetrics, compute_scrollbar_thumb};
 pub use schema::FormSchema;
 pub use state::FormState;
 
