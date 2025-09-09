@@ -13,11 +13,12 @@
 //!   * Vorbereitung für Reducer / Intent / Effect Pipeline
 //
 //! Geplante Module (Folge-Phasen):
-//!   - `loop`   : Enthält den entkoppelten Event-/Action-Verarbeitungsloop
-//!   - `render` : Reines Rendering ohne Steuerlogik
-//!   - `state`  : Aggregation komplexerer App- oder Domainzustände (Phase 4)
-//!   - `effects`: (Optional Phase 9) Nebenläufige / asynchrone Effekte
-//
+//!   - `loop`     : Enthält den entkoppelten Event-/Action-Verarbeitungsloop
+//!   - `render`   : Reines Rendering ohne Steuerlogik
+//!   - `state`    : Aggregation komplexerer App- oder Domainzustände (Phase 4)
+//!   - `effects`  : (Phase 10) Deklaratives Effect / TaskKind Modell
+//!   - `executor` : (Phase 10) Hintergrund-Task Scheduler (führt TaskKind asynchron aus)
+//!
 //! Migrationshinweise:
 //!   Bestehende Importe von `crate::wizard::WizardApp` bitte auf
 //!   `crate::core::app::WizardApp` anpassen (bereits für `main.rs` erledigt).
@@ -25,6 +26,8 @@
 //! Diese Datei ist bewusst schlank; sie dient als klarer Einstiegspunkt für
 //! zukünftige Kernmodule.
 pub mod app;
+pub mod effects; // Phase 10: Effect & TaskKind definitions
+pub mod executor; // Phase 10: Async task executor
 pub mod r#loop;
 pub mod reducer;
 pub mod state; // Phase 4.1: High-level AppState & RootState eingeführt // Phase 4.2: Reducer prototype (intents -> state mutations)

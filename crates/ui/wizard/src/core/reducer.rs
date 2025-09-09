@@ -45,35 +45,12 @@
 //!       replaced by reducer-driven state transitions.
 
 use crate::action::{Action as Intent, UiOutcome};
+use crate::core::effects::{Effect, TaskKind};
 use crate::core::state::{
     AppState, DashboardState, HealthState, RootState, SettingsState, SetupState,
 };
 use crate::domain::certs::SelfSignedParams;
-use serde_json::Value; // Using Action alias since `intent` module is not declared in crate root
-
-/// Effect enumeration (Phase 9.1)
-/// Expanded to support logging and async task scheduling.
-/// `Async` carries a `TaskKind` which the loop can dispatch/spawn.
-#[derive(Debug, Clone)]
-pub enum Effect {
-    None,
-    Async(TaskKind),
-    Log(String),
-}
-
-/// Kinds of asynchronous (or off-main-thread) tasks the reducer can request.
-/// Phase 9.2 introduces `GenerateCert` (stub).
-#[derive(Debug, Clone)]
-pub enum TaskKind {
-    GenerateCert(SelfSignedParams),
-}
-
-#[allow(dead_code)]
-impl Effect {
-    pub fn none() -> Vec<Effect> {
-        Vec::new()
-    }
-}
+use serde_json::Value;
 
 /// Reduce a single intent into state transitions + produced effects.
 ///

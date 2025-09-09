@@ -4,7 +4,8 @@ use tokio::sync::mpsc;
 use crate::{
     action::{Action, UiOutcome},
     core::app::WizardApp,
-    core::reducer::{Effect, TaskKind},
+    core::effects::Effect,
+    core::executor::TaskExecutor,
     tui::{EventResponse, Tui},
 };
 
@@ -28,6 +29,7 @@ use ratatui::prelude::Rect;
 pub struct AppLoop<'a> {
     app: &'a mut WizardApp,
     tui: Tui,
+    executor: TaskExecutor,
 }
 
 impl<'a> AppLoop<'a> {
@@ -38,7 +40,8 @@ impl<'a> AppLoop<'a> {
     /// `expect`, um die Signatur (`new()` ohne Result) beizubehalten.
     pub fn new(app: &'a mut WizardApp) -> Self {
         let tui = Tui::new().expect("failed to initialize TUI");
-        Self { app, tui }
+        let executor = TaskExecutor::new();
+        Self { app, tui, executor }
     }
 
     /// Run the event loop until the application requests quit.
@@ -172,7 +175,7 @@ impl<'a> AppLoop<'a> {
                 // Clone the action so the reducer can consume it without moving
                 let cloned_action = action.clone();
                 let effects = crate::core::reducer::reduce(&mut self.app.root_state, cloned_action);
-                // Handle produced effects (Phase 9.1 / 9.2 stubs)
+                // Handle produced effects via executor (Phase 10 integration)
                 for eff in effects {
                     match eff {
                         Effect::None => {}
@@ -180,15 +183,8 @@ impl<'a> AppLoop<'a> {
                             log::info!("[effect] {msg}");
                         }
                         Effect::Async(task) => {
-                            match task {
-                                TaskKind::GenerateCert(params) => {
-                                    let cn = params.common_name.clone();
-                                    tokio::spawn(async move {
-                                        // Stub for async certificate generation (Phase 9.2)
-                                        log::info!("Would generate cert (stub) for CN={}", cn);
-                                    });
-                                }
-                            }
+                            log::info!("[effect] schedule async task: {task}");
+                            self.executor.spawn(task);
                         }
                     }
                 }
