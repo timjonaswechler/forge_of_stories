@@ -1,3 +1,4 @@
+use crate::domain::settings_gateway::SettingsGateway;
 use crate::{
     action::{Action, UiOutcome},
     components::popups::certificate_wizard_popup,
@@ -8,14 +9,13 @@ use crate::{
         settings_details::SettingsDetailsComponent,
     },
 };
-use aether_config::{ServerSettingField, apply_server_setting, build_server_settings_store};
+use aether_config::ServerSettingField;
 use color_eyre::Result;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
 };
-use settings::SettingsStore;
-use std::sync::Arc;
+
 use tokio::sync::mpsc::UnboundedSender;
 
 use super::Page;
@@ -28,7 +28,7 @@ enum Focus {
 
 pub struct SettingsPage {
     command_tx: Option<UnboundedSender<Action>>,
-    server_store: Arc<SettingsStore>,
+    gateway: SettingsGateway,
     left: SettingsCategoriesComponent,
     right: SettingsDetailsComponent,
     focus: Focus,
@@ -36,16 +36,16 @@ pub struct SettingsPage {
 
 impl SettingsPage {
     pub fn new() -> Result<Self> {
-        let store = Arc::new(build_server_settings_store()?);
+        let gateway = SettingsGateway::new_server()?;
 
         let left = SettingsCategoriesComponent::new();
         let mut right = SettingsDetailsComponent::new();
-        right.set_store(store.clone());
-        right.set_from_server(Category::General, &store)?;
+        right.set_store(gateway.store());
+        right.set_from_server(Category::General, &gateway.store())?;
 
         Ok(Self {
             command_tx: None,
-            server_store: store,
+            gateway,
 
             left,
             right,
@@ -124,8 +124,8 @@ impl Page for SettingsPage {
                         self.left.update(action)?;
 
                         let cat = self.left.selected();
-                        self.right.set_store(self.server_store.clone());
-                        self.right.set_from_server(cat, &self.server_store)?;
+                        self.right.set_store(self.gateway.store());
+                        self.right.set_from_server(cat, &self.gateway.store())?;
                     }
                     Focus::Right => {
                         if let Some(a) = self.right.update(action)? {
@@ -139,16 +139,12 @@ impl Page for SettingsPage {
                 if self.right.current_category() == Category::General {
                     if let Some(field) = self.right.selected_field() {
                         if matches!(field, ServerSettingField::GeneralAutostart) {
-                            let s = if val == "true" { "true" } else { "false" }.to_string();
-                            apply_server_setting(
-                                &self.server_store,
-                                ServerSettingField::GeneralAutostart,
-                                &s,
-                            )?;
+                            // removed unused variable (was: let s = if val == "true" { "true" } else { "false" }.to_string();)
+                            self.gateway.set_autostart(val == "true")?;
                             // Refresh the right pane from store
                             let cat = self.left.selected();
-                            self.right.set_store(self.server_store.clone());
-                            self.right.set_from_server(cat, &self.server_store)?;
+                            self.right.set_store(self.gateway.store());
+                            self.right.set_from_server(cat, &self.gateway.store())?;
                         }
                     }
                 }

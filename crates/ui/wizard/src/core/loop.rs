@@ -4,6 +4,7 @@ use tokio::sync::mpsc;
 use crate::{
     action::{Action, UiOutcome},
     core::app::WizardApp,
+    core::reducer::{Effect, TaskKind},
     tui::{EventResponse, Tui},
 };
 
@@ -170,8 +171,27 @@ impl<'a> AppLoop<'a> {
                 // Phase 4.2: Reducer prototype integration (Quit, Navigate, Resize routed via root_state)
                 // Clone the action so the reducer can consume it without moving
                 let cloned_action = action.clone();
-                let _effects =
-                    crate::core::reducer::reduce(&mut self.app.root_state, cloned_action);
+                let effects = crate::core::reducer::reduce(&mut self.app.root_state, cloned_action);
+                // Handle produced effects (Phase 9.1 / 9.2 stubs)
+                for eff in effects {
+                    match eff {
+                        Effect::None => {}
+                        Effect::Log(msg) => {
+                            log::info!("[effect] {msg}");
+                        }
+                        Effect::Async(task) => {
+                            match task {
+                                TaskKind::GenerateCert(params) => {
+                                    let cn = params.common_name.clone();
+                                    tokio::spawn(async move {
+                                        // Stub for async certificate generation (Phase 9.2)
+                                        log::info!("Would generate cert (stub) for CN={}", cn);
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
                 // Bridge reducer-derived flags back into legacy WizardApp fields:
                 if self.app.root_state.quit_requested {
                     self.app.should_quit = true;

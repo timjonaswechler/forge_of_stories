@@ -2,6 +2,7 @@ mod action;
 mod cli;
 mod components;
 mod core;
+mod domain;
 mod errors;
 mod logging;
 mod messages;

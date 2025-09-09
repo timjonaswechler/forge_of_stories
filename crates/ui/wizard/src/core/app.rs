@@ -54,7 +54,7 @@ pub struct WizardApp {
 
 impl WizardApp {
     pub fn new(cli: Cli, base: AppBase) -> Result<Self> {
-        let preflight = crate::components::welcome::run_preflight();
+        let preflight = crate::domain::preflight::run_preflight();
         let theme = Theme::from_env_auto();
         let root_state = crate::core::state::initial_root_state(&cli);
 

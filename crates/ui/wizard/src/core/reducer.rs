@@ -44,49 +44,59 @@
 //!       The legacy imperative updates inside the loop will be gradually
 //!       replaced by reducer-driven state transitions.
 
-use crate::action::Action as Intent;
+use crate::action::{Action as Intent, UiOutcome};
 use crate::core::state::{
     AppState, DashboardState, HealthState, RootState, SettingsState, SetupState,
-}; // Using Action alias since `intent` module is not declared in crate root
+};
+use crate::domain::certs::SelfSignedParams;
+use serde_json::Value; // Using Action alias since `intent` module is not declared in crate root
 
-/// Placeholder effect enum (will grow in later phases).
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Effect enumeration (Phase 9.1)
+/// Expanded to support logging and async task scheduling.
+/// `Async` carries a `TaskKind` which the loop can dispatch/spawn.
+#[derive(Debug, Clone)]
 pub enum Effect {
-    /// Explicit "no effect" variant (useful for filtering later).
     None,
+    Async(TaskKind),
+    Log(String),
 }
 
+/// Kinds of asynchronous (or off-main-thread) tasks the reducer can request.
+/// Phase 9.2 introduces `GenerateCert` (stub).
+#[derive(Debug, Clone)]
+pub enum TaskKind {
+    GenerateCert(SelfSignedParams),
+}
+
+#[allow(dead_code)]
 impl Effect {
     pub fn none() -> Vec<Effect> {
         Vec::new()
     }
 }
 
-/// Reduce a single intent into state transitions + (future) effects.
-///
-/// Return value:
-///   Vector of `Effect` items (currently always empty).
+/// Reduce a single intent into state transitions + produced effects.
 ///
 /// Policy:
-///   - Must be side-effect free.
-///   - Does not panic on unknown / unhandled intents; unhandled intents are ignored.
-///   - Mutates only `RootState`.
+///   - Side-effect free (effects are descriptive only)
+///   - Unhandled intents are ignored
 pub fn reduce(state: &mut RootState, intent: Intent) -> Vec<Effect> {
+    let mut effects: Vec<Effect> = Vec::new();
+
     match intent {
         Intent::Quit => {
             state.quit_requested = true;
+            effects.push(Effect::Log("Quit requested".into()));
         }
         Intent::Resize(w, h) => {
             state.last_resize = Some((w, h));
         }
         Intent::Navigate(idx) => {
-            // Derive a target state variant; store in pending_navigation.
             let target = map_index_to_app_state(idx, &state.app_state);
             state.pending_navigation = Some(target);
+            effects.push(Effect::Log(format!("Navigate -> {}", idx)));
         }
         Intent::FocusNext => {
-            // Prototype focus handling (Phase 4.3-A):
-            // Only manipulates reducer-level focus_index; UI pages still manage their own focus.
             if state.focus_total > 0 {
                 state.focus_index = (state.focus_index + 1) % state.focus_total;
             }
@@ -100,11 +110,70 @@ pub fn reduce(state: &mut RootState, intent: Intent) -> Vec<Effect> {
                 }
             }
         }
-        // Other intents ignored in this prototype.
+        // Certificate form submission (Phase 9.2 stub):
+        // Detect a form JSON submission that looks like the certificate wizard output.
+        Intent::UiOutcome(UiOutcome::SubmitJson(ref value)) => {
+            if let Some(params) = extract_cert_params(value) {
+                effects.push(Effect::Log(format!(
+                    "Certificate form submitted (CN={})",
+                    params.common_name
+                )));
+                effects.push(Effect::Async(TaskKind::GenerateCert(params)));
+            }
+        }
         _ => {}
     }
 
-    Effect::none()
+    effects
+}
+
+/// Attempt to parse certificate form submission JSON into `SelfSignedParams`.
+/// Returns None if the JSON does not appear to be a certificate wizard payload.
+fn extract_cert_params(v: &Value) -> Option<SelfSignedParams> {
+    let obj = v.as_object()?;
+    // Heuristic: must contain at least "cn" and "output_path"
+    let cn = obj.get("cn")?.as_str()?.trim().to_string();
+    if cn.is_empty() {
+        return None;
+    }
+    let validity_raw = obj
+        .get("validity_days")
+        .and_then(|x| x.as_str())
+        .unwrap_or("365");
+    let validity_days: u32 = validity_raw.parse().unwrap_or(365);
+
+    let algorithm = obj
+        .get("algorithm")
+        .and_then(|x| x.as_str())
+        .unwrap_or("RSA")
+        .to_string();
+
+    let _self_signed = obj
+        .get("self_signed")
+        .and_then(|x| x.as_str())
+        .map(|s| s.eq_ignore_ascii_case("true"))
+        .unwrap_or(true);
+
+    let dns_names: Vec<String> = obj
+        .get("sans")
+        .and_then(|x| x.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Some(SelfSignedParams {
+        common_name: cn,
+        dns_names,
+        valid_days: validity_days,
+        key_bits: if algorithm.eq_ignore_ascii_case("ECDSA") {
+            256
+        } else {
+            2048
+        },
+    })
 }
 
 /// Map a numeric navigation index (legacy) to a semantic `AppState` variant.
@@ -132,7 +201,7 @@ fn map_index_to_app_state(index: usize, current: &AppState) -> AppState {
 mod tests {
     use super::*;
     use crate::cli::{Cli, Cmd, RunMode};
-    use crate::core::state::{initial_app_state, initial_root_state};
+    use crate::core::state::initial_root_state;
 
     fn cli_setup() -> Cli {
         Cli {
@@ -187,9 +256,32 @@ mod tests {
     }
 
     #[test]
-    fn effect_vector_is_empty_for_now() {
+    fn quit_produces_log_effect() {
         let mut rs = initial_root_state(&cli_setup());
         let eff = reduce(&mut rs, Intent::Quit);
-        assert!(eff.is_empty());
+        assert!(
+            eff.iter()
+                .any(|e| matches!(e, Effect::Log(msg) if msg.contains("Quit"))),
+            "expected a Log effect for Quit"
+        );
+    }
+
+    #[test]
+    fn certificate_form_generates_async_effect() {
+        let mut rs = initial_root_state(&cli_setup());
+        let json = serde_json::json!({
+            "cn": "example.com",
+            "country": "US",
+            "validity_days": "365",
+            "algorithm": "RSA",
+            "self_signed": "true",
+            "output_path": "/tmp/cert.pem"
+        });
+        let eff = reduce(&mut rs, Intent::UiOutcome(UiOutcome::SubmitJson(json)));
+        assert!(
+            eff.iter()
+                .any(|e| matches!(e, Effect::Async(TaskKind::GenerateCert(_)))),
+            "expected Async GenerateCert effect"
+        );
     }
 }

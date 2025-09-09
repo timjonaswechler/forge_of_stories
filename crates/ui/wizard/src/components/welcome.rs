@@ -232,60 +232,6 @@ fn preflight_paragraph(checks: &[PreflightItem]) -> Paragraph<'static> {
     )
 }
 
-fn detect_server_installation() -> Result<bool> {
-    // search for server installation
-    Ok(true)
-}
-
-fn detect_server_settings() -> Result<bool> {
-    // search for server settings
-    Ok(true)
-}
-
-fn detect_certs() -> Result<bool> {
-    // search for certs
-    Ok(true)
-}
-fn detect_server_user_group() -> Result<bool> {
-    // search for server user group
-    Ok(true)
-}
-fn detect_server_user() -> Result<bool> {
-    // search for server user
-    Ok(true)
-}
-
-fn detect_uds() -> Result<bool> {
-    // search for cert
-    Ok(true)
-}
-
-pub fn run_preflight() -> Vec<PreflightItem> {
-    let mut items = Vec::new();
-    let mut push = |label: &str, res: Result<bool>| match res {
-        Ok(true) => items.push(PreflightItem {
-            label: label.to_string(),
-            status: PreflightStatus::Present,
-            message: None,
-        }),
-        Ok(false) => items.push(PreflightItem {
-            label: label.to_string(),
-            status: PreflightStatus::Missing,
-            message: None,
-        }),
-        Err(e) => items.push(PreflightItem {
-            label: label.to_string(),
-            status: PreflightStatus::Error,
-            message: Some(e.to_string()),
-        }),
-    };
-
-    push("Server settings", detect_server_settings());
-    push("Server installation", detect_server_installation());
-    push("Certificates", detect_certs());
-    push("Server user group", detect_server_user_group());
-    push("Server user", detect_server_user());
-    push("UDS / IPC socket", detect_uds());
-
-    items
-}
+// Preflight detection logic moved to domain layer (see `domain::preflight`).
+// This component now only receives prepared `PreflightItem` data via
+// `Action::PreflightResults` and renders it.
