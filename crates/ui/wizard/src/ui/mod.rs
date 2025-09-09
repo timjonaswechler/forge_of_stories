@@ -8,7 +8,8 @@ Phase 2 (Preparation for larger refactors):
 
 Current responsibilities:
 - Expose the `keymap` submodule.
-- Re-export its primary public functions for backwards compatibility and ergonomic imports.
+- Expose the `render` submodule (Phase 3.3) which contains pure rendering logic.
+- Re-export keymap helpers for backwards compatibility.
 
 Migration notes:
 - Old imports like `crate::services::keymap_binding::action_from_key` should migrate to either:
@@ -24,6 +25,7 @@ Future expansion ideas:
 */
 
 pub mod keymap;
+pub mod render; // Phase 3.3: ausgelagerte Rendering-Funktionen
 
 // Re-export commonly used keymap utilities for ergonomic access via `crate::ui::*`.
 pub use keymap::{
