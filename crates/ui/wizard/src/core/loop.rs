@@ -161,6 +161,32 @@ impl<'a> AppLoop<'a> {
 
             // 2. Actions aus Channel konsumieren
             while let Ok(action) = action_rx.try_recv() {
+                // Phase 4.2: Reducer prototype integration (Quit, Navigate, Resize routed via root_state)
+                // Clone the action so the reducer can consume it without moving
+                let cloned_action = action.clone();
+                let _effects =
+                    crate::core::reducer::reduce(&mut self.app.root_state, cloned_action);
+                // Bridge reducer-derived flags back into legacy WizardApp fields:
+                if self.app.root_state.quit_requested {
+                    self.app.should_quit = true;
+                }
+                if let Some(pending) = self.app.root_state.pending_navigation.take() {
+                    // Map high-level AppState back to legacy page index (temporary adapter)
+                    let target_index = match pending {
+                        crate::core::state::AppState::Setup(_) => 0,
+                        crate::core::state::AppState::Settings(_) => 1,
+                        crate::core::state::AppState::Dashboard(_) => 2,
+                        crate::core::state::AppState::Health(_) => 3,
+                    };
+                    self.app.active_page = target_index.min(self.app.pages.len().saturating_sub(1));
+                    // Mirror new high-level state
+                    self.app.root_state.app_state = pending;
+                    // Maintain existing preflight refresh behavior
+                    action_tx
+                        .send(Action::PreflightResults(self.app.preflight.clone()))
+                        .ok();
+                }
+
                 match action {
                     Action::Tick | Action::Render => {}
                     _ => log::debug!("{action}"),
@@ -170,7 +196,9 @@ impl<'a> AppLoop<'a> {
                     Action::Tick => {
                         // (Platzhalter für periodische Logik)
                     }
-                    Action::Quit => self.app.should_quit = true,
+                    Action::Quit => {
+                        // Already applied via reducer (Phase 4.2 bridge)
+                    }
                     Action::Suspend => self.app.should_suspend = true,
                     Action::Resume => self.app.should_suspend = false,
                     Action::Resize(w, h) => {
@@ -236,11 +264,8 @@ impl<'a> AppLoop<'a> {
                             self.app.should_quit = true;
                         }
                     }
-                    Action::Navigate(page) => {
-                        self.app.active_page = page;
-                        action_tx
-                            .send(Action::PreflightResults(self.app.preflight.clone()))
-                            .ok();
+                    Action::Navigate(_page) => {
+                        // Navigation now handled by reducer -> pending_navigation bridge (Phase 4.2)
                     }
                     _ => {}
                 }

@@ -26,7 +26,8 @@
 //! zukünftige Kernmodule.
 pub mod app;
 pub mod r#loop;
-pub mod state; // Phase 4.1: High-level AppState & RootState eingeführt
+pub mod reducer;
+pub mod state; // Phase 4.1: High-level AppState & RootState eingeführt // Phase 4.2: Reducer prototype (intents -> state mutations)
 
 // Re-Exports (optional aktuell leer):
 // pub use app::WizardApp;

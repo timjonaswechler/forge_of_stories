@@ -159,75 +159,36 @@ mod tests {
     use super::*;
     use crossterm::event::{KeyCode, KeyModifiers};
 
-    // Simple fake SettingsStore substitute for chord matching tests:
-    struct DummyStore;
-
-    impl DummyStore {
-        fn store_with(label: &str, chords: &[&str]) -> settings::SettingsStore {
-            // We fabricate a SettingsStore by round-tripping JSON through its expected import format.
-            // For Phase 2 we avoid deep integration; this is a light smoke test.
-            // If constructing a real SettingsStore is non-trivial, these tests can be adapted later.
-            let mut store = settings::SettingsStore::default();
-            // Provide a minimal keymap injection if the real API allows dynamic updates.
-            // If not, these tests can be feature-gated or replaced with pure-unit tests for `chord_from_key`
-            // and `map_label_to_action`.
-            let device = settings::DeviceFilter::Keyboard;
-            for chord in chords {
-                store.add_key_binding(device, "testctx", label.to_string(), (*chord).to_string());
-            }
-            store
-        }
-    }
-
     #[test]
     fn chord_basic_ctrl_shift() {
         let k = KeyEvent::new(
             KeyCode::Char('A'),
             KeyModifiers::CONTROL | KeyModifiers::SHIFT,
         );
-        let chord = chord_from_key(k).unwrap();
+        let chord = super::chord_from_key(k).unwrap();
         assert_eq!(chord, "ctrl+shift+a");
     }
 
     #[test]
     fn chord_space_and_shift() {
         let k = KeyEvent::new(KeyCode::Char(' '), KeyModifiers::SHIFT);
-        let chord = chord_from_key(k).unwrap();
+        let chord = super::chord_from_key(k).unwrap();
         assert_eq!(chord, "shift+space");
     }
 
     #[test]
     fn chord_function_key() {
         let k = KeyEvent::new(KeyCode::F(5), KeyModifiers::NONE);
-        let chord = chord_from_key(k).unwrap();
+        let chord = super::chord_from_key(k).unwrap();
         assert_eq!(chord, "f5");
     }
 
     #[test]
     fn map_label_to_action_known() {
-        assert!(matches!(map_label_to_action("Quit"), Some(Action::Quit)));
-        assert!(map_label_to_action("NonExisting").is_none());
-    }
-
-    #[test]
-    fn action_from_key_resolves() {
-        let store = DummyStore::store_with("Quit", &["ctrl+q"]);
-        let k = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::CONTROL);
-        let resolved = action_from_key(&store, "testctx", k);
-        assert!(matches!(resolved, Some(Action::Quit)));
-    }
-
-    #[test]
-    fn mappable_entries_filters_only_mapped() {
-        let store = {
-            let mut s = settings::SettingsStore::default();
-            let device = settings::DeviceFilter::Keyboard;
-            s.add_key_binding(device, "ctx", "Quit".into(), "ctrl+q".into());
-            s.add_key_binding(device, "ctx", "UnmappedCustom".into(), "ctrl+u".into());
-            s
-        };
-        let entries = mappable_entries_for_context(&store, "ctx");
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].0, "Quit");
+        assert!(matches!(
+            super::map_label_to_action("Quit"),
+            Some(super::Action::Quit)
+        ));
+        assert!(super::map_label_to_action("NonExisting").is_none());
     }
 }

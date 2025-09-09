@@ -69,13 +69,24 @@ impl AppState {
 #[derive(Debug)]
 pub struct RootState {
     pub app_state: AppState,
+    /// Whether a quit intent has been issued (handled by reducer prototype in Phase 4.2)
+    pub quit_requested: bool,
+    /// Last terminal resize observed (width, height) for reducers / layout decisions
+    pub last_resize: Option<(u16, u16)>,
+    /// Pending navigation target (will be applied by loop / dispatch layer)
+    pub pending_navigation: Option<AppState>,
     // Future: pub focus_ring: FocusRing,
     // Future: pub effects: Vec<Effect>,
 }
 
 impl RootState {
     pub fn new(app_state: AppState) -> Self {
-        Self { app_state }
+        Self {
+            app_state,
+            quit_requested: false,
+            last_resize: None,
+            pending_navigation: None,
+        }
     }
 
     /// Convenience accessor for pattern matching outside.
@@ -151,14 +162,18 @@ mod tests {
 
     #[test]
     fn setup_mode_initializes_setup_state() {
-        let cli = dummy_cli(Cmd::Run { mode: RunMode::Setup });
+        let cli = dummy_cli(Cmd::Run {
+            mode: RunMode::Setup,
+        });
         let rs = initial_root_state(&cli);
         assert!(matches!(rs.app_state(), AppState::Setup(_)));
     }
 
     #[test]
     fn dashboard_mode_initializes_dashboard_state() {
-        let cli = dummy_cli(Cmd::Run { mode: RunMode::Dashboard });
+        let cli = dummy_cli(Cmd::Run {
+            mode: RunMode::Dashboard,
+        });
         let rs = initial_root_state(&cli);
         assert!(matches!(rs.app_state(), AppState::Dashboard(_)));
     }
@@ -172,7 +187,9 @@ mod tests {
 
     #[test]
     fn labels_are_stable() {
-        let cli = dummy_cli(Cmd::Run { mode: RunMode::Setup });
+        let cli = dummy_cli(Cmd::Run {
+            mode: RunMode::Setup,
+        });
         let rs = initial_root_state(&cli);
         assert_eq!(rs.app_state().label(), "setup");
     }
