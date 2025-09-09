@@ -122,7 +122,7 @@ impl Component for KeymapOverlay {
             }
             KeyCode::Enter => {
                 if let Some((label, _)) = self.entries.get(self.selected) {
-                    if let Some(a) = crate::services::keymap_binding::map_label_to_action(label) {
+                    if let Some(a) = crate::ui::keymap::map_label_to_action(label) {
                         return Ok(Some(crate::tui::EventResponse::Stop(a)));
                     }
                 }

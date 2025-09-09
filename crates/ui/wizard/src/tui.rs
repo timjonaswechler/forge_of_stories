@@ -28,7 +28,7 @@ pub fn io() -> IO {
 pub type Frame<'a> = ratatui::Frame<'a>;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum Event {
+pub enum InputEvent {
     Init,
     Quit,
     Error,
@@ -43,6 +43,9 @@ pub enum Event {
     Resize(u16, u16),
 }
 
+// Backwards compatibility during transition: old name still usable.
+pub use InputEvent as Event;
+
 pub enum EventResponse<T> {
     Continue(T),
     Stop(T),
@@ -51,8 +54,8 @@ pub struct Tui {
     pub terminal: ratatui::Terminal<Backend<IO>>,
     pub task: JoinHandle<()>,
     pub cancellation_token: CancellationToken,
-    pub event_rx: UnboundedReceiver<Event>,
-    pub event_tx: UnboundedSender<Event>,
+    pub event_rx: UnboundedReceiver<InputEvent>,
+    pub event_tx: UnboundedSender<InputEvent>,
     pub frame_rate: f64,
     pub tick_rate: f64,
     pub mouse: bool,
@@ -113,7 +116,7 @@ impl Tui {
             let mut reader = crossterm::event::EventStream::new();
             let mut tick_interval = tokio::time::interval(tick_delay);
             let mut render_interval = tokio::time::interval(render_delay);
-            _event_tx.send(Event::Init).unwrap();
+            _event_tx.send(InputEvent::Init).unwrap();
             loop {
                 let tick_delay = tick_interval.tick();
                 let render_delay = render_interval.tick();
@@ -128,37 +131,37 @@ impl Tui {
                         match evt {
                           CrosstermEvent::Key(key) => {
                             if key.kind == KeyEventKind::Press {
-                              _event_tx.send(Event::Key(key)).unwrap();
+                              _event_tx.send(InputEvent::Key(key)).unwrap();
                             }
                           },
                           CrosstermEvent::Mouse(mouse) => {
-                            _event_tx.send(Event::Mouse(mouse)).unwrap();
+                            _event_tx.send(InputEvent::Mouse(mouse)).unwrap();
                           },
                           CrosstermEvent::Resize(x, y) => {
-                            _event_tx.send(Event::Resize(x, y)).unwrap();
+                            _event_tx.send(InputEvent::Resize(x, y)).unwrap();
                           },
                           CrosstermEvent::FocusLost => {
-                            _event_tx.send(Event::FocusLost).unwrap();
+                            _event_tx.send(InputEvent::FocusLost).unwrap();
                           },
                           CrosstermEvent::FocusGained => {
-                            _event_tx.send(Event::FocusGained).unwrap();
+                            _event_tx.send(InputEvent::FocusGained).unwrap();
                           },
                           CrosstermEvent::Paste(s) => {
-                            _event_tx.send(Event::Paste(s)).unwrap();
+                            _event_tx.send(InputEvent::Paste(s)).unwrap();
                           },
                         }
                       }
                       Some(Err(_)) => {
-                        _event_tx.send(Event::Error).unwrap();
+                        _event_tx.send(InputEvent::Error).unwrap();
                       }
                       None => {},
                     }
                   },
                   _ = tick_delay => {
-                      _event_tx.send(Event::Tick).unwrap();
+                      _event_tx.send(InputEvent::Tick).unwrap();
                   },
                   _ = render_delay => {
-                      _event_tx.send(Event::Render).unwrap();
+                      _event_tx.send(InputEvent::Render).unwrap();
                   },
                 }
             }
@@ -227,7 +230,7 @@ impl Tui {
         Ok(())
     }
 
-    pub async fn next(&mut self) -> Option<Event> {
+    pub async fn next(&mut self) -> Option<InputEvent> {
         self.event_rx.recv().await
     }
 }

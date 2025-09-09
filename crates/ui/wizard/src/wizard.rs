@@ -163,7 +163,7 @@ impl WizardApp {
                             action_tx.send(Action::Resize(x, y)).ok();
                         }
                         crate::tui::Event::Key(key) => {
-                            // Centralized key handling via services::keymap_binding
+                            // Centralized key handling via ui::keymap
                             let (context, _focused) = if let Some(popup) = self.popup.as_deref() {
                                 (popup.keymap_context(), popup.name())
                             } else if let Some(page) = self.pages.get(self.active_page) {
@@ -171,7 +171,7 @@ impl WizardApp {
                             } else {
                                 ("global", "root")
                             };
-                            if let Some(mut a) = crate::services::keymap_binding::action_from_key(
+                            if let Some(mut a) = crate::ui::keymap::action_from_key(
                                 &self.base.settings,
                                 context,
                                 key,
@@ -249,11 +249,10 @@ impl WizardApp {
                             } else {
                                 ("global", "root")
                             };
-                            let mut entries =
-                                crate::services::keymap_binding::mappable_entries_for_context(
-                                    &self.base.settings,
-                                    context,
-                                );
+                            let mut entries = crate::ui::keymap::mappable_entries_for_context(
+                                &self.base.settings,
+                                context,
+                            );
                             entries.sort_by(|a, b| a.0.cmp(&b.0));
                             let title = format!("Keymap · {} [{}]", context, focused);
                             let overlay = crate::components::popups::keymap::KeymapOverlay::new(
