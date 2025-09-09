@@ -8,6 +8,7 @@ mod pages;
 mod services;
 mod theme;
 mod tui;
+mod ui;
 mod wizard;
 
 use crate::cli::Cli;

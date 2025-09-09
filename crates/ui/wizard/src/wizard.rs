@@ -171,11 +171,9 @@ impl WizardApp {
                             } else {
                                 ("global", "root")
                             };
-                            if let Some(mut a) = crate::ui::keymap::action_from_key(
-                                &self.base.settings,
-                                context,
-                                key,
-                            ) {
+                            if let Some(mut a) =
+                                crate::ui::action_from_key(&self.base.settings, context, key)
+                            {
                                 // If this is an OpenPopup trigger, build the demo ConfirmPopup here
                                 if core::mem::discriminant(&a)
                                     == core::mem::discriminant(&Action::OpenPopup(Box::new(
@@ -249,7 +247,7 @@ impl WizardApp {
                             } else {
                                 ("global", "root")
                             };
-                            let mut entries = crate::ui::keymap::mappable_entries_for_context(
+                            let mut entries = crate::ui::mappable_entries_for_context(
                                 &self.base.settings,
                                 context,
                             );
