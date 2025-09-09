@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use tui_input::{Input, backend::crossterm::EventHandler};
 
 use crate::{
-    action::{Action, PopupResult},
+    action::Action,
     components::Component,
     components::popups::{centered_rect_fixed, draw_popup_frame},
     tui::Frame,
@@ -420,7 +420,7 @@ impl FormPopup {
             }
         }
 
-        Some(Action::PopupResult(PopupResult::FormSubmitted(
+        Some(Action::UiOutcome(crate::action::UiOutcome::SubmitJson(
             JsonValue::Object(map),
         )))
     }
@@ -556,8 +556,8 @@ impl Component for FormPopup {
                 return Ok(Some(crate::tui::EventResponse::Stop(Action::Submit)));
             }
             KeyCode::Esc => {
-                return Ok(Some(crate::tui::EventResponse::Stop(Action::PopupResult(
-                    PopupResult::Cancelled,
+                return Ok(Some(crate::tui::EventResponse::Stop(Action::UiOutcome(
+                    crate::action::UiOutcome::Cancelled,
                 ))));
             }
             _ => {}
@@ -569,7 +569,6 @@ impl Component for FormPopup {
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
             Action::Submit => Ok(self.submit()),
-            Action::PopupResult(PopupResult::FormSubmitted(_)) => Ok(Some(Action::ClosePopup)),
             _ => Ok(None),
         }
     }

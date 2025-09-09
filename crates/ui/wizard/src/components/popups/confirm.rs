@@ -8,7 +8,7 @@ use ratatui::{
 };
 
 use crate::{
-    action::{Action, PopupResult},
+    action::{Action, UiOutcome},
     components::Component,
     components::popup::PopupComponent,
     tui::{EventResponse, Frame},
@@ -26,13 +26,12 @@ enum Choice {
 ///
 /// Behavior:
 /// - Arrow Left/Right or Tab/BackTab: switch selected button
-/// - Enter: submit (emits Action::PopupResult with Confirmed/Cancelled depending on selection)
-/// - Esc: cancel (emits Action::PopupResult(Cancelled))
+/// - Enter: submit (emits Action::UiOutcome(UiOutcome::Confirmed) or Cancelled)
+/// - Esc: cancel (emits Action::UiOutcome(UiOutcome::Cancelled))
 ///
 /// Lifecycle:
-/// - The popup emits Action::PopupResult(...).
-/// - In `update`, the popup maps the PopupResult to Action::ClosePopup to keep lifecycle consistent.
-///   The application should handle forwarding the result and then close the popup.
+/// - The popup now emits only UiOutcome variants; the central loop interprets them
+///   (e.g., closes the popup on Confirmed/Cancelled) instead of the popup issuing ClosePopup.
 ///
 pub struct ConfirmPopup {
     title: String,
@@ -79,13 +78,13 @@ impl ConfirmPopup {
 
     fn confirm_action(&self) -> Action {
         match self.selected {
-            Choice::Ok => Action::PopupResult(PopupResult::Confirmed),
-            Choice::Cancel => Action::PopupResult(PopupResult::Cancelled),
+            Choice::Ok => Action::UiOutcome(UiOutcome::Confirmed),
+            Choice::Cancel => Action::UiOutcome(UiOutcome::Cancelled),
         }
     }
 
     fn cancel_action(&self) -> Action {
-        Action::PopupResult(PopupResult::Cancelled)
+        Action::UiOutcome(UiOutcome::Cancelled)
     }
 
     fn toggle_selection(&mut self) {
@@ -135,9 +134,6 @@ impl Component for ConfirmPopup {
         match action {
             // Allow Enter via mapped Submit action too
             Action::Submit => Ok(Some(self.confirm_action())),
-            // When the result gets re-injected into the action loop, close the popup.
-            Action::PopupResult(PopupResult::Confirmed)
-            | Action::PopupResult(PopupResult::Cancelled) => Ok(Some(Action::ClosePopup)),
             _ => Ok(None),
         }
     }

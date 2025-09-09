@@ -8,7 +8,7 @@ use ratatui::{
 };
 
 use crate::{
-    action::{Action, PopupResult},
+    action::{Action, UiOutcome},
     components::Component,
     components::popup::PopupComponent,
     tui::Frame,
@@ -21,8 +21,8 @@ use strum::IntoEnumIterator;
 /// It is generic over enums that implement `strum::IntoEnumIterator + Display + Clone + Send + 'static`.
 ///
 /// Emits:
-/// - Action::PopupResult(PopupResult::InputSubmitted(String)) on Enter (selected item's Display)
-/// - Action::PopupResult(PopupResult::Cancelled) on Esc
+/// - Action::UiOutcome(UiOutcome::SubmitString(String)) on Enter (selected item's Display)
+/// - Action::UiOutcome(UiOutcome::Cancelled) on Esc
 ///
 /// Navigation:
 /// - Up/Down: move selection
@@ -121,14 +121,14 @@ where
 
     fn submit_action(&self) -> Option<Action> {
         if self.options.is_empty() {
-            return Some(Action::PopupResult(PopupResult::Cancelled));
+            return Some(Action::UiOutcome(UiOutcome::Cancelled));
         }
         let label = self.options[self.selected].to_string();
-        Some(Action::PopupResult(PopupResult::InputSubmitted(label)))
+        Some(Action::UiOutcome(UiOutcome::SubmitString(label)))
     }
 
     fn cancel_action(&self) -> Option<Action> {
-        Some(Action::PopupResult(PopupResult::Cancelled))
+        Some(Action::UiOutcome(UiOutcome::Cancelled))
     }
 }
 
@@ -179,8 +179,6 @@ where
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
             Action::Submit => Ok(self.submit_action()),
-            Action::PopupResult(PopupResult::InputSubmitted(_))
-            | Action::PopupResult(PopupResult::Cancelled) => Ok(Some(Action::ClosePopup)),
             _ => Ok(None),
         }
     }

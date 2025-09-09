@@ -1,5 +1,5 @@
 use crate::{
-    action::{Action, PopupResult},
+    action::{Action, UiOutcome},
     components::popups::certificate_wizard_popup,
     components::{
         Component,
@@ -134,7 +134,7 @@ impl Page for SettingsPage {
                     }
                 }
             }
-            Action::PopupResult(PopupResult::InputSubmitted(val)) => {
+            Action::UiOutcome(UiOutcome::SubmitString(val)) => {
                 // Apply Autostart only if the current selection is the Autostart field
                 if self.right.current_category() == Category::General {
                     if let Some(field) = self.right.selected_field() {
@@ -153,7 +153,7 @@ impl Page for SettingsPage {
                     }
                 }
             }
-            Action::PopupResult(PopupResult::Cancelled) => {
+            Action::UiOutcome(UiOutcome::Cancelled) => {
                 // No-op for cancel
             }
             _ => {}

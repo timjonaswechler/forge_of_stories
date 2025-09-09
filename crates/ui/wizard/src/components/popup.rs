@@ -5,7 +5,11 @@ use ratatui::{
     widgets::{Block, Borders, Clear},
 };
 
-use crate::{action::Action, components::Component, tui::Frame};
+use crate::{
+    action::{Action, UiOutcome},
+    components::Component,
+    tui::Frame,
+};
 
 /// Popup components and helpers for Wizard
 ///
@@ -27,15 +31,15 @@ pub trait PopupComponent: Component {
     }
 
     /// Action to emit when the popup is confirmed/submitted (e.g., Enter).
-    /// Default closes the popup; specific popups can override to return a richer action.
+    /// Default: emit a neutral UiOutcome::RequestClose (central loop decides to close).
     fn submit_action(&mut self) -> Option<Action> {
-        Some(Action::ClosePopup)
+        Some(Action::UiOutcome(UiOutcome::RequestClose))
     }
 
     /// Action to emit when the popup is cancelled/closed (e.g., Esc).
-    /// Default closes the popup.
+    /// Default: emit UiOutcome::Cancelled (central loop will close & propagate).
     fn cancel_action(&mut self) -> Option<Action> {
-        Some(Action::ClosePopup)
+        Some(Action::UiOutcome(UiOutcome::Cancelled))
     }
 }
 

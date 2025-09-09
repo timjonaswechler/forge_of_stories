@@ -33,7 +33,7 @@ Test Coverage:
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use settings::{DeviceFilter, SettingsStore};
 
-use crate::action::{Action, PopupResult};
+use crate::action::{Action, UiOutcome};
 use crate::theme::Mode;
 
 /// Map a TOML action label (from keymap) to the `Action` enum used by the wizard.
@@ -56,7 +56,7 @@ pub fn map_label_to_action(label: &str) -> Option<Action> {
         "OpenPopup" => Some(Action::OpenPopup(Box::new(
             crate::components::popups::confirm::ConfirmPopup::new("", ""),
         ))),
-        "Cancel" => Some(Action::PopupResult(PopupResult::Cancelled)),
+        "Cancel" => Some(Action::UiOutcome(UiOutcome::Cancelled)),
         // Mode control (contextual)
         "ModeCycle" | "ModeNext" => Some(Action::CycleMode),
         "ModeNormal" => Some(Action::SetMode(Mode::Normal)),

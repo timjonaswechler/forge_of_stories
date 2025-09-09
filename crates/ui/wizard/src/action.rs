@@ -30,6 +30,40 @@ pub enum PopupResult {
     FormSubmitted(serde_json::Value),
 }
 
+/// Unified UI outcome channel (Phase 5.1).
+/// Popups (and later other interactive components) should express their semantic
+/// result via UiOutcome instead of emitting low-level lifecycle `Action`s such as
+/// `ClosePopup`.
+///
+/// Variants:
+/// - None:           No meaningful outcome (no-op)
+/// - RequestClose:   Neutral request to close (e.g. alert acknowledged)
+/// - SubmitString:   Submitted a textual value
+/// - SubmitJson:     Submitted structured form data
+/// - Confirmed:      Explicit positive acknowledgement
+/// - Cancelled:      User cancelled / aborted interaction
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum UiOutcome {
+    None,
+    RequestClose,
+    SubmitString(String),
+    SubmitJson(serde_json::Value),
+    Confirmed,
+    Cancelled,
+}
+
+impl From<PopupResult> for UiOutcome {
+    fn from(pr: PopupResult) -> Self {
+        match pr {
+            PopupResult::AlertClosed => UiOutcome::RequestClose,
+            PopupResult::Confirmed => UiOutcome::Confirmed,
+            PopupResult::Cancelled => UiOutcome::Cancelled,
+            PopupResult::InputSubmitted(s) => UiOutcome::SubmitString(s),
+            PopupResult::FormSubmitted(v) => UiOutcome::SubmitJson(v),
+        }
+    }
+}
+
 #[derive(Serialize, Display)]
 pub enum Action {
     Tick,
@@ -55,7 +89,10 @@ pub enum Action {
     OpenPopup(#[serde(skip)] Box<dyn Component>),
     ClosePopup,
     ToggleKeymapOverlay,
+    /// Legacy popup result channel (will be phased out once all producers emit UiOutcome)
     PopupResult(PopupResult),
+    /// New unified UI outcome channel (Phase 5.1)
+    UiOutcome(UiOutcome),
     Navigate(usize),
     /// Deliver results of pre-start preflight checks to the UI
     PreflightResults(Vec<PreflightItem>),
@@ -90,6 +127,7 @@ impl Clone for Action {
             Action::ClosePopup => Action::ClosePopup,
             Action::ToggleKeymapOverlay => Action::ToggleKeymapOverlay,
             Action::PopupResult(r) => Action::PopupResult(r.clone()),
+            Action::UiOutcome(o) => Action::UiOutcome(o.clone()),
             Action::Navigate(i) => Action::Navigate(*i),
             Action::PreflightResults(items) => Action::PreflightResults(items.clone()),
             Action::IdleTimeout => Action::IdleTimeout,

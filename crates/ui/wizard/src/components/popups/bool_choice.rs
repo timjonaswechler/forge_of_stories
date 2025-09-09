@@ -8,7 +8,7 @@ use ratatui::{
 };
 
 use crate::{
-    action::{Action, PopupResult},
+    action::{Action, UiOutcome},
     components::Component,
     components::popup::PopupComponent,
     tui::Frame,
@@ -18,18 +18,19 @@ use super::{centered_rect_fixed, draw_popup_frame};
 
 /// BoolChoicePopup is a small modal dialog for selecting a boolean value.
 ///
-/// - Navigation:
-///   - Left/Right/Up/Down/Tab: toggle between the two choices
-///   - Enter: submit the current choice (emits `PopupResult::InputSubmitted("true"|"false")`)
-///   - Esc: cancel (emits `PopupResult::Cancelled`)
+/// Navigation:
+/// - Left/Right/Up/Down/Tab: toggle between the two choices
+/// - Enter: submit current choice (emits UiOutcome::SubmitString("true"/"false"))
+/// - Esc: cancel (emits UiOutcome::Cancelled)
 ///
-/// - Labels:
-///   - `true_label` (default: "Yes")
-///   - `false_label` (default: "No")
+/// Labels:
+/// - `true_label` (default: "Yes")
+/// - `false_label` (default: "No")
 ///
-/// - Result:
-///   - On submit: `Action::PopupResult(PopupResult::InputSubmitted("true" | "false"))`
-///   - On cancel: `Action::PopupResult(PopupResult::Cancelled)`
+/// Result Flow:
+/// - On submit: Action::UiOutcome(UiOutcome::SubmitString("true" | "false"))
+/// - On cancel: Action::UiOutcome(UiOutcome::Cancelled)
+/// Popup closure now handled centrally (no direct ClosePopup emission here).
 pub struct BoolChoicePopup {
     title: String,
     question: Option<String>,
@@ -93,13 +94,11 @@ impl BoolChoicePopup {
 
     fn submit_action(&self) -> Option<Action> {
         let val = if self.value { "true" } else { "false" };
-        Some(Action::PopupResult(PopupResult::InputSubmitted(
-            val.to_string(),
-        )))
+        Some(Action::UiOutcome(UiOutcome::SubmitString(val.to_string())))
     }
 
     fn cancel_action(&self) -> Option<Action> {
-        Some(Action::PopupResult(PopupResult::Cancelled))
+        Some(Action::UiOutcome(UiOutcome::Cancelled))
     }
 }
 
@@ -134,8 +133,6 @@ impl Component for BoolChoicePopup {
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
             Action::Submit => Ok(self.submit_action()),
-            Action::PopupResult(PopupResult::InputSubmitted(_))
-            | Action::PopupResult(PopupResult::Cancelled) => Ok(Some(Action::ClosePopup)),
             _ => Ok(None),
         }
     }

@@ -8,7 +8,7 @@ use ratatui::{
 };
 
 use crate::{
-    action::{Action, PopupResult},
+    action::{Action, UiOutcome},
     components::Component,
     components::popup::PopupComponent,
     tui::{EventResponse, Frame},
@@ -17,12 +17,11 @@ use crate::{
 use super::{centered_rect_fixed, draw_popup_frame};
 
 /// Simple modal alert popup with a title, a message and standard controls:
-/// - Enter = OK (close)
-/// - Esc   = Close
+/// - Enter / Esc: acknowledge (emit UiOutcome::RequestClose)
 ///
 /// Emits:
-/// - Action::PopupResult(PopupResult::AlertClosed) on Enter/Esc
-/// The Wizard should interpret this result and set Action::ClosePopup.
+/// - Action::UiOutcome(UiOutcome::RequestClose) on Enter/Esc
+/// Lifecycle: central loop interprets UiOutcome and closes the popup.
 pub struct AlertPopup {
     title: String,
     message: String,
@@ -53,7 +52,7 @@ impl AlertPopup {
     }
 
     fn ok_action(&self) -> Action {
-        Action::PopupResult(PopupResult::AlertClosed)
+        Action::UiOutcome(UiOutcome::RequestClose)
     }
 
     fn inner_rect(area: Rect) -> Rect {
@@ -89,11 +88,8 @@ impl Component for AlertPopup {
     }
 
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
-        // Convert a popup result into a request to close the popup.
-        // This keeps the lifecycle consistent: popups emit results, Wizard closes them.
         match action {
             Action::Submit => Ok(Some(self.ok_action())),
-            Action::PopupResult(PopupResult::AlertClosed) => Ok(Some(Action::ClosePopup)),
             _ => Ok(None),
         }
     }

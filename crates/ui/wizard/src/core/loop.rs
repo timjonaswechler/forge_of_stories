@@ -2,7 +2,7 @@ use color_eyre::Result;
 use tokio::sync::mpsc;
 
 use crate::{
-    action::Action,
+    action::{Action, UiOutcome},
     core::app::WizardApp,
     tui::{EventResponse, Tui},
 };
@@ -192,7 +192,7 @@ impl<'a> AppLoop<'a> {
                     if matches!(action, Action::FocusNext | Action::FocusPrev) {
                         // Record (or refresh) focus_total from active page heuristically if possible.
                         // For now we only update the diagnostic counter from known page types.
-                        if let Some(active) = self.app.pages.get(self.app.active_page) {
+                        if let Some(_active) = self.app.pages.get(self.app.active_page) {
                             // Downcasting skipped (trait object); leave focus_total as-is unless zero.
                             if self.app.root_state.focus_total == 0 {
                                 // Fallback assumption: at least 1 focusable element present.
@@ -272,12 +272,32 @@ impl<'a> AppLoop<'a> {
                         }
                     }
                     Action::PopupResult(ref result) => {
+                        // Legacy adapter: convert old PopupResult into unified UiOutcome
+                        let outcome: UiOutcome = result.clone().into();
+                        action_tx.send(Action::UiOutcome(outcome)).ok();
+                    }
+                    Action::UiOutcome(ref outcome) => {
+                        // Forward outcome to active page (optional handling)
                         if let Some(page) = self.app.pages.get_mut(self.app.active_page) {
-                            if let Some(next) = page.update(Action::PopupResult(result.clone()))? {
+                            if let Some(next) = page.update(Action::UiOutcome(outcome.clone()))? {
                                 action_tx.send(next).ok();
                             }
                         }
-                        if matches!(result, crate::action::PopupResult::Confirmed) {
+                        // Central lifecycle: decide whether to close popup
+                        match outcome {
+                            UiOutcome::RequestClose
+                            | UiOutcome::Confirmed
+                            | UiOutcome::Cancelled
+                            | UiOutcome::SubmitString(_)
+                            | UiOutcome::SubmitJson(_) => {
+                                if self.app.popup.is_some() {
+                                    self.app.popup = None;
+                                }
+                            }
+                            UiOutcome::None => {}
+                        }
+                        // Preserve previous Confirmed->quit semantic
+                        if matches!(outcome, UiOutcome::Confirmed) {
                             self.app.should_quit = true;
                         }
                     }

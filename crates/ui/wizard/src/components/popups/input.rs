@@ -9,7 +9,7 @@ use ratatui::{
 use tui_input::{Input, backend::crossterm::EventHandler};
 
 use crate::{
-    action::{Action, PopupResult},
+    action::{Action, UiOutcome},
     components::Component,
     components::popup::PopupComponent,
     tui::Frame,
@@ -18,8 +18,8 @@ use crate::{
 use super::{centered_rect_fixed, draw_popup_frame};
 
 /// Popup for single-line text input with optional validation.
-/// - Enter: submit (validates and emits Action::PopupResult(PopupResult::InputSubmitted(String)))
-/// - Esc: cancel (emits Action::PopupResult(PopupResult::Cancelled))
+/// - Enter: submit (validates and emits Action::UiOutcome(UiOutcome::SubmitString(value)))
+/// - Esc: cancel (emits Action::UiOutcome(UiOutcome::Cancelled))
 /// - Other keystrokes edit the input field (and stop event propagation)
 pub struct InputPopup {
     title: String,
@@ -85,7 +85,7 @@ impl InputPopup {
         match self.validate_current() {
             Ok(()) => {
                 self.error = None;
-                Some(Action::PopupResult(PopupResult::InputSubmitted(
+                Some(Action::UiOutcome(UiOutcome::SubmitString(
                     self.input.value().to_string(),
                 )))
             }
@@ -132,8 +132,8 @@ impl Component for InputPopup {
                 // Delegate to update via Submit to keep behavior consistent
                 Ok(Some(crate::tui::EventResponse::Stop(Action::Submit)))
             }
-            KeyCode::Esc => Ok(Some(crate::tui::EventResponse::Stop(Action::PopupResult(
-                PopupResult::Cancelled,
+            KeyCode::Esc => Ok(Some(crate::tui::EventResponse::Stop(Action::UiOutcome(
+                UiOutcome::Cancelled,
             )))),
             _ => {
                 // Let tui-input handle the keystroke and stop further propagation.
@@ -147,9 +147,6 @@ impl Component for InputPopup {
         match action {
             // Enter (or mapped submit)
             Action::Submit => Ok(self.submit()),
-            // Close when results are reinjected
-            Action::PopupResult(PopupResult::InputSubmitted(_))
-            | Action::PopupResult(PopupResult::Cancelled) => Ok(Some(Action::ClosePopup)),
             _ => Ok(None),
         }
     }
@@ -258,6 +255,6 @@ impl PopupComponent for InputPopup {
     }
 
     fn cancel_action(&mut self) -> Option<Action> {
-        Some(Action::PopupResult(PopupResult::Cancelled))
+        Some(Action::UiOutcome(UiOutcome::Cancelled))
     }
 }
