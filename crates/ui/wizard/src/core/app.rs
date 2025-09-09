@@ -40,6 +40,8 @@ impl Application for WizardApp {
 
 pub struct WizardApp {
     pub base: AppBase,
+    // Transitional high-level state machine root (Phase 4.1)
+    pub root_state: crate::core::state::RootState,
     pub pages: Vec<Box<dyn Page>>,
     pub active_page: usize,
     pub popup: Option<Box<dyn Component>>,
@@ -54,11 +56,13 @@ impl WizardApp {
     pub fn new(cli: Cli, base: AppBase) -> Result<Self> {
         let preflight = crate::components::welcome::run_preflight();
         let theme = Theme::from_env_auto();
+        let root_state = crate::core::state::initial_root_state(&cli);
 
         match cli.cmd {
             Cmd::Run { mode } => match mode {
                 RunMode::Setup => Ok(Self {
                     base,
+                    root_state,
                     pages: vec![Box::new(SetupPage::new()?), Box::new(SettingsPage::new()?)],
                     active_page: 0,
                     popup: None,
@@ -70,6 +74,7 @@ impl WizardApp {
                 }),
                 RunMode::Dashboard => Ok(Self {
                     base,
+                    root_state,
                     pages: vec![Box::new(DashboardPage::new()?)],
                     active_page: 0,
                     popup: None,
@@ -82,6 +87,7 @@ impl WizardApp {
             },
             Cmd::Health => Ok(Self {
                 base,
+                root_state,
                 pages: vec![Box::new(HealthPage::new()?)],
                 active_page: 0,
                 popup: None,
