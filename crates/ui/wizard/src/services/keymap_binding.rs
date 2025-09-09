@@ -24,6 +24,13 @@ pub fn map_label_to_action(label: &str) -> Option<Action> {
             crate::components::popups::confirm::ConfirmPopup::new("", ""),
         ))),
         "Cancel" => Some(Action::PopupResult(PopupResult::Cancelled)),
+        // Mode control (contextual)
+        "ModeCycle" | "ModeNext" => Some(Action::CycleMode),
+        "ModeNormal" => Some(Action::SetMode(crate::theme::Mode::Normal)),
+        "ModeInsert" => Some(Action::SetMode(crate::theme::Mode::Insert)),
+        "ModeVisual" => Some(Action::SetMode(crate::theme::Mode::Visual)),
+        // Overlay footer / keymap
+        "ToggleKeymap" | "Keymap" => Some(Action::ToggleKeymapOverlay),
         _ => None,
     }
 }
@@ -96,4 +103,14 @@ pub fn action_from_key(store: &SettingsStore, context: &str, key: KeyEvent) -> O
         .iter()
         .find(|(_label, chords)| chords.iter().any(|c| c == &chord))?;
     map_label_to_action(label.as_str())
+}
+
+/// Convert exported keymap labels+chords for `context` into concrete `Action`s.
+/// Only entries that can be mapped are returned.
+pub fn mappable_entries_for_context(store: &SettingsStore, context: &str) -> Vec<(String, Vec<String>)> {
+    let exported = store.export_keymap_for(DeviceFilter::Keyboard, context);
+    exported
+        .into_iter()
+        .filter(|(label, _)| map_label_to_action(label).is_some())
+        .collect()
 }

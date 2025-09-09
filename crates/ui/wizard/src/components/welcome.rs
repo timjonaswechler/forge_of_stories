@@ -5,16 +5,23 @@ use crate::{
 };
 use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
-use ratatui::{prelude::*, style::Color, widgets::Paragraph};
+use ratatui::{prelude::*, widgets::{Paragraph, Block},style::Modifier};
+use crate::theme::{Theme, UiGroup, Mode};
 
-#[derive(Default)]
 pub struct WelcomeComponent {
     items: Vec<PreflightItem>,
+    mode: Mode,
+}
+
+impl Default for WelcomeComponent {
+    fn default() -> Self {
+        Self { items: Vec::new(), mode: Mode::Normal }
+    }
 }
 
 impl WelcomeComponent {
     pub fn with_items(items: Vec<PreflightItem>) -> Self {
-        Self { items }
+        Self { items, mode: Mode::Normal }
     }
 }
 
@@ -22,6 +29,7 @@ impl WelcomeComponent {
     pub fn new() -> Self {
         Self {
             items: run_preflight(),
+            mode: Mode::Normal,
         }
     }
 }
@@ -40,6 +48,8 @@ impl Component for WelcomeComponent {
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
             Action::Submit => Ok(Some(Action::Navigate(1))),
+            Action::SetMode(m) => { self.mode = m; Ok(None) }
+            Action::CycleMode => { self.mode = self.mode.next(); Ok(None) }
             Action::PreflightResults(items) => {
                 self.items = items;
                 Ok(None)
@@ -63,7 +73,7 @@ impl Component for WelcomeComponent {
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Fill(2),
-                Constraint::Length(5),
+                Constraint::Length(6),
                 Constraint::Length(2),
                 Constraint::Length(10),
                 Constraint::Fill(2),
@@ -79,52 +89,65 @@ impl Component for WelcomeComponent {
             ])
             .split(vertical[3]);
 
-        frame.render_widget(welcome_text(), vertical[1]);
+        frame.render_widget(self.welcome_text_with_meta(), vertical[1]);
         frame.render_widget(preflight_paragraph(&self.items), layout[1]);
         Ok(())
     }
 }
 
-fn welcome_text() -> Paragraph<'static> {
-    Paragraph::new(Text::from(vec![
-        Line::from(vec![
-            "Wizard ".fg(Color::Blue).bold(),
-            "weaves ".into(),
-            "Aether".fg(Color::Magenta).bold(),
-            "’s".into(),
-        ]),
-        Line::from("configuration into existence."),
-        Line::from(
+impl WelcomeComponent {
+    fn welcome_text_with_meta(&self) -> Paragraph<'static> {
+        let theme = Theme::from_env_auto();
+        let mut lines: Vec<Line> = Vec::new();
+        lines.push(Line::from(vec![
+            Span::styled("Wizard ", theme.style(UiGroup::Info).add_modifier(Modifier::BOLD)),
+            Span::raw("weaves "),
+            Span::styled("Aether", theme.style(UiGroup::ModeVisual)),
+            Span::raw("’s"),
+        ]));
+        lines.push(Line::from("configuration into existence."));
+        // meta line: colors + mode
+        lines.push(Line::from(vec![
+            Span::styled("[", theme.style(UiGroup::Dimmed)),
+            Span::raw("colors: "),
+            Span::styled(theme.mode_label(), theme.style(UiGroup::Info)),
+            Span::styled("]  [", theme.style(UiGroup::Dimmed)),
+            Span::raw("mode: "),
+            Span::styled(self.mode.label(), self.mode.style(&theme)),
+            Span::styled("]", theme.style(UiGroup::Dimmed)),
+        ]));
+        lines.push(Line::from(
             ratatui::symbols::line::HORIZONTAL
                 .repeat(33)
-                .fg(Color::DarkGray),
-        ),
-        Line::from(vec![
-            env!("CARGO_PKG_NAME").into(),
-            " v".into(),
-            env!("CARGO_PKG_VERSION").into(),
-        ]),
-        Line::from(vec![
-            "[".fg(Color::DarkGray),
-            "with ♥ by ".into(),
-            "@chicken105".fg(Color::Red),
-            "]".fg(Color::DarkGray),
-        ]),
-    ]))
-    .centered()
+                .as_str()
+                .to_string(),
+        ).style(theme.style(UiGroup::Border)));
+        lines.push(Line::from(vec![
+            Span::raw(env!("CARGO_PKG_NAME")),
+            Span::raw(" v"),
+            Span::raw(env!("CARGO_PKG_VERSION")),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("[", theme.style(UiGroup::Dimmed)),
+            Span::raw("with ♥ by "),
+            Span::styled("@chicken105", theme.style(UiGroup::Info)),
+            Span::styled("]", theme.style(UiGroup::Dimmed)),
+        ]));
+
+        Paragraph::new(Text::from(lines)).centered()
+    }
 }
 
 fn preflight_paragraph(checks: &[PreflightItem]) -> Paragraph<'static> {
+    let theme = Theme::from_env_auto();
     let mut lines: Vec<Line> = Vec::new();
-    lines.push(Line::from("Preflight checks:").bold());
+    lines.push(Line::from(Span::styled("Preflight checks:", theme.style(UiGroup::Title))));
 
     for item in checks {
         let status = match item.status {
-            PreflightStatus::Present => Span::styled("✔", Style::default().fg(Color::Green)),
-            PreflightStatus::Disabled => Span::styled("×", Style::default().fg(Color::Yellow)),
-            PreflightStatus::Missing | PreflightStatus::Error => {
-                Span::styled("✖", Style::default().fg(Color::Red))
-            }
+            PreflightStatus::Present => Span::styled("✔", theme.style(UiGroup::Success)),
+            PreflightStatus::Disabled => Span::styled("×", theme.style(UiGroup::Warn)),
+            PreflightStatus::Missing | PreflightStatus::Error => Span::styled("✖", theme.style(UiGroup::Error)),
         };
 
         let mut spans: Vec<Span> = Vec::new();
@@ -135,10 +158,7 @@ fn preflight_paragraph(checks: &[PreflightItem]) -> Paragraph<'static> {
 
         if let Some(note) = &item.message {
             spans.push(Span::raw(" ("));
-            spans.push(Span::styled(
-                note.clone(),
-                Style::default().fg(Color::DarkGray),
-            ));
+            spans.push(Span::styled(note.clone(), theme.style(UiGroup::Dimmed)));
             spans.push(Span::raw(")"));
         }
 
@@ -149,27 +169,27 @@ fn preflight_paragraph(checks: &[PreflightItem]) -> Paragraph<'static> {
         .iter()
         .all(|item| item.status == PreflightStatus::Present)
     {
-        lines.push(
-            Line::from(vec![
-                Span::raw("Press "),
-                Span::raw("Enter").bold(),
-                Span::raw(" to start"),
-            ])
-            .centered(),
-        );
+        lines.push(Line::from(vec![
+            Span::raw("Press "),
+            Span::styled("Enter", theme.style(UiGroup::ModeNormal)),
+            Span::raw(" to start"),
+        ]).centered());
     } else {
-        lines.push(Line::from("All is setup for running the server").centered());
-        lines.push(
-            Line::from(vec![
-                Span::raw("Press "),
-                Span::raw("Enter").bold(),
-                Span::raw(" to check settings"),
-            ])
-            .centered(),
-        );
+        lines.push(Line::from(Span::styled("All is setup for running the server", theme.style(UiGroup::Success))).centered());
+        lines.push(Line::from(vec![
+            Span::raw("Press "),
+            Span::styled("Enter", theme.style(UiGroup::ModeNormal)),
+            Span::raw(" to check settings"),
+        ]).centered());
     }
 
     Paragraph::new(Text::from(lines))
+        .block(
+            Block::bordered()
+                .border_set(ratatui::symbols::border::ROUNDED)
+                .border_style(theme.style(UiGroup::Border))
+                .title(Span::styled("System", theme.style(UiGroup::Dimmed))),
+        )
 }
 
 fn detect_server_installation() -> Result<bool> {

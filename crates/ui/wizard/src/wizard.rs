@@ -9,12 +9,13 @@ use app::{AppBase, Application};
 use color_eyre::Result;
 use ratatui::{
     Frame,
-    layout::{Constraint, Layout},
+    layout::{Constraint, Layout, Direction},
     prelude::Rect,
     style::{Color, Style, Stylize},
 };
 use settings::DeviceFilter;
 use tokio::sync::mpsc;
+use crate::theme::{Theme, UiGroup, Mode};
 
 impl Application for WizardApp {
     type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
@@ -45,11 +46,14 @@ pub struct WizardApp {
     pub should_quit: bool,
     pub should_suspend: bool,
     pub preflight: Vec<PreflightItem>,
+    pub theme: Theme,
+    pub footer_mode: Mode,
 }
 
 impl WizardApp {
     pub fn new(cli: Cli, base: AppBase) -> Result<Self> {
         let preflight = crate::components::welcome::run_preflight();
+        let theme = Theme::from_env_auto();
 
         match cli.cmd {
             Cmd::Run { mode } => match mode {
@@ -61,6 +65,8 @@ impl WizardApp {
                     should_quit: false,
                     should_suspend: false,
                     preflight,
+                    theme: theme.clone(),
+                    footer_mode: Mode::Normal,
                 }),
                 RunMode::Dashboard => Ok(Self {
                     base,
@@ -70,6 +76,8 @@ impl WizardApp {
                     should_quit: false,
                     should_suspend: false,
                     preflight,
+                    theme: theme.clone(),
+                    footer_mode: Mode::Normal,
                 }),
             },
             Cmd::Health => Ok(Self {
@@ -80,6 +88,8 @@ impl WizardApp {
                 should_quit: false,
                 should_suspend: false,
                 preflight,
+                theme,
+                footer_mode: Mode::Normal,
             }),
         }
     }
@@ -154,7 +164,7 @@ impl WizardApp {
                         }
                         crate::tui::Event::Key(key) => {
                             // Centralized key handling via services::keymap_binding
-                            let (context, focused) = if let Some(popup) = self.popup.as_deref() {
+                            let (context, _focused) = if let Some(popup) = self.popup.as_deref() {
                                 (popup.keymap_context(), popup.name())
                             } else if let Some(page) = self.pages.get(self.active_page) {
                                 (page.keymap_context(), page.focused_component_name())
@@ -227,6 +237,23 @@ impl WizardApp {
                         self.popup = Some(popup);
                         continue;
                     }
+                    Action::ToggleKeymapOverlay => {
+                        if self.popup.is_some() {
+                            self.popup = None;
+                        } else {
+                            // Build keymap overlay from current context
+                            let (context, focused) = if let Some(popup) = self.popup.as_deref() {
+                                (popup.keymap_context(), popup.name())
+                            } else if let Some(page) = self.pages.get(self.active_page) {
+                                (page.keymap_context(), page.focused_component_name())
+                            } else { ("global", "root") };
+                            let mut entries = crate::services::keymap_binding::mappable_entries_for_context(&self.base.settings, context);
+                            entries.sort_by(|a, b| a.0.cmp(&b.0));
+                            let title = format!("Keymap · {} [{}]", context, focused);
+                            let overlay = crate::components::popups::keymap::KeymapOverlay::new(title, entries);
+                            self.popup = Some(Box::new(overlay));
+                        }
+                    }
                     Action::ClosePopup => {
                         if self.popup.is_some() {
                             self.popup = None;
@@ -286,7 +313,7 @@ impl WizardApp {
 
     fn render(&mut self, frame: &mut Frame<'_>) -> Result<()> {
         let vertical_layout =
-            Layout::vertical(vec![Constraint::Fill(1), Constraint::Length(3)]).split(frame.area());
+            Layout::vertical(vec![Constraint::Fill(1), Constraint::Length(1)]).split(frame.area());
 
         if let Some(page) = self.pages.get_mut(self.active_page) {
             page.draw(frame, vertical_layout[0])?;
@@ -309,52 +336,57 @@ impl WizardApp {
         } else {
             ("global", "root")
         };
-        let keymap = self
-            .base
-            .settings
-            .export_keymap_for(DeviceFilter::Keyboard, context);
+        // nvim-like single line: left [MODE  context:focus], right [ color-mode   context]
+        let footer_area = vertical_layout[1];
+        let cols = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
+            .split(footer_area);
 
-        let title = format!(" {} [{}] ", context, focused);
-        let keybinds_block = ratatui::widgets::Block::bordered()
-            .title(title)
-            .border_set(ratatui::symbols::border::ROUNDED)
-            .border_style(Style::default().fg(Color::DarkGray));
-
-        let keybind_render_width = keybinds_block.inner(vertical_layout[1]).width;
-
-        let mut lines: Vec<ratatui::text::Line> = Vec::new();
-        let mut current: Vec<ratatui::text::Span> = Vec::new();
-        let mut width: u16 = 0;
-
-        for (action, chords) in keymap {
-            let entry = format!("{} [{}]", action, chords.join(" / "));
-            let entry_len = entry.len() as u16;
-            let sep_len = if current.is_empty() { 0 } else { 3 };
-
-            if width + sep_len + entry_len > keybind_render_width && !current.is_empty() {
-                lines.push(ratatui::text::Line::from(current));
-                current = Vec::new();
-                width = 0;
-            }
-
-            if sep_len > 0 {
-                current.push(ratatui::text::Span::raw("   "));
-                width += sep_len;
-            }
-
-            current.push(ratatui::text::Span::raw(entry));
-            width += entry_len;
+        let mut left_spans: Vec<ratatui::text::Span> = Vec::new();
+        // Mode segment with background
+        left_spans.push(ratatui::text::Span::styled(
+            format!(" {} ", self.footer_mode.label()),
+            self.footer_mode.status_segment_style(&self.theme),
+        ));
+        // Powerline arrow into a chip background for focus label
+        let mode_bg = self.theme.mode_bg_color(self.footer_mode);
+        let chip_bg = self.theme.chip_bg_color();
+        if self.theme.supports_powerline() {
+            left_spans.push(ratatui::text::Span::styled(self.theme.sep_left().to_string(), Style::default().fg(mode_bg).bg(chip_bg)));
+        } else {
+            left_spans.push(ratatui::text::Span::raw(" "));
         }
-
-        if !current.is_empty() {
-            lines.push(ratatui::text::Line::from(current).fg(Color::DarkGray));
+        let focus_label = format!(" {}:{} ", context, focused);
+        left_spans.push(ratatui::text::Span::styled(focus_label, self.theme.chip_style()));
+        // Fade out back to default background
+        if self.theme.supports_powerline() {
+            left_spans.push(ratatui::text::Span::styled(self.theme.sep_left().to_string(), Style::default().fg(chip_bg)));
         }
-
-        let keybind_para = ratatui::widgets::Paragraph::new(ratatui::text::Text::from_iter(lines))
-            .block(keybinds_block)
+        let left_para = ratatui::widgets::Paragraph::new(ratatui::text::Line::from(left_spans))
             .wrap(ratatui::widgets::Wrap { trim: true });
 
-        frame.render_widget(keybind_para, vertical_layout[1]);
+        let mut right_spans: Vec<ratatui::text::Span> = Vec::new();
+        // Build right side chips with powerline separators if available
+        if self.theme.supports_powerline() {
+            // First: color mode chip
+            right_spans.push(ratatui::text::Span::styled(self.theme.sep_right().to_string(), Style::default().fg(chip_bg)));
+            right_spans.push(ratatui::text::Span::styled(format!(" {} ", self.theme.mode_label()), self.theme.chip_style()));
+            right_spans.push(ratatui::text::Span::raw(" "));
+            // Then: context chip
+            right_spans.push(ratatui::text::Span::styled(self.theme.sep_right().to_string(), Style::default().fg(chip_bg)));
+            right_spans.push(ratatui::text::Span::styled(format!(" {} ", context), self.theme.chip_style()));
+        } else {
+            right_spans.push(ratatui::text::Span::styled(format!(" {} ", context), self.theme.chip_style()));
+            right_spans.push(ratatui::text::Span::raw(" "));
+            right_spans.push(ratatui::text::Span::styled(format!(" {} ", self.theme.mode_label()), self.theme.chip_style()));
+        }
+        let right_para = ratatui::widgets::Paragraph::new(ratatui::text::Line::from(right_spans))
+            .wrap(ratatui::widgets::Wrap { trim: true })
+            .alignment(ratatui::layout::Alignment::Right);
+
+        frame.render_widget(left_para, cols[0]);
+        frame.render_widget(right_para, cols[1]);
         Ok(())
     }
 }

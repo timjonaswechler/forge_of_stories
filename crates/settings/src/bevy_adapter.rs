@@ -3,9 +3,9 @@
 use bevy::{
     app::App,
     ecs::resource::Resource,
-    prelude::{Deref, DerefMut, Plugin, Update, World},
+    prelude::{Deref, DerefMut, World},
 };
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 #[derive(Resource, Clone)]
 pub struct SettingsStoreRef(pub Arc<crate::SettingsStore>);
@@ -33,8 +33,7 @@ impl AppSettingsExt for App {
             .insert_resource(SettingsStoreRef(Arc::new(store)));
         self.world_mut()
             .insert_resource(SettingsRegistry::default());
-        // Standard-Plugin mit Default-Intervall 500ms
-        self.add_plugins(SettingsPlugin::default());
+
         self
     }
 
@@ -79,40 +78,3 @@ impl AppSettingsExt for App {
     //     self
     // }
 }
-
-#[derive(Default)]
-pub struct SettingsPlugin {
-    pub interval: Duration,
-}
-
-impl Plugin for SettingsPlugin {
-    fn build(&self, app: &mut App) {
-        // use bevy::time::common_conditions::on_timer;
-        // let interval = if self.interval.is_zero() {
-        //     Duration::from_millis(500)
-        // } else {
-        //     self.interval
-        // };
-        // app.add_systems(
-        //     Update,
-        //     (reload_store_if_files_changed, poll_all_registered_sections).chain(),
-        //     // .run_if(on_timer(interval)),
-        // );
-    }
-}
-
-//
-// fn reload_store_if_files_changed(store: Res<SettingsStoreRef>) {
-//     let _ = store.0.reload_all();
-// }
-
-//
-// fn poll_all_registered_sections(
-//     store: Res<SettingsStoreRef>,
-//     reg: Res<SettingsRegistry>,
-//     mut world: World,
-// ) {
-//     for f in &reg.updaters {
-//         f(&store.0, &mut world);
-//     }
-// }

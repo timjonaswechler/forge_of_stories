@@ -39,13 +39,13 @@ impl InputPopup {
             Box<dyn Fn(&str) -> std::result::Result<(), String> + Send + Sync + 'static>,
         >,
     ) -> Self {
-        let mut input = Input::default();
+        let mut _input = Input::default();
         // Best-effort set initial value. If this API differs, adjust to your local version.
-        input = Input::new(initial_value.into());
+        _input = Input::new(initial_value.into());
         Self {
             title: title.into(),
             label: label.into(),
-            input,
+            input: _input,
             error: None,
             validator,
             min_width: 60,

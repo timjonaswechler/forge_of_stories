@@ -10,7 +10,7 @@ use ratatui::{
 use crate::{
     action::{Action, PopupResult},
     components::{Component, PopupComponent},
-    tui::{Event, EventResponse, Frame},
+    tui::{EventResponse, Frame},
 };
 
 use super::{centered_rect_fixed, draw_popup_frame};

@@ -1,7 +1,7 @@
 #![cfg(feature = "bevy")]
 
 use bevy::prelude::*;
-use settings::{AppSettingsExt, SettingsArc, SettingsStoreRef};
+use settings::{AppSettingsExt, SettingsArc};
 
 pub trait AppAetherSettingsExt {
     fn use_aether_server_settings(self, store: Option<settings::SettingsStore>) -> Self;

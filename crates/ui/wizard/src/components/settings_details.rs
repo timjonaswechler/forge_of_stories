@@ -107,7 +107,7 @@ impl SettingsDetailsComponent {
             Category::Security => {
                 let s = store.get::<aether_config::Security>()?;
                 vec![
-                    ("tls_cert_path".into(), s.tls_cert_path.clone()),
+                    ("tls_cert_path".into(), s.cert_path.clone()),
                     ("create a self-signed certificate".into(), "".to_string()),
                 ]
             }

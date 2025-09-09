@@ -21,12 +21,15 @@ qos_traffic_prioritization = true
 nat_traversal = true
 
 [security]
-tls_cert_path = "/path/to/cert.pem"
-tls_key_path = "/path/to/key.pem"
+cert_path = "cert.pem"
+key_path = "key.pem"
+alpn = ["h3"]
+handshake_timeout = 10
+max_frame_bytes = 16384
+max_sessions = 64
 self_signed = true
 tls_cert_algorithm = "ecdsa"
 log_level = "info"
-log_file = "/path/to/logfile.log"
 key_rotation_interval = 30
 client_auth = true
 

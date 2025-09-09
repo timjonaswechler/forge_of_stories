@@ -103,7 +103,7 @@ pub fn apply_server_setting(
             } else {
                 s.to_string()
             };
-            store.update::<Security>(|m| m.tls_cert_path = v)?;
+            store.update::<Security>(|m| m.cert_path = v)?;
         }
         ServerSettingField::MonitoringMetricsEnabled => {
             let v: bool = if s.is_empty() {
@@ -143,10 +143,31 @@ pub struct NetworkCfg {
     pub ip_address: String,
     pub udp_port: u16,
     pub max_concurrent_bidi_streams: u32,
+    // Extended fields (loaded from [network] in aether-default.toml)
+    pub max_concurrent_uni_streams: u32,
+    pub max_idle_timeout: u64,    // seconds
+    pub keep_alive_interval: u64, // seconds
+    pub client_ip_migration: bool,
+    pub zero_rtt_resumption: bool,
+    pub initial_congestion_window: u32,
+    pub mtu: u32,
+    pub qos_traffic_prioritization: bool,
+    pub nat_traversal: bool,
 }
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct SecurityCfg {
-    pub tls_cert_path: String, /* ... */
+    pub cert_path: String,
+    pub key_path: String,
+    pub alpn: Vec<String>,
+    // Extended fields (from [security] in aether-default.toml)
+    pub handshake_timeout: u64, // seconds
+    pub max_frame_bytes: u32,
+    pub max_sessions: u32,
+    pub self_signed: bool,
+    pub tls_cert_algorithm: String,
+    pub log_level: String,
+    pub key_rotation_interval: u64, // minutes or seconds (clarify later)
+    pub client_auth: bool,
 }
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct MonitoringCfg {

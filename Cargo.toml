@@ -73,4 +73,4 @@ toml = { version = "0.9.5" }
 toml_edit = "0.23.3"
 unicase = "2.6"
 uuid = { version = "1.18.1", features = ["v4"] }
-quinn = { version = "0.11.8" }
+quinn = { version = "0.11.8", features = ["rustls"] }

@@ -12,3 +12,4 @@ anyhow = { workspace = true }
 quinn = { workspace = true }
 tokio = { workspace = true }
 bincode = "1"
+settings = { workspace = true }

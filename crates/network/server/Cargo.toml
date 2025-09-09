@@ -3,8 +3,6 @@ name = "server"
 version = "0.1.0"
 edition = "2024"
 
-
-
 [dependencies]
 app.workspace = true
 axum.workspace = true
@@ -17,11 +15,27 @@ bevy = { version = "0.16.1", default-features = false, features = [
     "serialize",
 ] }
 network_shared.workspace = true
+settings = { workspace = true, features = ["bevy"] }
+aether_config = { workspace = true, features = ["bevy"] }
+log.workspace = true
 tokio.workspace = true
-
-
+thiserror.workspace = true
+futures.workspace = true
+serde = { workspace = true, features = ["derive"] }
+anyhow.workspace = true
+bytes = "1"
+bincode = "1"
+paths.workspace = true
+rand = { version = "0.8", features = ["std", "std_rng"] }
+quinn.workspace = true
+rustls.workspace = true
+rustls-pemfile = "2"
+rcgen = { workspace = true, optional = true }
 
 [features]
 default = ["dedicated_server"]
 dedicated_server = []
 local_server = []
+debug = ["rcgen"]
+proto_bincode = []
+bevy = []

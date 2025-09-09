@@ -1,5 +1,6 @@
 use crate::components::Component;
 use serde::{Deserialize, Serialize};
+use crate::theme::Mode;
 use strum::Display;
 
 type Command = String;
@@ -48,9 +49,12 @@ pub enum Action {
     Down,
     Submit,
     SwitchInputMode,
+    SetMode(Mode),
+    CycleMode,
     Update,
     OpenPopup(#[serde(skip)] Box<dyn Component>),
     ClosePopup,
+    ToggleKeymapOverlay,
     PopupResult(PopupResult),
     Navigate(usize),
     /// Deliver results of pre-start preflight checks to the UI

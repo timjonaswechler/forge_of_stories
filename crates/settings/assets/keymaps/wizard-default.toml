@@ -6,9 +6,15 @@ version = "0.1.0"
 Quit = ["ctrl+c"]
 Help = ["ctrl+h"]
 OpenPopup = ["ctrl+p"]
+ModeCycle = ["tab"]
+ToggleKeymap = ["f1"]
+ModeNormal = ["n"]
+ModeInsert = ["i"]
+
 
 [start]
 Submit = ["enter"]
+
 
 [settings]
 NextField = ["down"]
@@ -21,3 +27,4 @@ SwitchInputMode = ["enter"]
 [popup]
 Submit = ["enter"]
 Cancel = ["esc"]
+
