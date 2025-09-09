@@ -46,7 +46,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::mpsc;
 
 use crate::core::effects::TaskKind;
-use crate::domain::certs::SelfSignedParams;
+use crate::domain::certs::{CertTaskResult, SelfSignedParams, generate_self_signed_task};
 use log::{info, warn};
 
 /// Monotonic task identifier type.
@@ -131,14 +131,27 @@ impl Worker {
     }
 
     async fn handle_generate_cert(id: TaskId, params: SelfSignedParams) -> Result<(), String> {
-        // Phase 10 stub: only log intent. Real implementation will call
-        // `domain::certs::generate_self_signed` and propagate result.
-        info!(
-            "[task:{id}] (stub) Would generate self-signed certificate CN={} \
-             dns_names={:?} days={} key_bits={}",
-            params.common_name, params.dns_names, params.valid_days, params.key_bits
-        );
-        // Simulate minor async yield (optional):
+        // Real certificate generation (Phase 10 – result still only logged; no callback Action yet).
+        match generate_self_signed_task(&params) {
+            CertTaskResult::Success { artifacts } => {
+                info!(
+                    "[task:{id}] cert generated CN={} dns_names={:?} days={} key_bits={} cert_len={} key_len={}",
+                    params.common_name,
+                    params.dns_names,
+                    params.valid_days,
+                    params.key_bits,
+                    artifacts.cert_pem.len(),
+                    artifacts.key_pem.len()
+                );
+            }
+            CertTaskResult::Error { message } => {
+                warn!(
+                    "[task:{id}] certificate generation failed CN={} error={}",
+                    params.common_name, message
+                );
+                return Err(message);
+            }
+        }
         tokio::task::yield_now().await;
         Ok(())
     }

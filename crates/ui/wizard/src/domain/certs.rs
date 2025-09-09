@@ -27,7 +27,9 @@
 //! Once implemented, this module should move out any heavy
 //! crypto dependencies from the core UI build path unless
 //! already transitively present.
-use color_eyre::eyre::{Result, eyre};
+use color_eyre::eyre::Result;
+use rcgen::{Certificate, CertificateParams, DistinguishedName, DnType};
+use time::{Duration, OffsetDateTime};
 
 /// Input parameters for generating a self‑signed certificate.
 #[derive(Debug, Clone)]
@@ -64,18 +66,64 @@ pub struct GeneratedCertArtifacts {
     pub chain_pem: Option<String>,
 }
 
-/// Placeholder implementation.
+/// Result wrapper for certificate generation tasks (to be used by the
+/// async task executor when mapping task completion back into internal events).
+#[derive(Debug, Clone)]
+pub enum CertTaskResult {
+    Success { artifacts: GeneratedCertArtifacts },
+    Error { message: String },
+}
+
+/// Generate a self‑signed certificate using `rcgen`.
 ///
-/// TODO:
-/// - Implement using a crypto crate (rcgen or openssl)
-/// - Parameterize signature algorithm (RSA / ECDSA)
-/// - Add support for IP SANs
-/// - Optional encrypted key output
-/// - Deterministic mode for tests (fixed serial / notBefore / notAfter)
-pub fn generate_self_signed(_params: &SelfSignedParams) -> Result<GeneratedCertArtifacts> {
-    Err(eyre!(
-        "generate_self_signed() not implemented (Phase 8.3 placeholder)"
-    ))
+/// Algorithm selection heuristic:
+/// - If `key_bits <= 256` → ECDSA P-256
+/// - Else → RSA 2048 (rcgen default RSA with SHA256)
+///
+/// Notes:
+/// - For now we only treat DNS names; IP SANs can be added later.
+/// - Private key is returned unencrypted (caller decides on persistence).
+pub fn generate_self_signed(params: &SelfSignedParams) -> Result<GeneratedCertArtifacts> {
+    // Build certificate params with SAN DNS names (rcgen uses the vector of subject alt names).
+    let mut cp = CertificateParams::new(params.dns_names.clone());
+
+    // Subject / Distinguished Name
+    let mut dn = DistinguishedName::new();
+    dn.push(DnType::CommonName, params.common_name.clone());
+    cp.distinguished_name = dn;
+
+    // Validity window
+    let now = OffsetDateTime::now_utc();
+    cp.not_before = now - Duration::minutes(5);
+    cp.not_after = now + Duration::days(params.valid_days as i64);
+
+    // Algorithm heuristic
+    if params.key_bits <= 256 {
+        cp.alg = &rcgen::PKCS_ECDSA_P256_SHA256;
+    } else {
+        cp.alg = &rcgen::PKCS_RSA_SHA256;
+    }
+
+    // Generate certificate + key
+    let cert = Certificate::from_params(cp)?;
+    let cert_pem = cert.serialize_pem()?;
+    let key_pem = cert.serialize_private_key_pem();
+
+    Ok(GeneratedCertArtifacts {
+        cert_pem,
+        key_pem,
+        chain_pem: None,
+    })
+}
+
+/// Convenience wrapper producing a task-style result enum (for future executor integration).
+pub fn generate_self_signed_task(params: &SelfSignedParams) -> CertTaskResult {
+    match generate_self_signed(params) {
+        Ok(artifacts) => CertTaskResult::Success { artifacts },
+        Err(e) => CertTaskResult::Error {
+            message: e.to_string(),
+        },
+    }
 }
 
 /// Convenience helper for quick prototyping; will be removed or
@@ -90,9 +138,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn placeholder_errors() {
+    fn generates_valid_pem() {
         let params = SelfSignedParams::default();
-        let res = generate_self_signed(&params);
-        assert!(res.is_err(), "placeholder should error until implemented");
+        let res = generate_self_signed(&params).expect("generation failed");
+        assert!(res.cert_pem.contains("BEGIN CERTIFICATE"));
+        assert!(res.key_pem.contains("BEGIN"));
+    }
+
+    #[test]
+    fn task_result_success() {
+        let params = SelfSignedParams::default();
+        match generate_self_signed_task(&params) {
+            CertTaskResult::Success { artifacts } => {
+                assert!(artifacts.cert_pem.contains("CERTIFICATE"));
+            }
+            CertTaskResult::Error { message } => panic!("expected success, got error: {message}"),
+        }
     }
 }

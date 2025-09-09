@@ -28,6 +28,7 @@
 pub mod app;
 pub mod effects; // Phase 10: Effect & TaskKind definitions
 pub mod executor; // Phase 10: Async task executor
+pub mod intent_model; // Phase 11: Intent / UiCommand / InternalEvent scaffold
 pub mod r#loop;
 pub mod reducer;
 pub mod state; // Phase 4.1: High-level AppState & RootState eingeführt // Phase 4.2: Reducer prototype (intents -> state mutations)
