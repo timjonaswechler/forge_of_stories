@@ -1,6 +1,7 @@
 mod action;
 mod cli;
 mod components;
+mod core;
 mod errors;
 mod logging;
 mod messages;
@@ -9,10 +10,9 @@ mod services;
 mod theme;
 mod tui;
 mod ui;
-mod wizard;
 
 use crate::cli::Cli;
-use crate::wizard::WizardApp;
+use crate::core::app::WizardApp;
 
 use clap::Parser;
 use color_eyre::Result;

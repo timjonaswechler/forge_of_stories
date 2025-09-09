@@ -331,10 +331,6 @@ impl SanitizedPath {
         &self.0
     }
 
-    pub fn to_string(&self) -> String {
-        self.0.to_string_lossy().to_string()
-    }
-
     pub fn to_glob_string(&self) -> String {
         #[cfg(target_os = "windows")]
         {
@@ -352,6 +348,13 @@ impl SanitizedPath {
 
     pub fn strip_prefix(&self, base: &Self) -> Result<&Path, StripPrefixError> {
         self.0.strip_prefix(base.as_path())
+    }
+}
+
+impl std::fmt::Display for SanitizedPath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Mirrors previous behavior of the removed inherent to_string()
+        write!(f, "{}", self.0.to_string_lossy())
     }
 }
 
