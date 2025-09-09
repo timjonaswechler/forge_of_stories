@@ -8,7 +8,8 @@ use ratatui::{
 
 use crate::{
     action::Action,
-    components::{Component, popup::PopupComponent},
+    components::Component,
+    components::popup::PopupComponent,
     theme::{Theme, UiGroup},
     tui::Frame,
 };

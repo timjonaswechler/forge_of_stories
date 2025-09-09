@@ -9,7 +9,8 @@ use ratatui::{
 
 use crate::{
     action::{Action, PopupResult},
-    components::{Component, PopupComponent},
+    components::Component,
+    components::popup::PopupComponent,
     tui::Frame,
 };
 

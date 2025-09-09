@@ -37,8 +37,10 @@ impl WelcomeComponent {
 
 impl WelcomeComponent {
     pub fn new() -> Self {
+        // Preflight wird nun zentral in WizardApp::new() ausgeführt
+        // und via Action::PreflightResults an dieses Component geliefert.
         Self {
-            items: run_preflight(),
+            items: Vec::new(),
             mode: Mode::Normal,
         }
     }

@@ -1,4 +1,4 @@
-use crate::theme::{Mode, Theme, UiGroup};
+use crate::theme::{Mode, Theme};
 use crate::{
     action::{Action, PreflightItem},
     cli::{Cli, Cmd, RunMode},
@@ -12,9 +12,9 @@ use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
     prelude::Rect,
-    style::{Color, Style, Stylize},
+    style::Style,
 };
-use settings::DeviceFilter;
+
 use tokio::sync::mpsc;
 
 impl Application for WizardApp {

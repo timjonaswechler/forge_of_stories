@@ -10,7 +10,8 @@ use tui_input::{Input, backend::crossterm::EventHandler};
 
 use crate::{
     action::{Action, PopupResult},
-    components::{Component, PopupComponent},
+    components::Component,
+    components::popup::PopupComponent,
     tui::Frame,
 };
 

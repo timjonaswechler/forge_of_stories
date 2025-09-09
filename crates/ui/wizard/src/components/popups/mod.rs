@@ -14,7 +14,5 @@ pub mod keymap;
 pub mod single_choice;
 
 // Re-export the shared popup helpers and trait from the central popup module
-pub use crate::components::popup::{
-    PopupComponent, centered_rect_fixed, draw_popup_frame, render_backdrop,
-};
+pub use crate::components::popup::{centered_rect_fixed, draw_popup_frame, render_backdrop};
 pub use crate::components::popups::form::certificate::certificate_wizard_popup;
