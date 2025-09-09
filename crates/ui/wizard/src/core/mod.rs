@@ -25,6 +25,7 @@
 //! Diese Datei ist bewusst schlank; sie dient als klarer Einstiegspunkt für
 //! zukünftige Kernmodule.
 pub mod app;
+pub mod r#loop;
 
 // Re-Exports (optional aktuell leer):
 // pub use app::WizardApp;
