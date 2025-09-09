@@ -1,3 +1,4 @@
+use crate::theme::{Mode, Theme, UiGroup};
 use crate::{
     action::{Action, PreflightItem},
     cli::{Cli, Cmd, RunMode},
@@ -9,13 +10,12 @@ use app::{AppBase, Application};
 use color_eyre::Result;
 use ratatui::{
     Frame,
-    layout::{Constraint, Layout, Direction},
+    layout::{Constraint, Direction, Layout},
     prelude::Rect,
     style::{Color, Style, Stylize},
 };
 use settings::DeviceFilter;
 use tokio::sync::mpsc;
-use crate::theme::{Theme, UiGroup, Mode};
 
 impl Application for WizardApp {
     type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
@@ -246,11 +246,19 @@ impl WizardApp {
                                 (popup.keymap_context(), popup.name())
                             } else if let Some(page) = self.pages.get(self.active_page) {
                                 (page.keymap_context(), page.focused_component_name())
-                            } else { ("global", "root") };
-                            let mut entries = crate::services::keymap_binding::mappable_entries_for_context(&self.base.settings, context);
+                            } else {
+                                ("global", "root")
+                            };
+                            let mut entries =
+                                crate::services::keymap_binding::mappable_entries_for_context(
+                                    &self.base.settings,
+                                    context,
+                                );
                             entries.sort_by(|a, b| a.0.cmp(&b.0));
                             let title = format!("Keymap · {} [{}]", context, focused);
-                            let overlay = crate::components::popups::keymap::KeymapOverlay::new(title, entries);
+                            let overlay = crate::components::popups::keymap::KeymapOverlay::new(
+                                title, entries,
+                            );
                             self.popup = Some(Box::new(overlay));
                         }
                     }
@@ -353,15 +361,24 @@ impl WizardApp {
         let mode_bg = self.theme.mode_bg_color(self.footer_mode);
         let chip_bg = self.theme.chip_bg_color();
         if self.theme.supports_powerline() {
-            left_spans.push(ratatui::text::Span::styled(self.theme.sep_left().to_string(), Style::default().fg(mode_bg).bg(chip_bg)));
+            left_spans.push(ratatui::text::Span::styled(
+                self.theme.sep_left().to_string(),
+                Style::default().fg(mode_bg).bg(chip_bg),
+            ));
         } else {
             left_spans.push(ratatui::text::Span::raw(" "));
         }
         let focus_label = format!(" {}:{} ", context, focused);
-        left_spans.push(ratatui::text::Span::styled(focus_label, self.theme.chip_style()));
+        left_spans.push(ratatui::text::Span::styled(
+            focus_label,
+            self.theme.chip_style(),
+        ));
         // Fade out back to default background
         if self.theme.supports_powerline() {
-            left_spans.push(ratatui::text::Span::styled(self.theme.sep_left().to_string(), Style::default().fg(chip_bg)));
+            left_spans.push(ratatui::text::Span::styled(
+                self.theme.sep_left().to_string(),
+                Style::default().fg(chip_bg),
+            ));
         }
         let left_para = ratatui::widgets::Paragraph::new(ratatui::text::Line::from(left_spans))
             .wrap(ratatui::widgets::Wrap { trim: true });
@@ -370,16 +387,34 @@ impl WizardApp {
         // Build right side chips with powerline separators if available
         if self.theme.supports_powerline() {
             // First: color mode chip
-            right_spans.push(ratatui::text::Span::styled(self.theme.sep_right().to_string(), Style::default().fg(chip_bg)));
-            right_spans.push(ratatui::text::Span::styled(format!(" {} ", self.theme.mode_label()), self.theme.chip_style()));
+            right_spans.push(ratatui::text::Span::styled(
+                self.theme.sep_right().to_string(),
+                Style::default().fg(chip_bg),
+            ));
+            right_spans.push(ratatui::text::Span::styled(
+                format!(" {} ", self.theme.mode_label()),
+                self.theme.chip_style(),
+            ));
             right_spans.push(ratatui::text::Span::raw(" "));
             // Then: context chip
-            right_spans.push(ratatui::text::Span::styled(self.theme.sep_right().to_string(), Style::default().fg(chip_bg)));
-            right_spans.push(ratatui::text::Span::styled(format!(" {} ", context), self.theme.chip_style()));
+            right_spans.push(ratatui::text::Span::styled(
+                self.theme.sep_right().to_string(),
+                Style::default().fg(chip_bg),
+            ));
+            right_spans.push(ratatui::text::Span::styled(
+                format!(" {} ", context),
+                self.theme.chip_style(),
+            ));
         } else {
-            right_spans.push(ratatui::text::Span::styled(format!(" {} ", context), self.theme.chip_style()));
+            right_spans.push(ratatui::text::Span::styled(
+                format!(" {} ", context),
+                self.theme.chip_style(),
+            ));
             right_spans.push(ratatui::text::Span::raw(" "));
-            right_spans.push(ratatui::text::Span::styled(format!(" {} ", self.theme.mode_label()), self.theme.chip_style()));
+            right_spans.push(ratatui::text::Span::styled(
+                format!(" {} ", self.theme.mode_label()),
+                self.theme.chip_style(),
+            ));
         }
         let right_para = ratatui::widgets::Paragraph::new(ratatui::text::Line::from(right_spans))
             .wrap(ratatui::widgets::Wrap { trim: true })

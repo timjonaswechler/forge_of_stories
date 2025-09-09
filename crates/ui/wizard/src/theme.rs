@@ -1,7 +1,7 @@
 use std::env;
 
 use ratatui::style::{Color, Modifier, Style};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ColorMode {
@@ -107,23 +107,43 @@ pub struct Theme {
 impl Theme {
     pub fn from_env_auto() -> Self {
         let mode = ColorMode::detect_auto();
-        Self { mode, palette: Palette::default(), flash_ms: 150 }
+        Self {
+            mode,
+            palette: Palette::default(),
+            flash_ms: 150,
+        }
     }
 
-    pub fn mode_label(&self) -> &'static str { self.mode.label() }
+    pub fn mode_label(&self) -> &'static str {
+        self.mode.label()
+    }
 
     pub fn style(&self, group: UiGroup) -> Style {
         match group {
             UiGroup::Border => Style::default().fg(self.color(self.palette.border)),
             UiGroup::Dimmed => Style::default().fg(self.color(self.palette.dim)),
             UiGroup::Statusline => Style::default().fg(self.color(self.palette.fg)),
-            UiGroup::Title => Style::default().fg(self.color(self.palette.fg)).add_modifier(Modifier::BOLD),
-            UiGroup::ModeNormal => Style::default().fg(self.color(self.palette.normal)).add_modifier(Modifier::BOLD),
-            UiGroup::ModeInsert => Style::default().fg(self.color(self.palette.insert)).add_modifier(Modifier::BOLD),
-            UiGroup::ModeVisual => Style::default().fg(self.color(self.palette.visual)).add_modifier(Modifier::BOLD),
-            UiGroup::Success => Style::default().fg(self.color(self.palette.insert)).add_modifier(Modifier::BOLD),
-            UiGroup::Error => Style::default().fg(self.color(self.palette.error)).add_modifier(Modifier::BOLD),
-            UiGroup::Warn => Style::default().fg(self.color(self.palette.warn)).add_modifier(Modifier::BOLD),
+            UiGroup::Title => Style::default()
+                .fg(self.color(self.palette.fg))
+                .add_modifier(Modifier::BOLD),
+            UiGroup::ModeNormal => Style::default()
+                .fg(self.color(self.palette.normal))
+                .add_modifier(Modifier::BOLD),
+            UiGroup::ModeInsert => Style::default()
+                .fg(self.color(self.palette.insert))
+                .add_modifier(Modifier::BOLD),
+            UiGroup::ModeVisual => Style::default()
+                .fg(self.color(self.palette.visual))
+                .add_modifier(Modifier::BOLD),
+            UiGroup::Success => Style::default()
+                .fg(self.color(self.palette.insert))
+                .add_modifier(Modifier::BOLD),
+            UiGroup::Error => Style::default()
+                .fg(self.color(self.palette.error))
+                .add_modifier(Modifier::BOLD),
+            UiGroup::Warn => Style::default()
+                .fg(self.color(self.palette.warn))
+                .add_modifier(Modifier::BOLD),
             UiGroup::Info => Style::default().fg(self.color(self.palette.info)),
         }
     }
@@ -185,7 +205,10 @@ impl Mode {
             Mode::Visual => theme.color(theme.palette.visual),
         };
         // Choose a contrasting foreground; for simplicity use Black for bright modes
-        Style::default().bg(bg).fg(Color::Black).add_modifier(Modifier::BOLD)
+        Style::default()
+            .bg(bg)
+            .fg(Color::Black)
+            .add_modifier(Modifier::BOLD)
     }
 }
 
@@ -197,8 +220,12 @@ impl Theme {
             .fg(self.color(self.palette.fg))
     }
 
-    pub fn chip_bg_color(&self) -> Color { self.color(self.palette.border) }
-    pub fn chip_fg_color(&self) -> Color { self.color(self.palette.fg) }
+    pub fn chip_bg_color(&self) -> Color {
+        self.color(self.palette.border)
+    }
+    pub fn chip_fg_color(&self) -> Color {
+        self.color(self.palette.fg)
+    }
     pub fn mode_bg_color(&self, m: Mode) -> Color {
         match m {
             Mode::Normal => self.color(self.palette.normal),
@@ -211,21 +238,34 @@ impl Theme {
         // opt-in via env; defaults to false for broad compatibility
         if let Ok(v) = env::var("FOS_WIZARD_POWERLINE") {
             let l = v.to_ascii_lowercase();
-            return matches!(l.as_str(), "1"|"true"|"yes"|"on");
+            return matches!(l.as_str(), "1" | "true" | "yes" | "on");
         }
         if let Ok(v) = env::var("FOS_NERD_FONT") {
             let l = v.to_ascii_lowercase();
-            return matches!(l.as_str(), "1"|"true"|"yes"|"on");
+            return matches!(l.as_str(), "1" | "true" | "yes" | "on");
         }
-        if let Ok(v) = env::var("NERD_FONT") { // some shells export this
+        if let Ok(v) = env::var("NERD_FONT") {
+            // some shells export this
             let l = v.to_ascii_lowercase();
-            return matches!(l.as_str(), "1"|"true"|"yes"|"on");
+            return matches!(l.as_str(), "1" | "true" | "yes" | "on");
         }
         false
     }
 
-    pub fn sep_left(&self) -> &'static str { if self.supports_powerline() { "" } else { ">" } }
-    pub fn sep_right(&self) -> &'static str { if self.supports_powerline() { "" } else { "<" } }
+    pub fn sep_left(&self) -> &'static str {
+        if self.supports_powerline() {
+            ""
+        } else {
+            ">"
+        }
+    }
+    pub fn sep_right(&self) -> &'static str {
+        if self.supports_powerline() {
+            ""
+        } else {
+            "<"
+        }
+    }
 }
 
 fn rgb_to_ansi256(r: u8, g: u8, b: u8) -> u8 {
@@ -248,7 +288,11 @@ fn rgb_to_ansi256(r: u8, g: u8, b: u8) -> u8 {
     let dcube = (cube_r - r as f32).abs() + (cube_g - g as f32).abs() + (cube_b - b as f32).abs();
     let gval = gray_idx as f32 * 255.0 / 23.0;
     let dgray = (gval - r as f32).abs() + (gval - g as f32).abs() + (gval - b as f32).abs();
-    if dgray + 15.0 < dcube { gray_color } else { color_idx }
+    if dgray + 15.0 < dcube {
+        gray_color
+    } else {
+        color_idx
+    }
 }
 
 fn ansi16_from_rgb(r: u8, g: u8, b: u8) -> Color {

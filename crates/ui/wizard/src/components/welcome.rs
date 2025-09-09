@@ -1,3 +1,4 @@
+use crate::theme::{Mode, Theme, UiGroup};
 use crate::{
     action::{Action, PreflightItem, PreflightStatus},
     components::Component,
@@ -5,8 +6,11 @@ use crate::{
 };
 use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
-use ratatui::{prelude::*, widgets::{Paragraph, Block},style::Modifier};
-use crate::theme::{Theme, UiGroup, Mode};
+use ratatui::{
+    prelude::*,
+    style::Modifier,
+    widgets::{Block, Paragraph},
+};
 
 pub struct WelcomeComponent {
     items: Vec<PreflightItem>,
@@ -15,13 +19,19 @@ pub struct WelcomeComponent {
 
 impl Default for WelcomeComponent {
     fn default() -> Self {
-        Self { items: Vec::new(), mode: Mode::Normal }
+        Self {
+            items: Vec::new(),
+            mode: Mode::Normal,
+        }
     }
 }
 
 impl WelcomeComponent {
     pub fn with_items(items: Vec<PreflightItem>) -> Self {
-        Self { items, mode: Mode::Normal }
+        Self {
+            items,
+            mode: Mode::Normal,
+        }
     }
 }
 
@@ -48,8 +58,14 @@ impl Component for WelcomeComponent {
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
             Action::Submit => Ok(Some(Action::Navigate(1))),
-            Action::SetMode(m) => { self.mode = m; Ok(None) }
-            Action::CycleMode => { self.mode = self.mode.next(); Ok(None) }
+            Action::SetMode(m) => {
+                self.mode = m;
+                Ok(None)
+            }
+            Action::CycleMode => {
+                self.mode = self.mode.next();
+                Ok(None)
+            }
             Action::PreflightResults(items) => {
                 self.items = items;
                 Ok(None)
@@ -100,7 +116,10 @@ impl WelcomeComponent {
         let theme = Theme::from_env_auto();
         let mut lines: Vec<Line> = Vec::new();
         lines.push(Line::from(vec![
-            Span::styled("Wizard ", theme.style(UiGroup::Info).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "Wizard ",
+                theme.style(UiGroup::Info).add_modifier(Modifier::BOLD),
+            ),
             Span::raw("weaves "),
             Span::styled("Aether", theme.style(UiGroup::ModeVisual)),
             Span::raw("’s"),
@@ -116,12 +135,15 @@ impl WelcomeComponent {
             Span::styled(self.mode.label(), self.mode.style(&theme)),
             Span::styled("]", theme.style(UiGroup::Dimmed)),
         ]));
-        lines.push(Line::from(
-            ratatui::symbols::line::HORIZONTAL
-                .repeat(33)
-                .as_str()
-                .to_string(),
-        ).style(theme.style(UiGroup::Border)));
+        lines.push(
+            Line::from(
+                ratatui::symbols::line::HORIZONTAL
+                    .repeat(33)
+                    .as_str()
+                    .to_string(),
+            )
+            .style(theme.style(UiGroup::Border)),
+        );
         lines.push(Line::from(vec![
             Span::raw(env!("CARGO_PKG_NAME")),
             Span::raw(" v"),
@@ -141,13 +163,18 @@ impl WelcomeComponent {
 fn preflight_paragraph(checks: &[PreflightItem]) -> Paragraph<'static> {
     let theme = Theme::from_env_auto();
     let mut lines: Vec<Line> = Vec::new();
-    lines.push(Line::from(Span::styled("Preflight checks:", theme.style(UiGroup::Title))));
+    lines.push(Line::from(Span::styled(
+        "Preflight checks:",
+        theme.style(UiGroup::Title),
+    )));
 
     for item in checks {
         let status = match item.status {
             PreflightStatus::Present => Span::styled("✔", theme.style(UiGroup::Success)),
             PreflightStatus::Disabled => Span::styled("×", theme.style(UiGroup::Warn)),
-            PreflightStatus::Missing | PreflightStatus::Error => Span::styled("✖", theme.style(UiGroup::Error)),
+            PreflightStatus::Missing | PreflightStatus::Error => {
+                Span::styled("✖", theme.style(UiGroup::Error))
+            }
         };
 
         let mut spans: Vec<Span> = Vec::new();
@@ -169,27 +196,38 @@ fn preflight_paragraph(checks: &[PreflightItem]) -> Paragraph<'static> {
         .iter()
         .all(|item| item.status == PreflightStatus::Present)
     {
-        lines.push(Line::from(vec![
-            Span::raw("Press "),
-            Span::styled("Enter", theme.style(UiGroup::ModeNormal)),
-            Span::raw(" to start"),
-        ]).centered());
+        lines.push(
+            Line::from(vec![
+                Span::raw("Press "),
+                Span::styled("Enter", theme.style(UiGroup::ModeNormal)),
+                Span::raw(" to start"),
+            ])
+            .centered(),
+        );
     } else {
-        lines.push(Line::from(Span::styled("All is setup for running the server", theme.style(UiGroup::Success))).centered());
-        lines.push(Line::from(vec![
-            Span::raw("Press "),
-            Span::styled("Enter", theme.style(UiGroup::ModeNormal)),
-            Span::raw(" to check settings"),
-        ]).centered());
+        lines.push(
+            Line::from(Span::styled(
+                "All is setup for running the server",
+                theme.style(UiGroup::Success),
+            ))
+            .centered(),
+        );
+        lines.push(
+            Line::from(vec![
+                Span::raw("Press "),
+                Span::styled("Enter", theme.style(UiGroup::ModeNormal)),
+                Span::raw(" to check settings"),
+            ])
+            .centered(),
+        );
     }
 
-    Paragraph::new(Text::from(lines))
-        .block(
-            Block::bordered()
-                .border_set(ratatui::symbols::border::ROUNDED)
-                .border_style(theme.style(UiGroup::Border))
-                .title(Span::styled("System", theme.style(UiGroup::Dimmed))),
-        )
+    Paragraph::new(Text::from(lines)).block(
+        Block::bordered()
+            .border_set(ratatui::symbols::border::ROUNDED)
+            .border_style(theme.style(UiGroup::Border))
+            .title(Span::styled("System", theme.style(UiGroup::Dimmed))),
+    )
 }
 
 fn detect_server_installation() -> Result<bool> {

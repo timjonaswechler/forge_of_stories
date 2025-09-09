@@ -1,6 +1,6 @@
 use crate::components::Component;
-use serde::{Deserialize, Serialize};
 use crate::theme::Mode;
+use serde::{Deserialize, Serialize};
 use strum::Display;
 
 type Command = String;

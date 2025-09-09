@@ -1,0 +1,448 @@
+
+## Assistant
+
+Hier ist eine gründliche Bestandsaufnahme deiner aktuellen Wizard-Struktur und ein konkreter Vorschlag, wie du sie zielgerichtet restrukturieren kannst, ohne Funktionalität zu verlieren – plus ein inkrementeller Migrationsplan.
+
+---
+
+## 1. Probleme / „Geruch“ in der aktuellen Struktur
+
+1. Monolithische Datei `wizard.rs` (Loop, State, Rendering, Input-Durchleitung alles vermischt).
+2. Doppelte / divergierende Konzepte:
+   * `PopupComponent` ist zweimal definiert (`components.rs` und `components/popup.rs`).
+   * `Action`, `Event`, `PopupResult` – teilweise semantische Überschneidungen (z. B. `Quit` existiert als Event (Taste) → Action (Intent) → State-Änderung).
+3. Ordner `components/` enthält sowohl “normale Widgets” (Logo), domänenartige Dinge (Settings UI), als auch modale Interaktionen (Popups/Formular-Framework).
+4. `pages/` ist rein passiv – aber *Lifecycle* (focus/unfocus, update pipeline) hängt stark vom App-Loop ab → schwer testbar.
+5. Keymap-Handling (services::keymap_binding) ist funktional, aber direkt in den Event-Loop eingeflochten → schwieriger für spätere Erweiterungen (Mausgesten, alternative Eingabegeräte).
+6. `WelcomeComponent` macht Preflight selber + Preflight kommt zusätzlich nochmal als Action rein → Zwei Quellen derselben Wahrheit.
+7. Keine klare Trennung zwischen:
+   * Application-Schicht (Orchestrierung)
+   * UI-Präsentations-Schicht
+   * Domänen-Schicht (Server-Settings, Zertifikats-Workflow)
+8. Popups liefern teils Ergebnisse über `PopupResult`, teils über `Update`–Rückgabe → redundante Mechaniken.
+9. `FormPopup` ist mächtig, aber in einer sehr großen Datei untergebracht (→ schwer zu testen / weiterzuentwickeln).
+10. Mögliche zukünftige Modi (z. B. Headless CLI, Web) sind nicht entkoppelt.
+
+---
+
+## 2. Zielbild (Architektur)
+
+Schichten:
+1. core/
+   * App-Lifecycle (State-Maschine Setup → Settings → Dashboard)
+   * Trait `AppRunner` oder `LoopDriver`
+   * `Action`, `Command`, `Effect` klarer trennen
+2. ui/
+   * pages/
+   * components/ (rein visuelle oder interaktive Bausteine)
+   * popups/ (modal / overlay)
+   * form/ (eigener Submodul-Baum)
+   * theme/
+   * keymap/
+3. domain/
+   * server_config (Wrapper um `aether_config`)
+   * preflight (Checks + Status)
+   * certs (Zertifikats-Workflow; rcgen-Integration)
+4. infra/
+   * logging
+   * errors
+5. cli/
+   * `cli.rs`
+   * Headless-Subcommands (z. B. `wizard health --json`, später)
+
+Optional später als eigene Crates (monorepo-kompatibel):
+- `wizard-core`
+- `wizard-tui`
+- `wizard-domain`
+- `wizard-cli`
+
+---
+
+## 3. Neue Namens- und Modulstruktur (Vorschlag)
+
+```/dev/null/struktur_vorschlag.md#L1-60
+wizard/
+  src/
+    main.rs
+    cli/
+      mod.rs
+    core/
+      mod.rs
+      app.rs           (vormals wizard.rs – nur High-Level)
+      loop.rs          (Event-/Action-Schleife extrahiert)
+      action.rs        (nur "Intent" – kein UI-spezifischer Kram)
+      event.rs         (rohe Input-Events aus TUI)
+      effect.rs        (asynchrone Nebenwirkungen / Commands)
+      state.rs         (AppState enum: Setup, Settings, Dashboard)
+    domain/
+      preflight.rs
+      certs.rs
+      settings_gateway.rs  (Adapter über aether_config + settings-store)
+    ui/
+      mod.rs
+      tui_backend.rs   (vormals tui.rs – entkoppelt)
+      keymap/
+        mod.rs
+        chord.rs
+        mapper.rs
+      pages/
+        mod.rs
+        setup.rs
+        settings.rs
+        dashboard.rs
+        health.rs
+      components/
+        mod.rs
+        logo.rs
+        welcome.rs
+        settings/
+          categories.rs
+          details.rs
+      popups/
+        mod.rs
+        confirm.rs
+        alert.rs
+        input.rs
+        bool.rs
+        single_choice.rs
+        form/
+          mod.rs
+          schema.rs
+          state.rs
+          field.rs
+          render.rs
+          certificate_wizard.rs
+      theme/
+        mod.rs
+        palette.rs
+    infra/
+      logging.rs
+      errors.rs
+    messages/
+      mod.rs
+```
+
+---
+
+## 4. Semantische Neuordnung der Konzepte
+
+| Alt | Neu | Bemerkung |
+|-----|-----|-----------|
+| Action | Intent | Intent = “Benutzerabsicht” (z. B. NavigateTo(Page::Settings)) |
+| Event (TUI) | InputEvent | Rohinput – keine Business-Entscheidung |
+| PopupResult | UiOutcome | UI-spezifische Outputs (FormSubmitted(JSON), Confirmed) |
+| Update-Kaskade | Reducer | Zentraler State-Reducer → testbar |
+| Preflight doppelt | Single Source (domain/preflight) | Erst beim Start laden & in State speichern |
+
+---
+
+## 5. Vereinheitlichung Popups
+
+Statt mehrere Wege:
+- Jedes Popup implementiert:  
+  ```rust
+  fn process(&mut self, intent: Intent) -> UiOutcome;
+  ```
+- Application sammelt `UiOutcome` → erzeugt neue Intents (z. B. `ClosePopup`, `ApplySetting`).
+
+---
+
+## 6. Example: Reduzierte `Action` / `Intent`
+
+```/dev/null/intents.rs#L1-80
+#[derive(Debug, Clone)]
+pub enum Intent {
+    Quit,
+    Tick,
+    Render,
+    Resize(u16, u16),
+
+    Navigate(PageKind),
+
+    OpenPopup(PopupKind),
+    ClosePopup,
+
+    FocusNext,
+    FocusPrev,
+    Submit,          // kontextsensitiv (enter)
+    Cancel,          // kontextsensitiv (esc)
+    CycleMode,
+    SetMode(Mode),
+
+    ApplySetting { field: ServerSettingField, value: String },
+    RunPreflight,
+    ApplyForm { id: FormId, data: serde_json::Value },
+}
+```
+
+---
+
+## 7. State Machine
+
+```/dev/null/state.rs#L1-60
+pub enum AppState {
+    Setup(SetupModel),
+    Settings(SettingsModel),
+    Dashboard(DashboardModel),
+    Health(HealthModel),
+}
+
+pub struct RootState {
+    pub active: AppState,
+    pub preflight: Option<PreflightSummary>,
+    pub theme: Theme,
+    pub mode: Mode,
+    pub popup: Option<PopupState>,
+}
+```
+
+---
+
+## 8. Extract des Event-Loop
+
+Aktuell mischt `wizard.rs`:
+- TUI Polling
+- Intent-Verarbeitung
+- Rendering
+- Logging / Fehlerkapselung
+
+Ziel:  
+`core/loop.rs` übernimmt nur:
+1. Poll InputEvent
+2. Map InputEvent → Intent (via keymap mapper)
+3. Aufruf `reduce(state, intent) -> Effects`
+4. Ausführen von `Effects` (asynchron falls nötig)
+5. Rendering-Phase (delegiert an `ui::render(&state)`)
+
+---
+
+## 9. Keymap-System verbessern
+
+Statt direkter Vergleich `core::mem::discriminant(...)` für OpenPopup-Hack:
+- Einführung symbolischer Binding-Labels = Intents
+- Laden → Validation → Export
+- Spätere Erweiterung: Context-Fallback (popup > page > global)
+
+---
+
+## 10. Form-System aufteilen
+
+Aktuelle `form/mod.rs` (800+ Zeilen) aufbrechen:
+
+```/dev/null/form_reorg.txt#L1-40
+popups/form/
+  field.rs        (FormField + FormFieldKind)
+  schema.rs       (FormSchema)
+  state.rs        (FormState + Validation)
+  popup.rs        (FormPopup implementiert Component)
+  render.rs       (Zeichenlogik, Scrollbar, Layout)
+  certificate_wizard.rs (Builder)
+```
+
+Vorteile:
+- Bessere Testbarkeit (Unit-Test nur für Validation / nur für Render-Zeilenindex etc.)
+- Weniger Merge-Konflikte bei paralleler Entwicklung
+
+---
+
+## 11. Preflight vereinheitlichen
+
+Aktuell:
+- `WelcomeComponent` ruft `run_preflight()` lokal auf – UI macht Domänenlogik.
+
+Neu:
+- Beim Start: `Intent::RunPreflight`
+- Reducer ruft domain/preflight aus
+- Speichert Resultate in `state.preflight`
+- UI (Welcome) konsumiert nur `&[PreflightItem]`
+
+---
+
+## 12. Schrittweiser Migrationsplan (inkrementell)
+
+1. Cleanup (geringes Risiko)
+   - Dupliziertes `PopupComponent` vereinheitlichen.
+   - `wizard.rs` in `app.rs` + `loop.rs` splitten (nur verschieben, keine Semantik ändern).
+   - Preflight aus `WelcomeComponent` entfernen → einmal zentral erzeugen.
+
+2. Introduce Core Layer
+   - `core/action.rs` → umbenennen zu `intent.rs`
+   - Mapping alt Action → Intent (erstmal alias, damit Rest weiterläuft)
+   - Rendering unverändert übergeben
+
+3. Domain-Auslagerung
+   - `preflight.rs`
+   - `settings_gateway.rs` (Adapter um `aether_config` + `SettingsStore`)
+
+4. Popup Normalisierung
+   - Ergebnisfluss: Nur noch `UiOutcome`
+   - Entferne `PopupResult` (oder bridge: implement From<PopupResult> for UiOutcome)
+
+5. Form Reorg
+   - Datei splitten
+   - Tests hinzufügen (z. B. Validierung Country/Number)
+
+6. Keymap Refactor
+   - `services/keymap_binding.rs` → `ui/keymap/mapper.rs`
+   - Mapping Tabelle (Label→Intent) konfigurativ halten
+
+7. State Machine
+   - `AppState` einführen
+   - Setup → Settings Navigation über `Intent::Navigate(PageKind)`
+
+8. Final Polish
+   - CLI: weitere Subcommands (headless health probe)
+   - Logging/Errors in infra/ verschieben
+
+---
+
+## 13. Quick Wins (sofort machbar)
+
+### a) Doppeltes PopupComponent entfernen
+
+```forge_of_stories/crates/ui/wizard/src/components.rs#L1-40
+// Entferne PopupComponent hier komplett und nutze die Version aus popup.rs
+```
+
+### b) Preflight nur einmal zentral
+
+In `WizardApp::new()` Preflight ausführen und NICHT mehr in `WelcomeComponent::new()`:
+
+```forge_of_stories/crates/ui/wizard/src/components/welcome.rs#L1-20
+pub fn new() -> Self {
+    Self {
+        items: Vec::new(), // leer starten
+        mode: Mode::Normal,
+    }
+}
+// items dann nur über Action::PreflightResults setzen
+```
+
+### c) Render/Loop extrahieren
+
+Erstelle z. B.:
+
+```/dev/null/core/loop.rs#L1-70
+pub struct AppLoop {
+    tui: Tui,
+    action_rx: UnboundedReceiver<Intent>,
+    action_tx: UnboundedSender<Intent>,
+}
+
+impl AppLoop {
+    pub async fn run(mut self, app: &mut WizardApp) -> Result<()> {
+        loop {
+            // 1) Input
+            // 2) Keymap → Intent
+            // 3) app.dispatch(intent)
+            // 4) app.render(&mut tui)
+        }
+    }
+}
+```
+
+---
+
+## 14. Tests – Vorschläge
+
+- `keymap::mapper`:
+  - chord "ctrl+c" → Intent::Quit (kontextsensitiv)
+- `form::validation`:
+  - Country "D" → Fehler
+  - Validity 0 → Fehler
+  - SAN leerer Eintrag → Fehler
+- Reducer:
+  - `Intent::Navigate(Page::Settings)` wechselt State
+
+---
+
+## 15. Potenzielle Erweiterungen später
+
+- Async Effects: z. B. Zertifikatserstellung als Task → `Effect::Spawn(TaskKind::GenerateCert(form_data))`
+- Persistente Session (letzte Seite / Theme Mode)
+- Remote-Control via Socket (Control-Plane) → gleiche Intents injizieren
+
+---
+
+## 16. Zusammenfassung
+
+Deine aktuelle Struktur ist funktional und schon recht modular, aber die zentralen Hebel für bessere Wartbarkeit sind:
+
+- Entkopplung von Event-Loop / Intent-Verarbeitung / Rendering
+- Klare State-Machine
+- Eindeutige Unterscheidung zwischen Eingabe (InputEvent) und Absicht (Intent)
+- Vereinheitlichung Popup-Mechanik
+- Aufsplitten großer Dateien (FormPopup, wizard.rs)
+- Weg mit doppelten Konstrukten (PopupComponent, mehrfacher Preflight)
+
+
+
+## Assistant
+
+Hier eine kompakte Zusammenfassung, damit du im neuen Chat sofort weitermachen kannst.
+
+Aktuelles Ziel
+Ein vollständiger Umbau (Migration) des Wizard von einem monolithischen, Action-basierten Event-Loop zu einer klar getrennten Intent/Effect-Architektur mit:
+1. Neuem Core-Loop (Intent + Reducer + Effects)
+2. Modularisiertem Form-System (FormPopup2 etc.)
+3. Konsolidiertem Keymap-System (label → Intent)
+4. Schrittweisem Abbau der alten Action-/Popup-/Form-Monolithen
+5. Vorbereitung für testbare, zustandsorientierte UI (State + Render getrennt)
+
+Was wir bisher gemacht haben
+- Core-Layer eingeführt (`core/mod.rs`) mit:
+  - `Intent`, `Effect`, `CoreState`, `CoreReducer`, `PopupKind`, `FormId`
+  - neuem Loop-Treiber `AppLoopDriver` (intent-driven)
+- Domain-Layer (`domain/preflight.rs`) extrahiert (Preflight zentral)
+- Infra-Layer (`infra/`) für Logging + Errors
+- UI-Fassade (`ui/`) mit neuem Keymap-System und Popup-Fabrik
+- Neues modulares Form-System (`ui/popups/form/` mit `FormFieldKind`, `FormField`, `FormSchema`, `FormState`, `FormPopup2`)
+- Versuch, den neuen Loop direkt zu aktivieren (Work-in-progress – wir sind in einem Zwischenzustand)
+- Legacy Loop teilweise entfernt
+
+Der aktuelle Zustand (Problemzone)
+- Der neue Loop ist aktiv, aber:
+  - Seiten und Popups wurden halb auf `Rc<RefCell<...>>` umgestellt → Inkonsistenzen und Compilerfehler
+  - UI-Rendering hängt noch von alten Strukturen ab
+  - Fokus-/Navigations-Intents sind noch nicht sauber in Reducer/State gemappt
+- Wir stehen an einem Entscheidungspunkt, wie wir stabil weiter migrieren.
+
+Generelle Idee der Architektur
+1. Input (KeyEvent) → Keymap → Intent
+2. Reducer: (CoreState, Intent) → (CoreState', Effects)
+3. Effects führen Domain-/IO-Aufgaben aus (Preflight, Zertifikate, Settings-Anwendung) und können neue Intents einspeisen.
+4. Rendering: rein aus CoreState + UI-View-Modellen (keine logische Mutation im Zeichnen)
+5. Popups und Forms: deklarativ, liefern bei Abschluss ein `Intent::ApplyForm { .. }` oder `Intent::ClosePopup`
+6. Testbarkeit: Reducer + Effects isoliert testbar; UI-Logik minimiert.
+
+Empfohlene nächste Schritte (zur Auswahl im neuen Chat)
+Option A (Stabilisieren zuerst):
+- Alten Action-Loop temporär wieder aktivieren
+- Neuen Loop hinter Feature-Flag parken
+- Migration vorbereiten (Adapter-Schicht bauen)
+
+Option B (Sauberer Umbau):
+- Reducer/Loop lassen
+- Seiten/Popup zurück auf einfache `Vec<Box<dyn Page>>`
+- Loop ruft pro Tick einen Adapter auf, der:
+  1. Intents sammelt
+  2. Page-/Popup-Update (legacy) ausführt
+  3. UI neu zeichnet
+- Danach Pages/Popups in datenorientierte Modelle umbauen
+
+Option C (Schneller Fix):
+- Rc<RefCell> Ansatz sauber fertigstellen
+- Fehler beseitigen
+- Funktionalität wieder lauffähig machen
+- Refactor später glätten
+
+Du kannst im neuen Chat einfach schreiben:
+"Wir machen weiter mit Option A" (oder B oder C)
+Dann setze ich genau diese Strategie um.
+
+Kürzester Merkzettel
+Ziel: Intent/Effect Loop + modulare Forms + neuer Keymap Flow  
+Status: Loop aktiv aber halb integriert  
+Nächster Schritt: Wähle Migrationsstrategie (A Stabilisieren / B Sauber adaptieren / C Schnell flicken)  
+
+

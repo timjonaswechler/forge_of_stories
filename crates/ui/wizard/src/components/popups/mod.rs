@@ -10,8 +10,8 @@ pub mod bool_choice;
 pub mod confirm;
 pub mod form;
 pub mod input;
-pub mod single_choice;
 pub mod keymap;
+pub mod single_choice;
 
 // Re-export the shared popup helpers and trait from the central popup module
 pub use crate::components::popup::{

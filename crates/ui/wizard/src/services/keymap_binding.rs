@@ -107,7 +107,10 @@ pub fn action_from_key(store: &SettingsStore, context: &str, key: KeyEvent) -> O
 
 /// Convert exported keymap labels+chords for `context` into concrete `Action`s.
 /// Only entries that can be mapped are returned.
-pub fn mappable_entries_for_context(store: &SettingsStore, context: &str) -> Vec<(String, Vec<String>)> {
+pub fn mappable_entries_for_context(
+    store: &SettingsStore,
+    context: &str,
+) -> Vec<(String, Vec<String>)> {
     let exported = store.export_keymap_for(DeviceFilter::Keyboard, context);
     exported
         .into_iter()

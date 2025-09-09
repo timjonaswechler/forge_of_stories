@@ -6,8 +6,8 @@ mod logging;
 mod messages;
 mod pages;
 mod services;
-mod tui;
 mod theme;
+mod tui;
 mod wizard;
 
 use crate::cli::Cli;

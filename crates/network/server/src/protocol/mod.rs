@@ -39,8 +39,8 @@
 //!
 //! (C) Forge of Stories
 
-pub mod frames;
 pub mod codec;
+pub mod frames;
 pub mod handshake;
 pub mod metrics;
 
@@ -48,9 +48,7 @@ pub mod metrics;
 /// protocol layer without deep path drilling.
 pub mod prelude {
     pub use super::codec::{FrameCodec, FrameDecoder};
-    pub use super::frames::{
-        Frame, HandshakeErrorCode, HandshakeFrame, TransportFrame,
-    };
+    pub use super::frames::{Frame, HandshakeErrorCode, HandshakeFrame, TransportFrame};
     pub use super::handshake::{
         NetSessionClosed, NetSessionEstablished, PendingHandshakes, SUPPORTED_VERSIONS,
     };
