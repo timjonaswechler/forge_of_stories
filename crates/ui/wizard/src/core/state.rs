@@ -75,6 +75,10 @@ pub struct RootState {
     pub last_resize: Option<(u16, u16)>,
     /// Pending navigation target (will be applied by loop / dispatch layer)
     pub pending_navigation: Option<AppState>,
+    /// Index of the currently focused element (legacy bridge: page component index)
+    pub focus_index: usize,
+    /// Snapshot of total focusable elements in the current scope (informational; reducer may clamp)
+    pub focus_total: usize,
     // Future: pub focus_ring: FocusRing,
     // Future: pub effects: Vec<Effect>,
 }
@@ -86,6 +90,8 @@ impl RootState {
             quit_requested: false,
             last_resize: None,
             pending_navigation: None,
+            focus_index: 0,
+            focus_total: 0,
         }
     }
 

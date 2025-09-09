@@ -185,6 +185,23 @@ impl<'a> AppLoop<'a> {
                     action_tx
                         .send(Action::PreflightResults(self.app.preflight.clone()))
                         .ok();
+
+                    // Phase 4.3-A Focus bridge:
+                    // Page logic still handles FocusNext/FocusPrev internally, but we expose a bridge
+                    // so future phases can drive page focus purely from reducer state.
+                    if matches!(action, Action::FocusNext | Action::FocusPrev) {
+                        // Record (or refresh) focus_total from active page heuristically if possible.
+                        // For now we only update the diagnostic counter from known page types.
+                        if let Some(active) = self.app.pages.get(self.app.active_page) {
+                            // Downcasting skipped (trait object); leave focus_total as-is unless zero.
+                            if self.app.root_state.focus_total == 0 {
+                                // Fallback assumption: at least 1 focusable element present.
+                                self.app.root_state.focus_total = 1;
+                            }
+                        }
+                        // NOTE: Actual per-page focus mutation still occurs in the page's own update().
+                        // The reducer's focus_index is currently informational / diagnostic.
+                    }
                 }
 
                 match action {

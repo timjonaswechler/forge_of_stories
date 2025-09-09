@@ -84,7 +84,23 @@ pub fn reduce(state: &mut RootState, intent: Intent) -> Vec<Effect> {
             let target = map_index_to_app_state(idx, &state.app_state);
             state.pending_navigation = Some(target);
         }
-        // All other intents are ignored for now in this prototype.
+        Intent::FocusNext => {
+            // Prototype focus handling (Phase 4.3-A):
+            // Only manipulates reducer-level focus_index; UI pages still manage their own focus.
+            if state.focus_total > 0 {
+                state.focus_index = (state.focus_index + 1) % state.focus_total;
+            }
+        }
+        Intent::FocusPrev => {
+            if state.focus_total > 0 {
+                if state.focus_index == 0 {
+                    state.focus_index = state.focus_total - 1;
+                } else {
+                    state.focus_index -= 1;
+                }
+            }
+        }
+        // Other intents ignored in this prototype.
         _ => {}
     }
 
