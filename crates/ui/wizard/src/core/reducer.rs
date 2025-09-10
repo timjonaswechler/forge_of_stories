@@ -282,10 +282,15 @@ mod tests {
     }
 
     #[test]
-    fn navigate_sets_pending_state() {
+    fn navigate_sets_pending_state_intent() {
         let mut rs = initial_root_state(&cli_setup());
         assert!(rs.pending_navigation.is_none());
-        reduce(&mut rs, LegacyAction::Navigate(2));
+        let effects = reduce_intent(&mut rs, Intent::NavigateIndex(2));
+        assert!(
+            effects
+                .iter()
+                .any(|e| matches!(e, Effect::Log(msg) if msg.contains("Navigate")))
+        );
         assert!(matches!(
             rs.pending_navigation,
             Some(AppState::Dashboard(_))
@@ -293,9 +298,9 @@ mod tests {
     }
 
     #[test]
-    fn navigate_out_of_range_defaults() {
+    fn navigate_out_of_range_defaults_intent() {
         let mut rs = initial_root_state(&cli_setup());
-        reduce(&mut rs, LegacyAction::Navigate(99));
+        let _ = reduce_intent(&mut rs, Intent::NavigateIndex(99));
         assert!(matches!(
             rs.pending_navigation,
             Some(AppState::Dashboard(_))

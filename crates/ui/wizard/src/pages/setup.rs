@@ -83,7 +83,7 @@ impl Page for SetupPage {
                 }
                 Ok(None)
             }
-            Action::Submit => Ok(Some(Action::Navigate(1))),
+            Action::Submit => Ok(None),
             _ => Ok(None),
         }
     }

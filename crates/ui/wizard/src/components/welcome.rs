@@ -59,7 +59,7 @@ impl Component for WelcomeComponent {
 
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
-            Action::Submit => Ok(Some(Action::Navigate(1))),
+            Action::Submit => Ok(None),
             Action::SetMode(m) => {
                 self.mode = m;
                 Ok(None)

@@ -116,7 +116,24 @@ impl<'a> AppLoop<'a> {
                     use crate::tui::Event;
                     match ev {
                         Event::Quit => {
-                            action_tx.send(Action::Quit).ok();
+                            // Intent-only: handle quit immediately
+                            let effs = crate::core::reducer::reduce_intent(
+                                &mut self.app.root_state,
+                                crate::core::intent_model::Intent::Quit,
+                            );
+                            for eff in effs {
+                                match eff {
+                                    Effect::None => {}
+                                    Effect::Log(msg) => {
+                                        log::info!("[effect] {msg}");
+                                    }
+                                    Effect::Async(task) => {
+                                        log::info!("[effect] schedule async task: {task}");
+                                        executor.spawn(task);
+                                    }
+                                }
+                            }
+                            self.app.should_quit = true;
                         }
                         Event::Tick => {
                             action_tx.send(Action::Tick).ok();
@@ -125,7 +142,31 @@ impl<'a> AppLoop<'a> {
                             action_tx.send(Action::Render).ok();
                         }
                         Event::Resize(w, h) => {
-                            action_tx.send(Action::Resize(w, h)).ok();
+                            // Intent-only: reduce resize and apply immediately
+                            let effs = crate::core::reducer::reduce_intent(
+                                &mut self.app.root_state,
+                                crate::core::intent_model::Intent::Resize(w, h),
+                            );
+                            for eff in effs {
+                                match eff {
+                                    Effect::None => {}
+                                    Effect::Log(msg) => {
+                                        log::info!("[effect] {msg}");
+                                    }
+                                    Effect::Async(task) => {
+                                        log::info!("[effect] schedule async task: {task}");
+                                        executor.spawn(task);
+                                    }
+                                }
+                            }
+                            self.tui.resize(Rect::new(0, 0, w, h))?;
+                            self.tui.draw(|f| {
+                                self.app.render(f).unwrap_or_else(|err| {
+                                    action_tx
+                                        .send(Action::Error(format!("Failed to draw: {:?}", err)))
+                                        .unwrap();
+                                })
+                            })?;
                         }
                         Event::Key(key) => {
                             // Phase 7.2: Kontext-Fallback (popup > page > global)
@@ -139,123 +180,134 @@ impl<'a> AppLoop<'a> {
                             // Always include global fallback last
                             context_chain.push("global");
 
-                            if let Some(mut a) =
-                                crate::ui::keymap::mapper::resolve_intent_with_fallback(
-                                    &self.app.base.settings,
-                                    &context_chain,
-                                    key,
-                                )
-                            {
-                                // Legacy demo popup logic retained
-                                if core::mem::discriminant(&a)
-                                    == core::mem::discriminant(&Action::OpenPopup(Box::new(
-                                        crate::components::popups::confirm::ConfirmPopup::new(
-                                            "", "",
-                                        ),
-                                    )))
-                                {
-                                    let popup =
-                                        crate::components::popups::confirm::ConfirmPopup::new(
-                                            "Confirm",
-                                            "Exit wizard?",
-                                        )
-                                        .ok_label("Exit")
-                                        .cancel_label("Cancel");
-                                    a = Action::OpenPopup(Box::new(popup));
-                                }
-                                // Intent-first: translate to Intent and reduce immediately (no legacy Action dispatch for intents)
-                                let split = crate::core::intent_model::classify_action(&a);
-                                if let Some(intent) = split.intent.clone() {
-                                    let effs = crate::core::reducer::reduce_intent(
-                                        &mut self.app.root_state,
-                                        intent,
-                                    );
-                                    for eff in effs {
-                                        match eff {
-                                            crate::core::effects::Effect::None => {}
-                                            crate::core::effects::Effect::Log(msg) => {
-                                                log::info!("[effect] {msg}");
+                            if let Some(res) = crate::ui::keymap::mapper::resolve_with_fallback(
+                                &self.app.base.settings,
+                                &context_chain,
+                                key,
+                            ) {
+                                match res {
+                                    crate::ui::keymap::mapper::Resolved::Intent(intent) => {
+                                        let effs = crate::core::reducer::reduce_intent(
+                                            &mut self.app.root_state,
+                                            intent,
+                                        );
+                                        for eff in effs {
+                                            match eff {
+                                                crate::core::effects::Effect::None => {}
+                                                crate::core::effects::Effect::Log(msg) => {
+                                                    log::info!("[effect] {msg}");
+                                                }
+                                                crate::core::effects::Effect::Async(task) => {
+                                                    log::info!(
+                                                        "[effect] schedule async task: {task}"
+                                                    );
+                                                    executor.spawn(task);
+                                                }
                                             }
-                                            crate::core::effects::Effect::Async(task) => {
-                                                log::info!("[effect] schedule async task: {task}");
-                                                executor.spawn(task);
+                                        }
+                                        // Apply pending navigation directly after handling intents
+                                        if let Some(pending) =
+                                            self.app.root_state.pending_navigation.take()
+                                        {
+                                            let target_index = match pending {
+                                                crate::core::state::AppState::Setup(_) => 0,
+                                                crate::core::state::AppState::Settings(_) => 1,
+                                                crate::core::state::AppState::Dashboard(_) => 2,
+                                                crate::core::state::AppState::Health(_) => 3,
+                                            };
+                                            self.app.active_page = target_index
+                                                .min(self.app.pages.len().saturating_sub(1));
+                                            self.app.root_state.app_state = pending;
+                                            action_tx
+                                                .send(Action::PreflightResults(
+                                                    self.app.preflight.clone(),
+                                                ))
+                                                .ok();
+                                            if self.app.root_state.focus_total == 0 {
+                                                self.app.root_state.focus_total = 1;
                                             }
                                         }
                                     }
-                                    // Apply pending navigation directly after handling intents
-                                    if let Some(pending) =
-                                        self.app.root_state.pending_navigation.take()
-                                    {
-                                        let target_index = match pending {
-                                            crate::core::state::AppState::Setup(_) => 0,
-                                            crate::core::state::AppState::Settings(_) => 1,
-                                            crate::core::state::AppState::Dashboard(_) => 2,
-                                            crate::core::state::AppState::Health(_) => 3,
-                                        };
-                                        self.app.active_page = target_index
-                                            .min(self.app.pages.len().saturating_sub(1));
-                                        self.app.root_state.app_state = pending;
-                                        action_tx
-                                            .send(Action::PreflightResults(
-                                                self.app.preflight.clone(),
-                                            ))
-                                            .ok();
-                                        if self.app.root_state.focus_total == 0 {
-                                            self.app.root_state.focus_total = 1;
-                                        }
-                                    }
-                                    // For intents we stop here: do not dispatch legacy Action
-                                    // to avoid double-processing.
-                                } else if let Some(cmd) = split.ui_command.clone() {
-                                    // Interpret UiCommand directly here
-                                    match cmd {
-                                        crate::core::intent_model::UiCommand::OpenPopup => {
-                                            // Use the original action to extract the concrete popup instance
-                                            if let Action::OpenPopup(popup) = a {
-                                                self.app.popup = Some(popup);
+                                    crate::ui::keymap::mapper::Resolved::UiCommand(cmd) => {
+                                        match cmd {
+                                            crate::core::intent_model::UiCommand::OpenPopup => {
+                                                // Keymap does not produce concrete popups; ignore
                                             }
-                                        }
-                                        crate::core::intent_model::UiCommand::ClosePopup => {
-                                            self.app.popup = None;
-                                        }
-                                        crate::core::intent_model::UiCommand::ToggleKeymapOverlay => {
-                                            if self.app.popup.is_some() {
+                                            crate::core::intent_model::UiCommand::ClosePopup => {
                                                 self.app.popup = None;
-                                            } else {
-                                                // Build Keymap overlay like in the legacy handler
-                                                let (context, focused) =
-                                                    if let Some(popup) = self.app.popup.as_deref() {
-                                                        (popup.keymap_context(), popup.name())
-                                                    } else if let Some(page) = self.app.pages.get(self.app.active_page) {
-                                                        (page.keymap_context(), page.focused_component_name())
-                                                    } else {
-                                                        ("global", "root")
-                                                    };
-                                                let mut entries = crate::ui::mappable_entries_for_context(
-                                                    &self.app.base.settings,
-                                                    context,
-                                                );
-                                                entries.sort_by(|a, b| a.0.cmp(&b.0));
-                                                let title = format!("Keymap · {} [{}]", context, focused);
-                                                let overlay =
-                                                    crate::components::popups::keymap::KeymapOverlay::new(title, entries);
-                                                self.app.popup = Some(Box::new(overlay));
+                                            }
+                                            crate::core::intent_model::UiCommand::ToggleKeymapOverlay => {
+                                                if self.app.popup.is_some() {
+                                                    self.app.popup = None;
+                                                } else {
+                                                    // Build Keymap overlay
+                                                    let (context, focused) =
+                                                        if let Some(popup) = self.app.popup.as_deref() {
+                                                            (popup.keymap_context(), popup.name())
+                                                        } else if let Some(page) = self.app.pages.get(self.app.active_page) {
+                                                            (page.keymap_context(), page.focused_component_name())
+                                                        } else {
+                                                            ("global", "root")
+                                                        };
+                                                    let mut entries = crate::ui::mappable_entries_for_context(
+                                                        &self.app.base.settings,
+                                                        context,
+                                                    );
+                                                    entries.sort_by(|a, b| a.0.cmp(&b.0));
+                                                    let title =
+                                                        format!("Keymap · {} [{}]", context, focused);
+                                                    let overlay = crate::components::popups::keymap::KeymapOverlay::new(
+                                                        title, entries,
+                                                    );
+                                                    self.app.popup = Some(Box::new(overlay));
+                                                }
+                                            }
+                                            crate::core::intent_model::UiCommand::RenderNow => {
+                                                // Force redraw
+                                                self.tui.draw(|f| {
+                                                    self.app.render(f).unwrap_or_else(|err| {
+                                                        action_tx
+                                                            .send(Action::Error(format!(
+                                                                "Failed to draw: {:?}",
+                                                                err
+                                                            )))
+                                                            .unwrap();
+                                                    })
+                                                })?;
+                                            }
+                                            crate::core::intent_model::UiCommand::OpenAlert { .. } => {
+                                                // Not produced by key mappings
                                             }
                                         }
-                                        crate::core::intent_model::UiCommand::RenderNow => {
-                                            // Force redraw
-                                            self.tui.draw(|f| {
-                                                self.app.render(f).unwrap_or_else(|err| {
-                                                    action_tx
-                                                        .send(Action::Error(format!("Failed to draw: {:?}", err)))
-                                                        .unwrap();
-                                                })
-                                            })?;
+                                    }
+                                    crate::ui::keymap::mapper::Resolved::UiOutcome(ref outcome) => {
+                                        // Forward outcome to active page (optional handling)
+                                        if let Some(page) =
+                                            self.app.pages.get_mut(self.app.active_page)
+                                        {
+                                            if let Some(next) =
+                                                page.update(Action::UiOutcome(outcome.clone()))?
+                                            {
+                                                action_tx.send(next).ok();
+                                            }
+                                        }
+                                        // Central lifecycle: decide whether to close popup
+                                        match outcome {
+                                            crate::action::UiOutcome::RequestClose
+                                            | crate::action::UiOutcome::Confirmed
+                                            | crate::action::UiOutcome::Cancelled
+                                            | crate::action::UiOutcome::SubmitString(_)
+                                            | crate::action::UiOutcome::SubmitJson(_) => {
+                                                if self.app.popup.is_some() {
+                                                    self.app.popup = None;
+                                                }
+                                            }
+                                            crate::action::UiOutcome::None => {}
+                                        }
+                                        if matches!(outcome, crate::action::UiOutcome::Confirmed) {
+                                            self.app.should_quit = true;
                                         }
                                     }
-                                } else {
-                                    // Non-intent/non-command: forward to page-level actions (legacy intents are no longer dispatched)
-                                    action_tx.send(a).ok();
                                 }
                             }
                         }

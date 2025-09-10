@@ -32,42 +32,38 @@ Caveats:
 - Labels needing runtime construction (e.g. spawning specific popups) are omitted on purpose.
 */
 
-use crate::action::{Action, UiOutcome};
-use crate::theme::Mode;
+use crate::action::UiOutcome;
+use crate::core::intent_model::{Intent, UiCommand};
+
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use settings::{DeviceFilter, SettingsStore};
 
-/// Return the Intent corresponding to a label (stateless match implementation).
-pub fn intent_for_label(label: &str) -> Option<Action> {
-    use Action::*;
+/// Resolved mapping outcome: either an Intent, UiCommand, or UiOutcome.
+pub enum Resolved {
+    Intent(Intent),
+    UiCommand(UiCommand),
+    UiOutcome(UiOutcome),
+}
+
+/// Return the resolved mapping corresponding to a label (stateless match implementation).
+pub fn resolve_for_label(label: &str) -> Option<Resolved> {
     match label {
         // Core / global
-        "Quit" => Some(Quit),
-        "Help" => Some(Help),
-        "Submit" => Some(Submit),
-        "Cancel" => Some(Action::UiOutcome(crate::action::UiOutcome::Cancelled)),
+        "Quit" => Some(Resolved::Intent(Intent::Quit)),
+        "Submit" => Some(Resolved::Intent(Intent::Submit)),
+        "Cancel" => Some(Resolved::UiOutcome(UiOutcome::Cancelled)),
 
         // Navigation / focus
-        "Up" => Some(Up),
-        "Down" => Some(Down),
-        "NextField" => Some(Down),
-        "PreviousField" => Some(Up),
-        "FocusNext" => Some(FocusNext),
-        "FocusPrev" | "FocusPrevious" => Some(FocusPrev),
-        "Switch" => Some(FocusNext),
-
-        // Mode control
-        "ModeCycle" | "ModeNext" => Some(CycleMode),
-        "ModeNormal" => Some(SetMode(Mode::Normal)),
-        "ModeInsert" => Some(SetMode(Mode::Insert)),
-        "ModeVisual" => Some(SetMode(Mode::Visual)),
-        "SwitchInputMode" => Some(SwitchInputMode),
+        "Up" | "PreviousField" => Some(Resolved::Intent(Intent::FocusPrev)),
+        "Down" | "NextField" | "Switch" => Some(Resolved::Intent(Intent::FocusNext)),
+        "FocusNext" => Some(Resolved::Intent(Intent::FocusNext)),
+        "FocusPrev" | "FocusPrevious" => Some(Resolved::Intent(Intent::FocusPrev)),
 
         // Refresh / update
-        "ResetFields" => Some(Refresh),
+        "ResetFields" => Some(Resolved::Intent(Intent::Refresh)),
 
         // Overlay / keymap
-        "ToggleKeymap" | "Keymap" => Some(ToggleKeymapOverlay),
+        "ToggleKeymap" | "Keymap" => Some(Resolved::UiCommand(UiCommand::ToggleKeymapOverlay)),
 
         _ => None,
     }
@@ -116,12 +112,12 @@ fn chord_from_key(key: KeyEvent) -> Option<String> {
     })
 }
 
-/// Resolve a key event to an Intent using a context fallback chain (popup > page > global).
-pub fn resolve_intent_with_fallback(
+/// Resolve a key event to a Resolved mapping using a context chain (popup > page > global).
+pub fn resolve_with_fallback(
     store: &SettingsStore,
     context_chain: &[&str],
     key: KeyEvent,
-) -> Option<Action> {
+) -> Option<Resolved> {
     let chord = chord_from_key(key)?;
     for ctx in context_chain {
         let exported = store.export_keymap_for(DeviceFilter::Keyboard, ctx);
@@ -129,8 +125,8 @@ pub fn resolve_intent_with_fallback(
             .iter()
             .find(|(_label, chords)| chords.iter().any(|c| c == &chord))
         {
-            if let Some(intent) = intent_for_label(label) {
-                return Some(intent);
+            if let Some(res) = resolve_for_label(label) {
+                return Some(res);
             }
         }
     }
@@ -141,45 +137,32 @@ pub fn resolve_intent_with_fallback(
 mod tests {
     use super::*;
     use crate::action::UiOutcome;
-    use crate::theme::Mode;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     #[test]
     fn intent_basic_core() {
-        assert!(matches!(intent_for_label("Quit"), Some(Action::Quit)));
-        assert!(matches!(intent_for_label("Help"), Some(Action::Help)));
+        assert!(matches!(
+            resolve_for_label("Quit"),
+            Some(Resolved::Intent(Intent::Quit))
+        ));
     }
 
     #[test]
     fn intent_navigation_aliases() {
-        assert!(matches!(intent_for_label("NextField"), Some(Action::Down)));
         assert!(matches!(
-            intent_for_label("Switch"),
-            Some(Action::FocusNext)
+            resolve_for_label("NextField"),
+            Some(Resolved::Intent(Intent::FocusNext))
+        ));
+        assert!(matches!(
+            resolve_for_label("Switch"),
+            Some(Resolved::Intent(Intent::FocusNext))
         ));
     }
 
     #[test]
-    fn intent_modes() {
-        assert!(matches!(
-            intent_for_label("ModeInsert"),
-            Some(Action::SetMode(Mode::Insert))
-        ));
-        assert!(matches!(
-            intent_for_label("ModeNormal"),
-            Some(Action::SetMode(Mode::Normal))
-        ));
-        assert!(matches!(
-            intent_for_label("ModeCycle"),
-            Some(Action::CycleMode)
-        ));
-    }
-
     #[test]
     fn intent_cancel_maps_to_ui_outcome_cancelled() {
-        if let Some(Action::UiOutcome(crate::action::UiOutcome::Cancelled)) =
-            intent_for_label("Cancel")
-        {
+        if let Some(Resolved::UiOutcome(UiOutcome::Cancelled)) = resolve_for_label("Cancel") {
         } else {
             panic!("Cancel label did not map to UiOutcome::Cancelled");
         }
@@ -187,7 +170,7 @@ mod tests {
 
     #[test]
     fn intent_unknown_none() {
-        assert!(intent_for_label("NonExistingLabelXYZ").is_none());
+        assert!(resolve_for_label("NonExistingLabelXYZ").is_none());
     }
 
     // --- Fallback resolution tests (Phase 7.2) ---
