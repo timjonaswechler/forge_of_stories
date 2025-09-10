@@ -34,6 +34,7 @@ Planned Extensions:
 
 use std::fmt;
 
+use crate::action::PreflightItem;
 use crate::domain::certs::SelfSignedParams;
 
 /// Declarative instruction emitted by the reducer.
@@ -81,6 +82,8 @@ pub enum TaskKind {
         cert_pem: String,
         key_pem: String,
     },
+    /// Trigger a preflight refresh (collect environment checks again).
+    PreflightRefresh,
 }
 
 impl fmt::Display for TaskKind {
@@ -90,6 +93,7 @@ impl fmt::Display for TaskKind {
             TaskKind::PersistCert { output_path, .. } => {
                 write!(f, "PersistCert(path={})", output_path)
             }
+            TaskKind::PreflightRefresh => write!(f, "PreflightRefresh"),
         }
     }
 }
@@ -149,6 +153,7 @@ pub enum InternalEvent {
     TaskStarted { id: u64, label: String },
     TaskLog { id: u64, message: String },
     TaskFinished { id: u64, result: TaskResultKind },
+    PreflightUpdated(Vec<PreflightItem>),
 }
 
 #[cfg(test)]

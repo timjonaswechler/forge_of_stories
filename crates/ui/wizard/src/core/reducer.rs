@@ -129,6 +129,9 @@ pub fn reduce_intent(state: &mut RootState, intent: Intent) -> Vec<Effect> {
                 }
             }
         }
+        Intent::Refresh => {
+            effects.push(Effect::Async(TaskKind::PreflightRefresh));
+        }
         _ => {}
     }
 
@@ -217,6 +220,12 @@ pub fn reduce_internal_event(state: &mut RootState, ev: InternalEvent) -> Vec<Ef
         InternalEvent::TaskStarted { .. } => {}
         InternalEvent::TaskLog { message, .. } => {
             effects.push(Effect::Log(format!("[task] {message}")));
+        }
+        InternalEvent::PreflightUpdated(items) => {
+            effects.push(Effect::Log(format!(
+                "Preflight updated ({} items)",
+                items.len()
+            )));
         }
         InternalEvent::TaskFinished { result, .. } => {
             state.last_task = Some(result.clone());

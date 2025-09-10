@@ -55,6 +55,7 @@ pub enum Intent {
     FocusNext,
     FocusPrev,
     Submit,
+    Refresh,
     Resize(u16, u16),
     /// Generic navigate alternative (future replacement for index-based navigation)
     #[allow(unused)]
@@ -78,6 +79,10 @@ pub enum UiCommand {
     OpenPopup,
     ClosePopup,
     ToggleKeymapOverlay,
+    OpenAlert {
+        title: String,
+        message: String,
+    },
     /// Force a redraw (explicit render request)
     #[allow(unused)]
     RenderNow,
@@ -177,6 +182,7 @@ pub fn classify_action(a: &Action) -> ActionSplit {
         FocusPrev => ActionSplit::with_intent(Intent::FocusPrev, "FocusPrev"),
         Submit => ActionSplit::with_intent(Intent::Submit, "Submit"),
         Resize(w, h) => ActionSplit::with_intent(Intent::Resize(*w, *h), "Resize"),
+        Refresh => ActionSplit::with_intent(Intent::Refresh, "Refresh"),
         OpenPopup(_) => ActionSplit::with_ui_command(UiCommand::OpenPopup, "OpenPopup"),
         ClosePopup => ActionSplit::with_ui_command(UiCommand::ClosePopup, "ClosePopup"),
         ToggleKeymapOverlay => {

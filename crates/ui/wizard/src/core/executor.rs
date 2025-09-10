@@ -312,6 +312,15 @@ impl Worker {
                 });
                 Ok(())
             }
+            TaskKind::PreflightRefresh => {
+                self.emit(InternalEvent::TaskLog {
+                    id: dispatch.id,
+                    message: "Refreshing preflight".into(),
+                });
+                let items = crate::domain::preflight::run_preflight();
+                self.emit(InternalEvent::PreflightUpdated(items));
+                Ok(())
+            }
         }
     }
 }

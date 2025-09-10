@@ -482,17 +482,28 @@ impl<'a> AppLoop<'a> {
                     InternalEvent::TaskLog { id, message } => {
                         log::info!("[task:{id}] {message}");
                     }
+                    InternalEvent::PreflightUpdated(items) => {
+                        action_tx.send(Action::PreflightResults(items)).ok();
+                    }
                     InternalEvent::TaskFinished { id, result } => {
                         match result.clone() {
                             TaskResultKind::CertGenerated { cn, .. } => {
                                 log::info!("[task:{id}] certificate generated for {cn}");
                                 // UI feedback: show an alert popup to confirm success
-                                let title = "Certificate generated";
-                                let message = format!("Certificate generated for {cn}");
-                                let popup = crate::components::popups::alert::AlertPopup::new(
-                                    title, message,
-                                );
-                                action_tx.send(Action::OpenPopup(Box::new(popup))).ok();
+                                let cmd = crate::core::intent_model::UiCommand::OpenAlert {
+                                    title: "Certificate generated".to_string(),
+                                    message: format!("Certificate generated for {cn}"),
+                                };
+                                if let crate::core::intent_model::UiCommand::OpenAlert {
+                                    title,
+                                    message,
+                                } = cmd
+                                {
+                                    let popup = crate::components::popups::alert::AlertPopup::new(
+                                        title, message,
+                                    );
+                                    self.app.popup = Some(Box::new(popup));
+                                }
 
                                 // Auto-schedule persistence when an output path is provided
                                 if let TaskResultKind::CertGenerated {
@@ -517,11 +528,20 @@ impl<'a> AppLoop<'a> {
                             }
                             TaskResultKind::Persisted { path } => {
                                 log::info!("[task:{id}] persisted certificate and key at {path}");
-                                let popup = crate::components::popups::alert::AlertPopup::new(
-                                    "Certificate saved",
-                                    format!("Saved to {}", path),
-                                );
-                                action_tx.send(Action::OpenPopup(Box::new(popup))).ok();
+                                let cmd = crate::core::intent_model::UiCommand::OpenAlert {
+                                    title: "Certificate saved".to_string(),
+                                    message: format!("Saved to {}", path),
+                                };
+                                if let crate::core::intent_model::UiCommand::OpenAlert {
+                                    title,
+                                    message,
+                                } = cmd
+                                {
+                                    let popup = crate::components::popups::alert::AlertPopup::new(
+                                        title, message,
+                                    );
+                                    self.app.popup = Some(Box::new(popup));
+                                }
                             }
                             TaskResultKind::PersistFailed { path, error } => {
                                 log::warn!(
