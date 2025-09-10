@@ -29,7 +29,6 @@ use ratatui::prelude::Rect;
 pub struct AppLoop<'a> {
     app: &'a mut WizardApp,
     tui: Tui,
-    executor: TaskExecutor,
 }
 
 impl<'a> AppLoop<'a> {
@@ -40,8 +39,7 @@ impl<'a> AppLoop<'a> {
     /// `expect`, um die Signatur (`new()` ohne Result) beizubehalten.
     pub fn new(app: &'a mut WizardApp) -> Self {
         let tui = Tui::new().expect("failed to initialize TUI");
-        let executor = TaskExecutor::new();
-        Self { app, tui, executor }
+        Self { app, tui }
     }
 
     /// Run the event loop until the application requests quit.
@@ -176,6 +174,14 @@ impl<'a> AppLoop<'a> {
                 // Phase 4.2: Reducer prototype integration (Quit, Navigate, Resize routed via root_state)
                 // Clone the action so the reducer can consume it without moving
                 let cloned_action = action.clone();
+                let split = crate::core::intent_model::classify_action(&action);
+                log::trace!(
+                    "[classify] intent={:?} ui_command={:?} internal={:?} outcome={:?}",
+                    split.intent,
+                    split.ui_command,
+                    split.internal_event,
+                    split.ui_outcome
+                );
                 let effects = crate::core::reducer::reduce(&mut self.app.root_state, cloned_action);
                 // Handle produced effects via executor (Phase 10 integration)
                 for eff in effects {

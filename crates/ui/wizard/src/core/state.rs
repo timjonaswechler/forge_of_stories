@@ -79,6 +79,8 @@ pub struct RootState {
     pub focus_index: usize,
     /// Snapshot of total focusable elements in the current scope (informational; reducer may clamp)
     pub focus_total: usize,
+    /// Last completed task result (from executor bridge)
+    pub last_task: Option<crate::core::effects::TaskResultKind>,
     // Future: pub focus_ring: FocusRing,
     // Future: pub effects: Vec<Effect>,
 }
@@ -92,6 +94,7 @@ impl RootState {
             pending_navigation: None,
             focus_index: 0,
             focus_total: 0,
+            last_task: None,
         }
     }
 

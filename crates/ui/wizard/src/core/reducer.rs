@@ -45,7 +45,7 @@
 //!       replaced by reducer-driven state transitions.
 
 use crate::action::{Action as Intent, UiOutcome};
-use crate::core::effects::{Effect, TaskKind};
+use crate::core::effects::{Effect, TaskKind, TaskResultKind};
 use crate::core::state::{
     AppState, DashboardState, HealthState, RootState, SettingsState, SetupState,
 };
@@ -96,6 +96,19 @@ pub fn reduce(state: &mut RootState, intent: Intent) -> Vec<Effect> {
                     params.common_name
                 )));
                 effects.push(Effect::Async(TaskKind::GenerateCert(params)));
+            }
+        }
+        Intent::TaskFinished(_id, ref res) => {
+            state.last_task = Some(res.clone());
+            match res {
+                TaskResultKind::CertGenerated { cn, .. } => {
+                    effects.push(Effect::Log(format!("Certificate generated for {cn}")));
+                }
+                TaskResultKind::CertFailed { cn, error } => {
+                    effects.push(Effect::Log(format!(
+                        "Certificate generation failed for {cn}: {error}"
+                    )));
+                }
             }
         }
         _ => {}
