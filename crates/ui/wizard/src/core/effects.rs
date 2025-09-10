@@ -97,8 +97,25 @@ impl fmt::Display for TaskKind {
 /// Rationale for deferring:
 /// - Keeps this commit focused on introducing the canonical Effect + TaskKind home.
 /// - Avoids unused-type warnings until the executor + return channel land.
-#[allow(dead_code)]
-pub enum _TaskResultKind {}
+/// Results produced by the TaskExecutor for completion callbacks.
+///
+/// These map 1:1 to domain-specific outcomes and will be forwarded
+/// downstream as internal events (or temporary Action variants) so
+/// reducers/UI can react.
+///
+/// Initial coverage focuses on certificate generation; extend with
+/// more task families as they are introduced.
+#[derive(Debug, Clone)]
+pub enum TaskResultKind {
+    /// Successful certificate generation with in-memory PEM artifacts.
+    CertGenerated {
+        cn: String,
+        cert_pem: String,
+        key_pem: String,
+    },
+    /// Failed certificate generation with an error message context.
+    CertFailed { cn: String, error: String },
+}
 
 #[cfg(test)]
 mod tests {

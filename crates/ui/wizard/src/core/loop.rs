@@ -4,7 +4,7 @@ use tokio::sync::mpsc;
 use crate::{
     action::{Action, UiOutcome},
     core::app::WizardApp,
-    core::effects::Effect,
+    core::effects::{Effect, TaskResultKind},
     core::executor::TaskExecutor,
     tui::{EventResponse, Tui},
 };
@@ -50,6 +50,8 @@ impl<'a> AppLoop<'a> {
     pub async fn run(&mut self) -> Result<()> {
         // Action channel (unbounded wie vorher)
         let (action_tx, mut action_rx) = mpsc::unbounded_channel::<Action>();
+        // Initialize TaskExecutor with action channel so it can emit Task* actions
+        let executor = TaskExecutor::new_with_action_tx(action_tx.clone());
 
         // Enter terminal UI
         self.tui.enter()?;
@@ -184,7 +186,7 @@ impl<'a> AppLoop<'a> {
                         }
                         Effect::Async(task) => {
                             log::info!("[effect] schedule async task: {task}");
-                            self.executor.spawn(task);
+                            executor.spawn(task);
                         }
                     }
                 }
@@ -226,8 +228,24 @@ impl<'a> AppLoop<'a> {
                     }
                 }
 
-                match action {
+                match &action {
                     Action::Tick | Action::Render => {}
+                    Action::TaskStarted(id, label) => {
+                        log::info!("[task:{id}] started {label}");
+                    }
+                    Action::TaskLog(id, msg) => {
+                        log::info!("[task:{id}] {msg}");
+                    }
+                    Action::TaskFinished(id, res) => match res {
+                        TaskResultKind::CertGenerated { cn, .. } => {
+                            log::info!("[task:{id}] certificate generated for {cn}");
+                        }
+                        TaskResultKind::CertFailed { cn, error } => {
+                            log::warn!(
+                                "[task:{id}] certificate generation failed for {cn}: {error}"
+                            );
+                        }
+                    },
                     _ => log::debug!("{action}"),
                 }
 

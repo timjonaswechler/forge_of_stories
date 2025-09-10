@@ -1,4 +1,5 @@
 use crate::components::Component;
+use crate::core::effects::TaskResultKind;
 use crate::theme::Mode;
 use serde::{Deserialize, Serialize};
 use strum::Display;
@@ -96,6 +97,10 @@ pub enum Action {
     Navigate(usize),
     /// Deliver results of pre-start preflight checks to the UI
     PreflightResults(Vec<PreflightItem>),
+    /// Task lifecycle events (Phase 10 return-bridge)
+    TaskStarted(u64, String),
+    TaskFinished(u64, #[serde(skip)] TaskResultKind),
+    TaskLog(u64, String),
     IdleTimeout,
 }
 
@@ -130,6 +135,9 @@ impl Clone for Action {
             Action::UiOutcome(o) => Action::UiOutcome(o.clone()),
             Action::Navigate(i) => Action::Navigate(*i),
             Action::PreflightResults(items) => Action::PreflightResults(items.clone()),
+            Action::TaskStarted(id, label) => Action::TaskStarted(*id, label.clone()),
+            Action::TaskFinished(id, res) => Action::TaskFinished(*id, res.clone()),
+            Action::TaskLog(id, msg) => Action::TaskLog(*id, msg.clone()),
             Action::IdleTimeout => Action::IdleTimeout,
         }
     }

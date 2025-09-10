@@ -45,8 +45,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use tokio::sync::mpsc;
 
-use crate::core::effects::TaskKind;
-use crate::domain::certs::{CertTaskResult, SelfSignedParams, generate_self_signed_task};
+use crate::action::Action;
+use crate::core::effects::{TaskKind, TaskResultKind};
+use crate::domain::certs::{CertTaskResult, generate_self_signed_task};
 use log::{info, warn};
 
 /// Monotonic task identifier type.
@@ -58,6 +59,7 @@ pub type TaskId = u64;
 #[derive(Clone)]
 pub struct TaskExecutor {
     tx: mpsc::UnboundedSender<Dispatch>,
+    action_tx: Option<mpsc::UnboundedSender<Action>>,
 }
 
 /// Internal dispatch envelope.
@@ -73,9 +75,29 @@ impl TaskExecutor {
     /// For now it is unused (to avoid premature introduction of new Action variants).
     pub fn new() -> Self {
         let (tx, rx) = mpsc::unbounded_channel::<Dispatch>();
-        let worker = Worker::new(rx);
+        let worker = Worker::new(rx, None);
         worker.spawn();
-        Self { tx }
+        Self {
+            tx,
+            action_tx: None,
+        }
+    }
+
+    /// Create a new executor and spawn its worker loop with an action channel.
+    ///
+    /// The provided `action_tx` is used by the executor worker to emit
+    /// Task lifecycle actions back into the main app loop:
+    /// - TaskStarted(id, label)
+    /// - TaskLog(id, msg)
+    /// - TaskFinished(id, TaskResultKind)
+    pub fn new_with_action_tx(action_tx: mpsc::UnboundedSender<Action>) -> Self {
+        let (tx, rx) = mpsc::unbounded_channel::<Dispatch>();
+        let worker = Worker::new(rx, Some(action_tx.clone()));
+        worker.spawn();
+        Self {
+            tx,
+            action_tx: Some(action_tx),
+        }
     }
 
     /// Schedule a new asynchronous task.
@@ -102,17 +124,27 @@ impl TaskExecutor {
 /// - Multi-worker pool (configurable parallelism)
 struct Worker {
     rx: mpsc::UnboundedReceiver<Dispatch>,
+    action_tx: Option<mpsc::UnboundedSender<Action>>,
 }
 
 impl Worker {
-    fn new(rx: mpsc::UnboundedReceiver<Dispatch>) -> Self {
-        Self { rx }
+    fn new(
+        rx: mpsc::UnboundedReceiver<Dispatch>,
+        action_tx: Option<mpsc::UnboundedSender<Action>>,
+    ) -> Self {
+        Self { rx, action_tx }
+    }
+
+    fn emit(&self, action: Action) {
+        if let Some(tx) = &self.action_tx {
+            let _ = tx.send(action);
+        }
     }
 
     fn spawn(mut self) {
         tokio::spawn(async move {
             while let Some(dispatch) = self.rx.recv().await {
-                if let Err(e) = Self::handle(dispatch).await {
+                if let Err(e) = self.handle(dispatch).await {
                     warn!("Task execution failed: {e}");
                 }
             }
@@ -121,39 +153,55 @@ impl Worker {
         });
     }
 
-    async fn handle(dispatch: Dispatch) -> Result<(), String> {
+    async fn handle(&self, dispatch: Dispatch) -> Result<(), String> {
+        // Emit TaskStarted for visibility in the app
+        let label = format!("{}", dispatch.kind);
+        self.emit(Action::TaskStarted(dispatch.id, label));
         match dispatch.kind {
             TaskKind::GenerateCert(params) => {
-                Self::handle_generate_cert(dispatch.id, params).await?;
+                self.emit(Action::TaskLog(
+                    dispatch.id,
+                    "Generating certificate".into(),
+                ));
+                match generate_self_signed_task(&params) {
+                    CertTaskResult::Success { artifacts } => {
+                        info!(
+                            "[task:{}] cert generated CN={} dns_names={:?} days={} key_bits={} cert_len={} key_len={}",
+                            dispatch.id,
+                            params.common_name,
+                            params.dns_names,
+                            params.valid_days,
+                            params.key_bits,
+                            artifacts.cert_pem.len(),
+                            artifacts.key_pem.len()
+                        );
+                        self.emit(Action::TaskFinished(
+                            dispatch.id,
+                            TaskResultKind::CertGenerated {
+                                cn: params.common_name.clone(),
+                                cert_pem: artifacts.cert_pem,
+                                key_pem: artifacts.key_pem,
+                            },
+                        ));
+                        Ok(())
+                    }
+                    CertTaskResult::Error { message } => {
+                        warn!(
+                            "[task:{}] certificate generation failed CN={} error={}",
+                            dispatch.id, params.common_name, message
+                        );
+                        self.emit(Action::TaskFinished(
+                            dispatch.id,
+                            TaskResultKind::CertFailed {
+                                cn: params.common_name.clone(),
+                                error: message.clone(),
+                            },
+                        ));
+                        Err(message)
+                    }
+                }
             }
         }
-        Ok(())
-    }
-
-    async fn handle_generate_cert(id: TaskId, params: SelfSignedParams) -> Result<(), String> {
-        // Real certificate generation (Phase 10 – result still only logged; no callback Action yet).
-        match generate_self_signed_task(&params) {
-            CertTaskResult::Success { artifacts } => {
-                info!(
-                    "[task:{id}] cert generated CN={} dns_names={:?} days={} key_bits={} cert_len={} key_len={}",
-                    params.common_name,
-                    params.dns_names,
-                    params.valid_days,
-                    params.key_bits,
-                    artifacts.cert_pem.len(),
-                    artifacts.key_pem.len()
-                );
-            }
-            CertTaskResult::Error { message } => {
-                warn!(
-                    "[task:{id}] certificate generation failed CN={} error={}",
-                    params.common_name, message
-                );
-                return Err(message);
-            }
-        }
-        tokio::task::yield_now().await;
-        Ok(())
     }
 }
 
