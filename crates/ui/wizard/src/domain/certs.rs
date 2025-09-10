@@ -42,6 +42,8 @@ pub struct SelfSignedParams {
     pub valid_days: u32,
     /// RSA key size in bits (when RSA is selected). Placeholder for future alg selection.
     pub key_bits: u16,
+    /// Optional output path hint for persistence (directory or file).
+    pub output_path: Option<String>,
 }
 
 impl Default for SelfSignedParams {
@@ -51,6 +53,7 @@ impl Default for SelfSignedParams {
             dns_names: vec!["localhost".into()],
             valid_days: 365,
             key_bits: 2048,
+            output_path: None,
         }
     }
 }

@@ -190,11 +190,17 @@ fn extract_cert_params(v: &Value) -> Option<SelfSignedParams> {
                 .collect()
         })
         .unwrap_or_default();
+    let output_path = obj
+        .get("output_path")
+        .and_then(|x| x.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
 
     Some(SelfSignedParams {
         common_name: cn,
         dns_names,
         valid_days: validity_days,
+        output_path,
         key_bits: if algorithm.eq_ignore_ascii_case("ECDSA") {
             256
         } else {

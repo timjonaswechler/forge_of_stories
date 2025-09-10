@@ -73,12 +73,23 @@ pub enum TaskKind {
     /// Generate (or plan to generate) a self-signed certificate.
     /// Currently a stub; once implemented this will call into `domain::certs`.
     GenerateCert(SelfSignedParams),
+    /// Persist generated certificate/key artifacts to disk.
+    /// The executor is expected to write both PEMs to the designated output path
+    /// (file or directory semantics can be decided by the executor).
+    PersistCert {
+        output_path: String,
+        cert_pem: String,
+        key_pem: String,
+    },
 }
 
 impl fmt::Display for TaskKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             TaskKind::GenerateCert(p) => write!(f, "GenerateCert(CN={})", p.common_name),
+            TaskKind::PersistCert { output_path, .. } => {
+                write!(f, "PersistCert(path={})", output_path)
+            }
         }
     }
 }
@@ -117,6 +128,23 @@ pub enum TaskResultKind {
     CertFailed { cn: String, error: String },
 }
 
+/// Internal domain/system event channel definition (Phase 11).
+///
+/// The event loop (or a higher-level dispatcher) can translate executor-level
+/// task lifecycle callbacks into these typed internal events. Reducers should
+/// prefer matching on `InternalEvent` over legacy `Action` variants once the
+/// migration completes.
+///
+/// Note:
+/// - This does not yet replace legacy `Action::Task*`; it provides a target
+///   model for the loop to migrate towards.
+#[derive(Debug, Clone)]
+pub enum InternalEvent {
+    TaskStarted { id: u64, label: String },
+    TaskLog { id: u64, message: String },
+    TaskFinished { id: u64, result: TaskResultKind },
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -137,6 +165,7 @@ mod tests {
             dns_names: vec!["example.test".into()],
             valid_days: 90,
             key_bits: 2048,
+            output_path: None,
         };
         let e = Effect::async_task(TaskKind::GenerateCert(params.clone()));
         match e {

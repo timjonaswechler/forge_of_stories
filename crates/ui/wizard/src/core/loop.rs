@@ -4,7 +4,7 @@ use tokio::sync::mpsc;
 use crate::{
     action::{Action, UiOutcome},
     core::app::WizardApp,
-    core::effects::{Effect, TaskResultKind},
+    core::effects::{Effect, InternalEvent, TaskResultKind},
     core::executor::TaskExecutor,
     tui::{EventResponse, Tui},
 };
@@ -182,7 +182,13 @@ impl<'a> AppLoop<'a> {
                     split.internal_event,
                     split.ui_outcome
                 );
-                let effects = crate::core::reducer::reduce(&mut self.app.root_state, cloned_action);
+                let mut effects =
+                    crate::core::reducer::reduce(&mut self.app.root_state, cloned_action);
+                if let Some(intent) = split.intent.clone() {
+                    let eff2 =
+                        crate::core::reducer::reduce_intent(&mut self.app.root_state, intent);
+                    effects.extend(eff2);
+                }
                 // Handle produced effects via executor (Phase 10 integration)
                 for eff in effects {
                     match eff {
@@ -238,20 +244,56 @@ impl<'a> AppLoop<'a> {
                     Action::Tick | Action::Render => {}
                     Action::TaskStarted(id, label) => {
                         log::info!("[task:{id}] started {label}");
+                        let _internal = InternalEvent::TaskStarted {
+                            id: *id,
+                            label: label.clone(),
+                        };
+                        log::trace!("[internal_event] {:?}", _internal);
                     }
                     Action::TaskLog(id, msg) => {
                         log::info!("[task:{id}] {msg}");
+                        let _internal = InternalEvent::TaskLog {
+                            id: *id,
+                            message: msg.clone(),
+                        };
+                        log::trace!("[internal_event] {:?}", _internal);
                     }
-                    Action::TaskFinished(id, res) => match res {
-                        TaskResultKind::CertGenerated { cn, .. } => {
-                            log::info!("[task:{id}] certificate generated for {cn}");
+                    Action::TaskFinished(id, res) => {
+                        let _internal = InternalEvent::TaskFinished {
+                            id: *id,
+                            result: res.clone(),
+                        };
+                        match res {
+                            TaskResultKind::CertGenerated { cn, .. } => {
+                                log::info!("[task:{id}] certificate generated for {cn}");
+                                // UI feedback: show an alert popup to confirm success
+                                let title = "Certificate generated";
+                                let message = format!("Certificate generated for {cn}");
+                                let popup = crate::components::popups::alert::AlertPopup::new(
+                                    title, message,
+                                );
+                                action_tx.send(Action::OpenPopup(Box::new(popup))).ok();
+
+                                // Optional follow-up: schedule persistence if an output path is available
+                                // Note: The output_path is currently not propagated via TaskResultKind.
+                                // Once available, schedule:
+                                // if let Some(output_path) = maybe_output_path {
+                                //     let task = crate::core::effects::TaskKind::PersistCert {
+                                //         output_path: output_path.clone(),
+                                //         cert_pem: cert_pem.clone(),
+                                //         key_pem: key_pem.clone(),
+                                //     };
+                                //     executor.spawn(task);
+                                // }
+                            }
+                            TaskResultKind::CertFailed { cn, error } => {
+                                log::warn!(
+                                    "[task:{id}] certificate generation failed for {cn}: {error}"
+                                );
+                            }
                         }
-                        TaskResultKind::CertFailed { cn, error } => {
-                            log::warn!(
-                                "[task:{id}] certificate generation failed for {cn}: {error}"
-                            );
-                        }
-                    },
+                        log::trace!("[internal_event] {:?}", _internal);
+                    }
                     _ => log::debug!("{action}"),
                 }
 
