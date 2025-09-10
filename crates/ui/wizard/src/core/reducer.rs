@@ -44,8 +44,9 @@
 //!       The legacy imperative updates inside the loop will be gradually
 //!       replaced by reducer-driven state transitions.
 
-use crate::action::{Action as Intent, UiOutcome};
+use crate::action::{Action as LegacyAction, UiOutcome};
 use crate::core::effects::{Effect, TaskKind, TaskResultKind};
+use crate::core::intent_model::Intent;
 use crate::core::state::{
     AppState, DashboardState, HealthState, RootState, SettingsState, SetupState,
 };
@@ -57,7 +58,67 @@ use serde_json::Value;
 /// Policy:
 ///   - Side-effect free (effects are descriptive only)
 ///   - Unhandled intents are ignored
-pub fn reduce(state: &mut RootState, intent: Intent) -> Vec<Effect> {
+pub fn reduce(state: &mut RootState, intent: LegacyAction) -> Vec<Effect> {
+    let mut effects: Vec<Effect> = Vec::new();
+
+    match intent {
+        LegacyAction::Quit => {
+            state.quit_requested = true;
+            effects.push(Effect::Log("Quit requested".into()));
+        }
+        LegacyAction::Resize(w, h) => {
+            state.last_resize = Some((w, h));
+        }
+        LegacyAction::Navigate(idx) => {
+            let target = map_index_to_app_state(idx, &state.app_state);
+            state.pending_navigation = Some(target);
+            effects.push(Effect::Log(format!("Navigate -> {}", idx)));
+        }
+        LegacyAction::FocusNext => {
+            if state.focus_total > 0 {
+                state.focus_index = (state.focus_index + 1) % state.focus_total;
+            }
+        }
+        LegacyAction::FocusPrev => {
+            if state.focus_total > 0 {
+                if state.focus_index == 0 {
+                    state.focus_index = state.focus_total - 1;
+                } else {
+                    state.focus_index -= 1;
+                }
+            }
+        }
+        // Certificate form submission (Phase 9.2 stub):
+        // Detect a form JSON submission that looks like the certificate wizard output.
+        LegacyAction::UiOutcome(UiOutcome::SubmitJson(ref value)) => {
+            if let Some(params) = extract_cert_params(value) {
+                effects.push(Effect::Log(format!(
+                    "Certificate form submitted (CN={})",
+                    params.common_name
+                )));
+                effects.push(Effect::Async(TaskKind::GenerateCert(params)));
+            }
+        }
+        LegacyAction::TaskFinished(_id, ref res) => {
+            state.last_task = Some(res.clone());
+            match res {
+                TaskResultKind::CertGenerated { cn, .. } => {
+                    effects.push(Effect::Log(format!("Certificate generated for {cn}")));
+                }
+                TaskResultKind::CertFailed { cn, error } => {
+                    effects.push(Effect::Log(format!(
+                        "Certificate generation failed for {cn}: {error}"
+                    )));
+                }
+            }
+        }
+        _ => {}
+    }
+
+    effects
+}
+
+pub fn reduce_intent(state: &mut RootState, intent: Intent) -> Vec<Effect> {
     let mut effects: Vec<Effect> = Vec::new();
 
     match intent {
@@ -68,7 +129,7 @@ pub fn reduce(state: &mut RootState, intent: Intent) -> Vec<Effect> {
         Intent::Resize(w, h) => {
             state.last_resize = Some((w, h));
         }
-        Intent::Navigate(idx) => {
+        Intent::NavigateIndex(idx) => {
             let target = map_index_to_app_state(idx, &state.app_state);
             state.pending_navigation = Some(target);
             effects.push(Effect::Log(format!("Navigate -> {}", idx)));
@@ -84,30 +145,6 @@ pub fn reduce(state: &mut RootState, intent: Intent) -> Vec<Effect> {
                     state.focus_index = state.focus_total - 1;
                 } else {
                     state.focus_index -= 1;
-                }
-            }
-        }
-        // Certificate form submission (Phase 9.2 stub):
-        // Detect a form JSON submission that looks like the certificate wizard output.
-        Intent::UiOutcome(UiOutcome::SubmitJson(ref value)) => {
-            if let Some(params) = extract_cert_params(value) {
-                effects.push(Effect::Log(format!(
-                    "Certificate form submitted (CN={})",
-                    params.common_name
-                )));
-                effects.push(Effect::Async(TaskKind::GenerateCert(params)));
-            }
-        }
-        Intent::TaskFinished(_id, ref res) => {
-            state.last_task = Some(res.clone());
-            match res {
-                TaskResultKind::CertGenerated { cn, .. } => {
-                    effects.push(Effect::Log(format!("Certificate generated for {cn}")));
-                }
-                TaskResultKind::CertFailed { cn, error } => {
-                    effects.push(Effect::Log(format!(
-                        "Certificate generation failed for {cn}: {error}"
-                    )));
                 }
             }
         }
@@ -205,14 +242,14 @@ mod tests {
     fn quit_sets_quit_requested() {
         let mut rs = initial_root_state(&cli_setup());
         assert!(!rs.quit_requested);
-        reduce(&mut rs, Intent::Quit);
+        reduce(&mut rs, LegacyAction::Quit);
         assert!(rs.quit_requested);
     }
 
     #[test]
     fn resize_updates_size() {
         let mut rs = initial_root_state(&cli_setup());
-        reduce(&mut rs, Intent::Resize(120, 40));
+        reduce(&mut rs, LegacyAction::Resize(120, 40));
         assert_eq!(rs.last_resize, Some((120, 40)));
     }
 
@@ -220,7 +257,7 @@ mod tests {
     fn navigate_sets_pending_state() {
         let mut rs = initial_root_state(&cli_setup());
         assert!(rs.pending_navigation.is_none());
-        reduce(&mut rs, Intent::Navigate(2));
+        reduce(&mut rs, LegacyAction::Navigate(2));
         assert!(matches!(
             rs.pending_navigation,
             Some(AppState::Dashboard(_))
@@ -230,7 +267,7 @@ mod tests {
     #[test]
     fn navigate_out_of_range_defaults() {
         let mut rs = initial_root_state(&cli_setup());
-        reduce(&mut rs, Intent::Navigate(99));
+        reduce(&mut rs, LegacyAction::Navigate(99));
         assert!(matches!(
             rs.pending_navigation,
             Some(AppState::Dashboard(_))
@@ -248,7 +285,7 @@ mod tests {
     #[test]
     fn quit_produces_log_effect() {
         let mut rs = initial_root_state(&cli_setup());
-        let eff = reduce(&mut rs, Intent::Quit);
+        let eff = reduce(&mut rs, LegacyAction::Quit);
         assert!(
             eff.iter()
                 .any(|e| matches!(e, Effect::Log(msg) if msg.contains("Quit"))),
@@ -267,7 +304,10 @@ mod tests {
             "self_signed": "true",
             "output_path": "/tmp/cert.pem"
         });
-        let eff = reduce(&mut rs, Intent::UiOutcome(UiOutcome::SubmitJson(json)));
+        let eff = reduce(
+            &mut rs,
+            LegacyAction::UiOutcome(UiOutcome::SubmitJson(json)),
+        );
         assert!(
             eff.iter()
                 .any(|e| matches!(e, Effect::Async(TaskKind::GenerateCert(_)))),
