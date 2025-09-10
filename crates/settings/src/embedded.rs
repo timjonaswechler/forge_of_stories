@@ -21,7 +21,7 @@ pub fn default_settings_server() -> Cow<'static, str> {
     asset_str::<SettingsAssets>("settings/aether-default.toml")
 }
 
-pub fn default_settings_cli() -> Cow<'static, str> {
+pub fn default_settings_wizard() -> Cow<'static, str> {
     asset_str::<SettingsAssets>("settings/wizard-default.toml")
 }
 

@@ -4,7 +4,6 @@ version = "0.1.0"
 
 [global]
 Quit = ["ctrl+c"]
-Help = ["ctrl+h"]
 OpenPopup = ["ctrl+p"]
 ModeCycle = ["tab"]
 ToggleKeymap = ["f1"]
@@ -13,7 +12,8 @@ ModeInsert = ["i"]
 
 
 [start]
-Submit = ["enter"]
+Navigate= ["enter"]
+
 
 
 [settings]
@@ -27,4 +27,3 @@ SwitchInputMode = ["enter"]
 [popup]
 Submit = ["enter"]
 Cancel = ["esc"]
-

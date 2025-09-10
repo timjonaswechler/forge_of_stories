@@ -1,67 +1,72 @@
+use std::sync::Arc;
+
 use color_eyre::Result;
 use crossterm::event::{KeyEvent, MouseEvent};
 use ratatui::{
     Frame,
-    layout::{Constraint, Rect},
+    layout::{Rect, Size},
 };
+use tokio::sync::mpsc::UnboundedSender;
 
-use crate::{action::Action, tui::Event, tui::EventResponse};
+use crate::{action::Action, app::settings::SettingsStore, tui::Event};
 
-pub mod logo;
-pub mod popup;
-pub mod popups;
-
-pub mod settings_categories;
-pub mod settings_details;
-pub mod welcome;
+pub mod fps;
+pub mod home;
 
 /// `Component` is a trait that represents a visual and interactive element of the user interface.
 ///
 /// Implementors of this trait can be registered with the main application loop and will be able to
 /// receive events, update state, and be rendered on the screen.
-pub trait Component: Send {
-    fn init(&mut self) -> Result<()> {
+pub trait Component {
+    /// Register the action sender so the component can emit actions back to the app.
+    fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
+        let _ = tx; // to appease clippy
         Ok(())
     }
 
-    fn height_constraint(&self) -> Constraint;
-
-    /// Human-readable component name (for diagnostics/logs)
-    fn name(&self) -> &'static str {
-        std::any::type_name::<Self>()
+    /// Register a shared settings store that components can read from and (optionally) write to.
+    ///
+    /// Note: This uses `Arc<SettingsStore>` to avoid cloning the store and to keep a single shared
+    /// view across components.
+    fn register_settings_handler(&mut self, settings: Arc<SettingsStore>) -> Result<()> {
+        let _ = settings; // to appease clippy
+        Ok(())
     }
 
-    /// Keymap context used to look up shortcuts for this component
-    fn keymap_context(&self) -> &'static str {
-        "global"
+    /// Called once when the component is created to provide initial terminal size.
+    fn init(&mut self, area: Size) -> Result<()> {
+        let _ = area; // to appease clippy
+        Ok(())
     }
 
-    fn handle_events(&mut self, event: Event) -> Result<Option<EventResponse<Action>>> {
-        let r = match event {
-            Event::Key(key_event) => self.handle_key_events(key_event)?,
-            Event::Mouse(mouse_event) => self.handle_mouse_events(mouse_event)?,
+    /// Route a high-level TUI event to this component.
+    fn handle_events(&mut self, event: Option<Event>) -> Result<Option<Action>> {
+        let action = match event {
+            Some(Event::Key(key_event)) => self.handle_key_event(key_event)?,
+            Some(Event::Mouse(mouse_event)) => self.handle_mouse_event(mouse_event)?,
             _ => None,
         };
-        Ok(r)
+        Ok(action)
     }
 
-    fn handle_key_events(&mut self, _key: KeyEvent) -> Result<Option<EventResponse<Action>>> {
+    /// Handle a key event. Return an Action to be dispatched if appropriate.
+    fn handle_key_event(&mut self, key: KeyEvent) -> Result<Option<Action>> {
+        let _ = key; // to appease clippy
         Ok(None)
     }
 
-    fn handle_mouse_events(&mut self, _mouse: MouseEvent) -> Result<Option<EventResponse<Action>>> {
+    /// Handle a mouse event. Return an Action to be dispatched if appropriate.
+    fn handle_mouse_event(&mut self, mouse: MouseEvent) -> Result<Option<Action>> {
+        let _ = mouse; // to appease clippy
         Ok(None)
     }
 
-    fn update(&mut self, _action: Action) -> Result<Option<Action>> {
+    /// Update this component in response to a dispatched action.
+    fn update(&mut self, action: Action) -> Result<Option<Action>> {
+        let _ = action; // to appease clippy
         Ok(None)
     }
 
-    /// Optional hint for popups to request a minimum (width, height).
-    /// Default: None (caller decides). Popups can override to suggest their own size.
-    fn popup_min_size(&self) -> Option<(u16, u16)> {
-        None
-    }
-
-    fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()>;
+    /// Draw this component within the provided area.
+    fn draw(&mut self, frame: &mut Frame<'_>, area: Rect) -> Result<()>;
 }

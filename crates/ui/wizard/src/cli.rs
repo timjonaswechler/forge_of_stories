@@ -15,8 +15,7 @@ pub enum Cmd {
         #[command(subcommand)]
         mode: RunMode,
     },
-    /// Health probe (scripts/monitoring)
-    Health,
+    // Health,
     // /// Install components
     // Install {
     //     #[arg(value_enum)]

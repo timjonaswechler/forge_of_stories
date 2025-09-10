@@ -1,77 +1,79 @@
-use color_eyre::eyre::Result;
+use crate::{action::Action, components::Component, tui::Event};
+use color_eyre::Result;
 use crossterm::event::{KeyEvent, MouseEvent};
-use ratatui::layout::Rect;
+use ratatui::{Frame, layout::Rect};
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::{
-    action::Action,
-    tui::{Event, EventResponse, Frame},
-};
-
-mod dashboard;
-mod health;
-mod settings;
-mod setup;
-
-pub use dashboard::DashboardPage;
-pub use health::HealthPage;
-pub use settings::SettingsPage;
-pub use setup::SetupPage;
-
+/// A top-level screen composed of zero or more components.
+/// Pages own focus state among their components and expose high-level behaviors to the app.
 pub trait Page {
+    /// Provide the page with an action sender so it can emit `Action`s.
     #[allow(unused_variables)]
     fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
         Ok(())
     }
 
+    /// Initialize the page once on creation/activation.
     fn init(&mut self) -> Result<()> {
         Ok(())
     }
 
+    /// Provide components owned by this page for App registration.
+    /// Return a vector of (stable_id, component). The App will assign indices and manage focus by index or id.
+    fn provide_components(&mut self) -> Vec<(String, Box<dyn Component>)> {
+        Vec::new()
+    }
+
+    /// Called when the page becomes focused/active.
     fn focus(&mut self) -> Result<()> {
         Ok(())
     }
 
+    /// Called when the page is no longer focused/active.
     fn unfocus(&mut self) -> Result<()> {
         Ok(())
     }
 
-    /// Return the active keymap context name used to export shortcuts for this page.
-    /// Default is "global"; pages can override with e.g. "setup", "dashboard", "health".
+    /// Active keymap context for this page (e.g. "global", "setup", "dashboard").
     fn keymap_context(&self) -> &'static str {
         "global"
     }
 
-    /// Return the focused component's name for this page (if any).
-    /// Default is "root". Pages with sub-components should override and return the
-    /// currently focused component's human-readable name.
-    fn focused_component_name(&self) -> &'static str {
-        "root"
+    /// The currently focused component id within the page for status/tooling.
+    /// Pages should emit UiAction::ReportFocusedComponent to update App focus;
+    /// this method is for read-only status (e.g., status bar).
+    fn focused_component_id(&self) -> Option<&str> {
+        None
     }
 
-    fn handle_events(&mut self, event: Event) -> Result<Option<EventResponse<Action>>> {
-        let r = match event {
-            Event::Key(key_event) => self.handle_key_events(key_event)?,
-            Event::Mouse(mouse_event) => self.handle_mouse_events(mouse_event)?,
+    /// Route an optional event to the page. Return an action to send back to the app.
+    fn handle_events(&mut self, event: Option<Event>) -> Result<Option<Action>> {
+        let action = match event {
+            Some(Event::Key(key)) => self.handle_key_events(key)?,
+            Some(Event::Mouse(mouse)) => self.handle_mouse_events(mouse)?,
             _ => None,
         };
-        Ok(r)
+        Ok(action)
     }
 
+    /// Handle key events within the page. Return an action to send back to the app.
     #[allow(unused_variables)]
-    fn handle_key_events(&mut self, key: KeyEvent) -> Result<Option<EventResponse<Action>>> {
+    fn handle_key_events(&mut self, key: KeyEvent) -> Result<Option<Action>> {
         Ok(None)
     }
 
+    /// Handle mouse events within the page. Return an action to send back to the app.
     #[allow(unused_variables)]
-    fn handle_mouse_events(&mut self, mouse: MouseEvent) -> Result<Option<EventResponse<Action>>> {
+    fn handle_mouse_events(&mut self, mouse: MouseEvent) -> Result<Option<Action>> {
         Ok(None)
     }
 
+    /// Update this page in response to an action broadcast by the app or other components.
     #[allow(unused_variables)]
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         Ok(None)
     }
 
-    fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()>;
+    /// Draw the page to the provided area.
+    fn draw(&mut self, f: &mut Frame, area: Rect) -> Result<()>;
 }

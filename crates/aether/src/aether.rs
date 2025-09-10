@@ -7,10 +7,6 @@ use color_eyre::Result;
 impl Application for AetherApp {
     type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
     const APP_ID: &'static str = "aether";
-    const EMBEDDED_SETTINGS_ASSET: Option<&'static str> = Some("settings/aether-default.toml");
-    const EMBEDDED_KEYMAP_ASSET: Option<&'static str> = None;
-    const ENV_LAYERS_VAR: Option<&'static str> = Some("FOS_AETHER_ENV_LAYERS");
-    const ENV_PREFIX: Option<&'static str> = Some("FOS_AETHER");
     fn init_platform() -> Result<(), Self::Error> {
         Ok(())
     }

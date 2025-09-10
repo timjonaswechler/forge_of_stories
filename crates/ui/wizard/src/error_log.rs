@@ -1,19 +1,10 @@
 use std::env;
-use std::sync::OnceLock;
 
 use color_eyre::Result;
 use tracing::error;
 
-static INIT: OnceLock<()> = OnceLock::new();
-
 pub fn init() -> Result<()> {
-    // idempotent: wenn schon initialisiert, tue nichts
-    if INIT.get().is_some() {
-        return Ok(());
-    }
-
-    // try_into_hooks vermeidet Panic bei bereits gesetztem Theme
-    let hooks = color_eyre::config::HookBuilder::default()
+    let (panic_hook, eyre_hook) = color_eyre::config::HookBuilder::default()
         .panic_section(format!(
             "This is a bug. Consider reporting it at {}",
             env!("CARGO_PKG_REPOSITORY")
@@ -21,11 +12,8 @@ pub fn init() -> Result<()> {
         .capture_span_trace_by_default(false)
         .display_location_section(false)
         .display_env_section(false)
-        .try_into_hooks()?; // <-- statt into_hooks()
-
-    let (panic_hook, eyre_hook) = hooks;
+        .into_hooks();
     eyre_hook.install()?;
-
     std::panic::set_hook(Box::new(move |panic_info| {
         if let Ok(mut t) = crate::tui::Tui::new() {
             if let Err(r) = t.exit() {
@@ -38,15 +26,17 @@ pub fn init() -> Result<()> {
             use human_panic::{handle_dump, metadata, print_msg};
             let metadata = metadata!();
             let file_path = handle_dump(&metadata, panic_info);
+            // prints human-panic message
             print_msg(file_path, &metadata)
                 .expect("human-panic: printing error message to console failed");
-            eprintln!("{}", panic_hook.panic_report(panic_info));
+            eprintln!("{}", panic_hook.panic_report(panic_info)); // prints color-eyre stack trace to stderr
         }
         let msg = format!("{}", panic_hook.panic_report(panic_info));
         error!("Error: {}", strip_ansi_escapes::strip_str(msg));
 
         #[cfg(debug_assertions)]
         {
+            // Better Panic stacktrace that is only enabled when debugging.
             better_panic::Settings::auto()
                 .most_recent_first(false)
                 .lineno_suffix(true)
@@ -56,9 +46,33 @@ pub fn init() -> Result<()> {
 
         std::process::exit(libc::EXIT_FAILURE);
     }));
-
-    // Markiere als initialisiert
-    let _ = INIT.set(());
-
     Ok(())
+}
+
+/// Similar to the `std::dbg!` macro, but generates `tracing` events rather
+/// than printing to stdout.
+///
+/// By default, the verbosity level for the generated events is `DEBUG`, but
+/// this can be customized.
+#[macro_export]
+macro_rules! trace_dbg {
+        (target: $target:expr, level: $level:expr, $ex:expr) => {
+            {
+                match $ex {
+                        value => {
+                                tracing::event!(target: $target, $level, ?value, stringify!($ex));
+                                value
+                        }
+                }
+            }
+        };
+        (level: $level:expr, $ex:expr) => {
+                trace_dbg!(target: module_path!(), level: $level, $ex)
+        };
+        (target: $target:expr, $ex:expr) => {
+                trace_dbg!(target: $target, level: tracing::Level::DEBUG, $ex)
+        };
+        ($ex:expr) => {
+                trace_dbg!(level: tracing::Level::DEBUG, $ex)
+        };
 }

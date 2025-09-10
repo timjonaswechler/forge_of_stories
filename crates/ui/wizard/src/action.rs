@@ -1,139 +1,236 @@
-use crate::components::Component;
-use crate::core::effects::TaskResultKind;
-use crate::theme::Mode;
+//! Action system for Wizard
+//!
+//! Goals of this refactor:
+//! - Keep existing core actions working (Tick, Render, Resize, Suspend, Resume, Quit, ClearScreen, Error, Help).
+//! - Introduce a split between UI actions, App actions, and App-logic actions.
+//! - Add primitives for a layer system (popups and notifications) and background tasks.
+//!
+//! Migration strategy:
+//! - Existing code matching on the legacy variants continues to work.
+//! - New flows can send `Action::Ui(..)`, `Action::App(..)`, and `Action::Logic(..)` over the same channel.
+//! - Over time we can move app code to match the structured variants.
+
 use serde::{Deserialize, Serialize};
 use strum::Display;
 
-type Command = String;
-type Args = Option<String>;
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum PreflightStatus {
-    Present,
-    Missing,
-    Disabled,
-    Error,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PreflightItem {
-    pub label: String,
-    pub status: PreflightStatus,
-    pub message: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum PopupResult {
-    AlertClosed,
-    Confirmed,
-    Cancelled,
-    InputSubmitted(String),
-    FormSubmitted(serde_json::Value),
-}
-
-/// Unified UI outcome channel (Phase 5.1).
-/// Popups (and later other interactive components) should express their semantic
-/// result via UiOutcome instead of emitting low-level lifecycle `Action`s such as
-/// `ClosePopup`.
+/// Top-level action routed through the application.
 ///
-/// Variants:
-/// - None:           No meaningful outcome (no-op)
-/// - RequestClose:   Neutral request to close (e.g. alert acknowledged)
-/// - SubmitString:   Submitted a textual value
-/// - SubmitJson:     Submitted structured form data
-/// - Confirmed:      Explicit positive acknowledgement
-/// - Cancelled:      User cancelled / aborted interaction
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum UiOutcome {
-    None,
-    RequestClose,
-    SubmitString(String),
-    SubmitJson(serde_json::Value),
-    Confirmed,
-    Cancelled,
-}
-
-impl From<PopupResult> for UiOutcome {
-    fn from(pr: PopupResult) -> Self {
-        match pr {
-            PopupResult::AlertClosed => UiOutcome::RequestClose,
-            PopupResult::Confirmed => UiOutcome::Confirmed,
-            PopupResult::Cancelled => UiOutcome::Cancelled,
-            PopupResult::InputSubmitted(s) => UiOutcome::SubmitString(s),
-            PopupResult::FormSubmitted(v) => UiOutcome::SubmitJson(v),
-        }
-    }
-}
-
-#[derive(Serialize, Display)]
+/// Back-compat note:
+/// - Legacy variants are kept so current `match` arms keep compiling.
+/// - New structured variants allow a cleaner separation of concerns.
+#[derive(Debug, Clone, PartialEq, Display, Serialize, Deserialize)]
 pub enum Action {
+    // ----------------
+    // Legacy/core actions (kept for compatibility with existing code)
+    // ----------------
     Tick,
     Render,
     Resize(u16, u16),
     Suspend,
     Resume,
     Quit,
-    Refresh,
+    ClearScreen,
     Error(String),
     Help,
-    FocusNext,
-    FocusPrev,
-    Focus,
-    UnFocus,
-    Up,
-    Down,
-    Submit,
-    SwitchInputMode,
-    SetMode(Mode),
-    CycleMode,
-    Update,
-    OpenPopup(#[serde(skip)] Box<dyn Component>),
-    ClosePopup,
-    ToggleKeymapOverlay,
-    /// Legacy popup result channel (will be phased out once all producers emit UiOutcome)
-    PopupResult(PopupResult),
-    /// New unified UI outcome channel (Phase 5.1)
-    UiOutcome(UiOutcome),
-    Navigate(usize),
-    /// Deliver results of pre-start preflight checks to the UI
-    PreflightResults(Vec<PreflightItem>),
 
-    IdleTimeout,
+    // ----------------
+    // New: Structured actions
+    // ----------------
+    /// UI-only intents (focus, layers, visual state, edit mode, notifications).
+    Ui(UiAction),
+    /// App-level intents (navigation, page selection, settings application).
+    App(AppAction),
+    /// Application logic / background tasks / IO / long-running operations.
+    Logic(LogicAction),
 }
 
-impl Clone for Action {
-    fn clone(&self) -> Self {
-        match self {
-            Action::Tick => Action::Tick,
-            Action::Render => Action::Render,
-            Action::Resize(w, h) => Action::Resize(*w, *h),
-            Action::Suspend => Action::Suspend,
-            Action::Resume => Action::Resume,
-            Action::Quit => Action::Quit,
-            Action::Refresh => Action::Refresh,
-            Action::Error(e) => Action::Error(e.clone()),
-            Action::Help => Action::Help,
-            Action::FocusNext => Action::FocusNext,
-            Action::FocusPrev => Action::FocusPrev,
-            Action::Focus => Action::Focus,
-            Action::UnFocus => Action::UnFocus,
-            Action::Up => Action::Up,
-            Action::Down => Action::Down,
-            Action::Submit => Action::Submit,
-            Action::SwitchInputMode => Action::SwitchInputMode,
-            Action::SetMode(m) => Action::SetMode(*m),
-            Action::CycleMode => Action::CycleMode,
-            Action::Update => Action::Update,
-            // Cloning an OpenPopup (with a boxed trait object) isn't supported; map to an Error.
-            Action::OpenPopup(_) => Action::Error("Clone not supported for OpenPopup".into()),
-            Action::ClosePopup => Action::ClosePopup,
-            Action::ToggleKeymapOverlay => Action::ToggleKeymapOverlay,
-            Action::PopupResult(r) => Action::PopupResult(r.clone()),
-            Action::UiOutcome(o) => Action::UiOutcome(o.clone()),
-            Action::Navigate(i) => Action::Navigate(*i),
-            Action::PreflightResults(items) => Action::PreflightResults(items.clone()),
+//
+// UI: focus, layers, edit-mode, notifications
+//
 
-            Action::IdleTimeout => Action::IdleTimeout,
-        }
+/// UI Mode of interaction. Normal vs Edit (e.g., when modifying values).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, Serialize, Deserialize)]
+pub enum UiMode {
+    Normal,
+    Edit,
+}
+
+/// Layers that may be drawn above base content.
+/// - Popup: modal, blocks interaction with lower layers; covers full available area by policy.
+/// - Notification: ephemeral, highest visual layer; does not necessarily block interaction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, Serialize, Deserialize)]
+pub enum LayerKind {
+    Popup,
+    Notification,
+    Overlay,
+}
+
+/// Notification severity levels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, Serialize, Deserialize)]
+pub enum NotificationLevel {
+    Info,
+    Success,
+    Warning,
+    Error,
+}
+
+/// A UI notification payload.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Notification {
+    pub id: String,
+    pub level: NotificationLevel,
+    pub message: String,
+    /// Optional auto-dismiss timeout in milliseconds.
+    pub timeout_ms: Option<u64>,
+}
+
+/// UI-scoped actions: focus, layers, notifications, edit-mode toggles.
+/// These should not perform IO or mutate app-wide state directly.
+#[derive(Debug, Clone, PartialEq, Eq, Display, Serialize, Deserialize)]
+pub enum UiAction {
+    // Focus management on the current page
+    FocusNext,
+    FocusPrev,
+    /// Focus component by an identifier (page-defined).
+    FocusById(String),
+
+    // Page-level selection for UI-only routing (does not change app routing by itself)
+    /// Informative: the UI reports the focused component name (for status bars/tooltips).
+    ReportFocusedComponent(String),
+
+    // Edit mode
+    ToggleEditMode,
+    EnterEditMode,
+    ExitEditMode,
+
+    // Layering primitives
+    /// Push a popup layer with a known ID (page/component decides what to render).
+    OpenPopup {
+        id: String,
+    },
+    /// Close a popup layer by ID (no-op if missing).
+    ClosePopup {
+        id: String,
+    },
+    /// Push a generic layer kind (e.g., overlay). Concrete meaning is page-defined.
+    PushLayer(LayerKind),
+    /// Pop the top-most layer (if any).
+    PopLayer,
+
+    // Notifications
+    ShowNotification(Notification),
+    /// Dismiss a notification by ID.
+    DismissNotification {
+        id: String,
+    },
+}
+
+//
+// App-level: navigation, page selection, settings, keymap contexts
+//
+
+/// App-scoped actions: navigation between pages, keymap context changes,
+/// app mode exposure to UI, and other "application shell" state changes.
+#[derive(Debug, Clone, PartialEq, Eq, Display, Serialize, Deserialize)]
+pub enum AppAction {
+    /// Set the active page by its stable ID (page registry decides mapping).
+    SetActivePage {
+        id: String,
+    },
+
+    /// Update the current keymap context (e.g., "global", "setup", "dashboard").
+    SetKeymapContext {
+        name: String,
+    },
+
+    /// Expose UI mode change as app-level state (the UI may request, app confirms).
+    SetUiMode(UiMode),
+
+    /// Persist/Load app settings, if supported by the current page/app state.
+    SaveSettings,
+    LoadSettings,
+}
+
+//
+// Logic: background tasks, async IO, domain operations
+//
+
+/// Identifier for background tasks.
+pub type TaskId = String;
+
+/// Background task category (for metrics/UX).
+#[derive(Debug, Clone, PartialEq, Display, Serialize, Deserialize)]
+pub enum TaskKind {
+    Io,
+    Network,
+    Compute,
+    Other,
+}
+
+/// Spawn specification for a background task.
+/// For early scaffolding we keep this generic; callers can encode JSON payloads.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskSpec {
+    pub kind: TaskKind,
+    /// Human-friendly label for UX elements (task list, status line).
+    pub label: String,
+    /// Optional opaque payload (e.g., serialized params).
+    pub payload_json: Option<String>,
+}
+
+/// Progress update for a background task.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskProgress {
+    pub id: TaskId,
+    /// 0.0 to 1.0, if known. Use None for indeterminate progress.
+    pub fraction: Option<f32>,
+    /// Optional status message for UI.
+    pub message: Option<String>,
+}
+
+/// Result summary for a completed task. Keep generic for now.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaskResult {
+    pub id: TaskId,
+    pub success: bool,
+    /// Optional machine-readable payload.
+    pub result_json: Option<String>,
+    /// Optional human-readable message (errors or success summary).
+    pub message: Option<String>,
+}
+
+/// App-logic actions: spawning and reporting background tasks and other domain actions.
+#[derive(Debug, Clone, PartialEq, Display, Serialize, Deserialize)]
+pub enum LogicAction {
+    // Background tasks lifecycle
+    SpawnTask(TaskSpec),
+    CancelTask { id: TaskId },
+    TaskStarted { id: TaskId },
+    TaskProgress(TaskProgress),
+    TaskCompleted(TaskResult),
+
+    // Domain operations (config, IO) – extend as needed
+    LoadConfig,
+    SaveConfig,
+}
+
+// Convenience conversions to ease migration to structured actions.
+// These allow sending structured actions while legacy handlers continue to match on core variants.
+
+impl From<UiAction> for Action {
+    fn from(value: UiAction) -> Self {
+        Action::Ui(value)
+    }
+}
+
+impl From<AppAction> for Action {
+    fn from(value: AppAction) -> Self {
+        Action::App(value)
+    }
+}
+
+impl From<LogicAction> for Action {
+    fn from(value: LogicAction) -> Self {
+        Action::Logic(value)
     }
 }

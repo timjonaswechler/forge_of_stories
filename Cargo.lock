@@ -6469,6 +6469,7 @@ dependencies = [
  "time",
  "tokio",
  "tokio-util",
+ "toml",
  "tracing",
  "tracing-error",
  "tracing-subscriber",
