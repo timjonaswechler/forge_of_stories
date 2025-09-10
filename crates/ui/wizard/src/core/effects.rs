@@ -119,13 +119,19 @@ impl fmt::Display for TaskKind {
 #[derive(Debug, Clone)]
 pub enum TaskResultKind {
     /// Successful certificate generation with in-memory PEM artifacts.
+    /// `output_path` can carry a user-provided hint for follow-up persistence.
     CertGenerated {
         cn: String,
         cert_pem: String,
         key_pem: String,
+        output_path: Option<String>,
     },
     /// Failed certificate generation with an error message context.
     CertFailed { cn: String, error: String },
+    /// Successful persistence of certificate/key artifacts on disk.
+    Persisted { path: String },
+    /// Failed persistence attempt for certificate/key artifacts.
+    PersistFailed { path: String, error: String },
 }
 
 /// Internal domain/system event channel definition (Phase 11).

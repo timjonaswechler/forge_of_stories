@@ -110,6 +110,14 @@ pub fn reduce(state: &mut RootState, intent: LegacyAction) -> Vec<Effect> {
                         "Certificate generation failed for {cn}: {error}"
                     )));
                 }
+                TaskResultKind::Persisted { path } => {
+                    effects.push(Effect::Log(format!("Certificate persisted at {path}")));
+                }
+                TaskResultKind::PersistFailed { path, error } => {
+                    effects.push(Effect::Log(format!(
+                        "Certificate persistence failed at {path}: {error}"
+                    )));
+                }
             }
         }
         _ => {}

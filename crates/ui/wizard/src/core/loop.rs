@@ -161,6 +161,27 @@ impl<'a> AppLoop<'a> {
                                         .cancel_label("Cancel");
                                     a = Action::OpenPopup(Box::new(popup));
                                 }
+                                // Primary reducer path for key events: translate to Intent and reduce immediately
+                                let split = crate::core::intent_model::classify_action(&a);
+                                if let Some(intent) = split.intent.clone() {
+                                    let effs = crate::core::reducer::reduce_intent(
+                                        &mut self.app.root_state,
+                                        intent,
+                                    );
+                                    for eff in effs {
+                                        match eff {
+                                            crate::core::effects::Effect::None => {}
+                                            crate::core::effects::Effect::Log(msg) => {
+                                                log::info!("[effect] {msg}");
+                                            }
+                                            crate::core::effects::Effect::Async(task) => {
+                                                log::info!("[effect] schedule async task: {task}");
+                                                executor.spawn(task);
+                                            }
+                                        }
+                                    }
+                                }
+                                // Still dispatch legacy action for UI commands (e.g., OpenPopup)
                                 action_tx.send(a).ok();
                             }
                         }
@@ -274,23 +295,47 @@ impl<'a> AppLoop<'a> {
                                 );
                                 action_tx.send(Action::OpenPopup(Box::new(popup))).ok();
 
-                                // Optional follow-up: schedule persistence if an output path is available
-                                // Note: The output_path is currently not propagated via TaskResultKind.
-                                // Once available, schedule:
-                                // if let Some(output_path) = maybe_output_path {
-                                //     let task = crate::core::effects::TaskKind::PersistCert {
-                                //         output_path: output_path.clone(),
-                                //         cert_pem: cert_pem.clone(),
-                                //         key_pem: key_pem.clone(),
-                                //     };
-                                //     executor.spawn(task);
-                                // }
+                                // Auto-schedule persistence when an output path is provided
+                                if let crate::core::effects::TaskResultKind::CertGenerated {
+                                    cert_pem,
+                                    key_pem,
+                                    output_path,
+                                    ..
+                                } = res.clone()
+                                {
+                                    if let Some(output_path) = output_path {
+                                        let task = crate::core::effects::TaskKind::PersistCert {
+                                            output_path,
+                                            cert_pem,
+                                            key_pem,
+                                        };
+                                        executor.spawn(task);
+                                    }
+                                }
                             }
                             TaskResultKind::CertFailed { cn, error } => {
                                 log::warn!(
                                     "[task:{id}] certificate generation failed for {cn}: {error}"
                                 );
                             }
+                            TaskResultKind::Persisted { path } => {
+                                log::info!("[task:{id}] persisted certificate and key at {path}");
+                            }
+                            TaskResultKind::PersistFailed { path, error } => {
+                                log::warn!(
+                                    "[task:{id}] failed to persist certificate/key at {path}: {error}"
+                                );
+                            }
+                        }
+                        // Show confirmation when persistence finished successfully
+                        if let crate::core::effects::TaskResultKind::Persisted { path } =
+                            res.clone()
+                        {
+                            let popup = crate::components::popups::alert::AlertPopup::new(
+                                "Certificate saved",
+                                format!("Saved to {}", path),
+                            );
+                            action_tx.send(Action::OpenPopup(Box::new(popup))).ok();
                         }
                         log::trace!("[internal_event] {:?}", _internal);
                     }

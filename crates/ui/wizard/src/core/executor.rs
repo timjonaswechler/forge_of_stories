@@ -181,6 +181,7 @@ impl Worker {
                                 cn: params.common_name.clone(),
                                 cert_pem: artifacts.cert_pem,
                                 key_pem: artifacts.key_pem,
+                                output_path: params.output_path.clone(),
                             },
                         ));
                         Ok(())
@@ -201,6 +202,114 @@ impl Worker {
                     }
                 }
             }
+            TaskKind::PersistCert {
+                output_path,
+                cert_pem,
+                key_pem,
+            } => {
+                self.emit(Action::TaskLog(
+                    dispatch.id,
+                    format!("Persisting certificate to {}", output_path),
+                ));
+                // Determine target file paths
+                let out = std::path::Path::new(&output_path);
+                let (cert_path, key_path) = if out.is_dir() {
+                    (out.join("cert.pem"), out.join("key.pem"))
+                } else {
+                    match out.extension().and_then(|e| e.to_str()) {
+                        Some("pem") => {
+                            let cert = out.to_path_buf();
+                            let stem = out.file_stem().and_then(|s| s.to_str()).unwrap_or("key");
+                            let key = out.with_file_name(format!("{stem}.key.pem"));
+                            (cert, key)
+                        }
+                        _ => (out.with_extension("pem"), out.with_extension("key.pem")),
+                    }
+                };
+
+                // Ensure directories exist
+                if let Some(dir) = cert_path.parent() {
+                    if let Err(e) = std::fs::create_dir_all(dir) {
+                        let path_str = cert_path.to_string_lossy().to_string();
+                        warn!(
+                            "[task:{}] failed to create directory for {}: {}",
+                            dispatch.id, path_str, e
+                        );
+                        self.emit(Action::TaskFinished(
+                            dispatch.id,
+                            TaskResultKind::PersistFailed {
+                                path: path_str,
+                                error: e.to_string(),
+                            },
+                        ));
+                        return Err(e.to_string());
+                    }
+                }
+                if let Some(dir) = key_path.parent() {
+                    if let Err(e) = std::fs::create_dir_all(dir) {
+                        let path_str = key_path.to_string_lossy().to_string();
+                        warn!(
+                            "[task:{}] failed to create directory for {}: {}",
+                            dispatch.id, path_str, e
+                        );
+                        self.emit(Action::TaskFinished(
+                            dispatch.id,
+                            TaskResultKind::PersistFailed {
+                                path: path_str,
+                                error: e.to_string(),
+                            },
+                        ));
+                        return Err(e.to_string());
+                    }
+                }
+
+                // Write files
+                if let Err(e) = std::fs::write(&cert_path, cert_pem) {
+                    let path_str = cert_path.to_string_lossy().to_string();
+                    warn!(
+                        "[task:{}] failed to write certificate {}: {}",
+                        dispatch.id, path_str, e
+                    );
+                    self.emit(Action::TaskFinished(
+                        dispatch.id,
+                        TaskResultKind::PersistFailed {
+                            path: path_str,
+                            error: e.to_string(),
+                        },
+                    ));
+                    return Err(e.to_string());
+                }
+                if let Err(e) = std::fs::write(&key_path, key_pem) {
+                    let path_str = key_path.to_string_lossy().to_string();
+                    warn!(
+                        "[task:{}] failed to write key {}: {}",
+                        dispatch.id, path_str, e
+                    );
+                    self.emit(Action::TaskFinished(
+                        dispatch.id,
+                        TaskResultKind::PersistFailed {
+                            path: path_str,
+                            error: e.to_string(),
+                        },
+                    ));
+                    return Err(e.to_string());
+                }
+
+                let saved_path = cert_path
+                    .parent()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|| cert_path.to_string_lossy().to_string());
+
+                info!(
+                    "[task:{}] persisted certificate and key at {}",
+                    dispatch.id, saved_path
+                );
+                self.emit(Action::TaskFinished(
+                    dispatch.id,
+                    TaskResultKind::Persisted { path: saved_path },
+                ));
+                Ok(())
+            }
         }
     }
 }
@@ -209,6 +318,7 @@ impl Worker {
 mod tests {
     use super::*;
     use crate::core::effects::TaskKind;
+    use crate::domain::certs::SelfSignedParams;
 
     #[tokio::test]
     async fn executor_accepts_task() {
@@ -218,6 +328,7 @@ mod tests {
             dns_names: vec!["test.local".into()],
             valid_days: 30,
             key_bits: 2048,
+            output_path: None,
         };
         let id = exec.spawn(TaskKind::GenerateCert(params));
         assert!(id > 0);
