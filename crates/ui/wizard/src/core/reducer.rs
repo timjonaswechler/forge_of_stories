@@ -62,34 +62,7 @@ pub fn reduce(state: &mut RootState, intent: LegacyAction) -> Vec<Effect> {
     let mut effects: Vec<Effect> = Vec::new();
 
     match intent {
-        LegacyAction::Quit => {
-            state.quit_requested = true;
-            effects.push(Effect::Log("Quit requested".into()));
-        }
-        LegacyAction::Resize(w, h) => {
-            state.last_resize = Some((w, h));
-        }
-        LegacyAction::Navigate(idx) => {
-            let target = map_index_to_app_state(idx, &state.app_state);
-            state.pending_navigation = Some(target);
-            effects.push(Effect::Log(format!("Navigate -> {}", idx)));
-        }
-        LegacyAction::FocusNext => {
-            if state.focus_total > 0 {
-                state.focus_index = (state.focus_index + 1) % state.focus_total;
-            }
-        }
-        LegacyAction::FocusPrev => {
-            if state.focus_total > 0 {
-                if state.focus_index == 0 {
-                    state.focus_index = state.focus_total - 1;
-                } else {
-                    state.focus_index -= 1;
-                }
-            }
-        }
-        // Certificate form submission (Phase 9.2 stub):
-        // Detect a form JSON submission that looks like the certificate wizard output.
+        // Process only non-intent legacy actions here; intents are handled by `reduce_intent`.
         LegacyAction::UiOutcome(UiOutcome::SubmitJson(ref value)) => {
             if let Some(params) = extract_cert_params(value) {
                 effects.push(Effect::Log(format!(

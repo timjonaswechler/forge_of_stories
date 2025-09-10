@@ -161,7 +161,7 @@ impl<'a> AppLoop<'a> {
                                         .cancel_label("Cancel");
                                     a = Action::OpenPopup(Box::new(popup));
                                 }
-                                // Primary reducer path for key events: translate to Intent and reduce immediately
+                                // Intent-first: translate to Intent and reduce immediately (no legacy Action dispatch for intents)
                                 let split = crate::core::intent_model::classify_action(&a);
                                 if let Some(intent) = split.intent.clone() {
                                     let effs = crate::core::reducer::reduce_intent(
@@ -180,9 +180,81 @@ impl<'a> AppLoop<'a> {
                                             }
                                         }
                                     }
+                                    // Apply pending navigation directly after handling intents
+                                    if let Some(pending) =
+                                        self.app.root_state.pending_navigation.take()
+                                    {
+                                        let target_index = match pending {
+                                            crate::core::state::AppState::Setup(_) => 0,
+                                            crate::core::state::AppState::Settings(_) => 1,
+                                            crate::core::state::AppState::Dashboard(_) => 2,
+                                            crate::core::state::AppState::Health(_) => 3,
+                                        };
+                                        self.app.active_page = target_index
+                                            .min(self.app.pages.len().saturating_sub(1));
+                                        self.app.root_state.app_state = pending;
+                                        action_tx
+                                            .send(Action::PreflightResults(
+                                                self.app.preflight.clone(),
+                                            ))
+                                            .ok();
+                                        if self.app.root_state.focus_total == 0 {
+                                            self.app.root_state.focus_total = 1;
+                                        }
+                                    }
+                                    // For intents we stop here: do not dispatch legacy Action
+                                    // to avoid double-processing.
+                                } else if let Some(cmd) = split.ui_command.clone() {
+                                    // Interpret UiCommand directly here
+                                    match cmd {
+                                        crate::core::intent_model::UiCommand::OpenPopup => {
+                                            // Use the original action to extract the concrete popup instance
+                                            if let Action::OpenPopup(popup) = a {
+                                                self.app.popup = Some(popup);
+                                            }
+                                        }
+                                        crate::core::intent_model::UiCommand::ClosePopup => {
+                                            self.app.popup = None;
+                                        }
+                                        crate::core::intent_model::UiCommand::ToggleKeymapOverlay => {
+                                            if self.app.popup.is_some() {
+                                                self.app.popup = None;
+                                            } else {
+                                                // Build Keymap overlay like in the legacy handler
+                                                let (context, focused) =
+                                                    if let Some(popup) = self.app.popup.as_deref() {
+                                                        (popup.keymap_context(), popup.name())
+                                                    } else if let Some(page) = self.app.pages.get(self.app.active_page) {
+                                                        (page.keymap_context(), page.focused_component_name())
+                                                    } else {
+                                                        ("global", "root")
+                                                    };
+                                                let mut entries = crate::ui::mappable_entries_for_context(
+                                                    &self.app.base.settings,
+                                                    context,
+                                                );
+                                                entries.sort_by(|a, b| a.0.cmp(&b.0));
+                                                let title = format!("Keymap · {} [{}]", context, focused);
+                                                let overlay =
+                                                    crate::components::popups::keymap::KeymapOverlay::new(title, entries);
+                                                self.app.popup = Some(Box::new(overlay));
+                                            }
+                                        }
+                                        crate::core::intent_model::UiCommand::RenderNow => {
+                                            // Force redraw
+                                            self.tui.draw(|f| {
+                                                self.app.render(f).unwrap_or_else(|err| {
+                                                    action_tx
+                                                        .send(Action::Error(format!("Failed to draw: {:?}", err)))
+                                                        .unwrap();
+                                                })
+                                            })?;
+                                        }
+                                    }
+                                } else {
+                                    // Non-intent/non-command: forward to page-level actions (legacy intents are no longer dispatched)
+                                    action_tx.send(a).ok();
                                 }
-                                // Still dispatch legacy action for UI commands (e.g., OpenPopup)
-                                action_tx.send(a).ok();
                             }
                         }
                         _ => {}
@@ -347,7 +419,7 @@ impl<'a> AppLoop<'a> {
                         // (Platzhalter für periodische Logik)
                     }
                     Action::Quit => {
-                        // Already applied via reducer (Phase 4.2 bridge)
+                        // Handled via Intent reducer; no legacy handling here
                     }
                     Action::Suspend => self.app.should_suspend = true,
                     Action::Resume => self.app.should_suspend = false,
