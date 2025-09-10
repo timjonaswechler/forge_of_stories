@@ -45,8 +45,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use tokio::sync::mpsc;
 
-use crate::action::Action;
-use crate::core::effects::{TaskKind, TaskResultKind};
+use crate::core::effects::{InternalEvent, TaskKind, TaskResultKind};
 use crate::domain::certs::{CertTaskResult, generate_self_signed_task};
 use log::{info, warn};
 
@@ -59,7 +58,7 @@ pub type TaskId = u64;
 #[derive(Clone)]
 pub struct TaskExecutor {
     tx: mpsc::UnboundedSender<Dispatch>,
-    action_tx: Option<mpsc::UnboundedSender<Action>>,
+    internal_tx: Option<mpsc::UnboundedSender<InternalEvent>>,
 }
 
 /// Internal dispatch envelope.
@@ -83,20 +82,20 @@ impl TaskExecutor {
         }
     }
 
-    /// Create a new executor and spawn its worker loop with an action channel.
+    /// Create a new executor and spawn its worker loop with an internal event channel.
     ///
-    /// The provided `action_tx` is used by the executor worker to emit
-    /// Task lifecycle actions back into the main app loop:
-    /// - TaskStarted(id, label)
-    /// - TaskLog(id, msg)
-    /// - TaskFinished(id, TaskResultKind)
-    pub fn new_with_action_tx(action_tx: mpsc::UnboundedSender<Action>) -> Self {
+    /// The provided `internal_tx` is used by the executor worker to emit
+    /// internal events back into the main app loop:
+    /// - InternalEvent::TaskStarted { .. }
+    /// - InternalEvent::TaskLog { .. }
+    /// - InternalEvent::TaskFinished { .. }
+    pub fn new_with_internal_tx(internal_tx: mpsc::UnboundedSender<InternalEvent>) -> Self {
         let (tx, rx) = mpsc::unbounded_channel::<Dispatch>();
-        let worker = Worker::new(rx, Some(action_tx.clone()));
+        let worker = Worker::new(rx, Some(internal_tx.clone()));
         worker.spawn();
         Self {
             tx,
-            action_tx: Some(action_tx),
+            internal_tx: Some(internal_tx),
         }
     }
 
@@ -124,20 +123,20 @@ impl TaskExecutor {
 /// - Multi-worker pool (configurable parallelism)
 struct Worker {
     rx: mpsc::UnboundedReceiver<Dispatch>,
-    action_tx: Option<mpsc::UnboundedSender<Action>>,
+    internal_tx: Option<mpsc::UnboundedSender<InternalEvent>>,
 }
 
 impl Worker {
     fn new(
         rx: mpsc::UnboundedReceiver<Dispatch>,
-        action_tx: Option<mpsc::UnboundedSender<Action>>,
+        internal_tx: Option<mpsc::UnboundedSender<InternalEvent>>,
     ) -> Self {
-        Self { rx, action_tx }
+        Self { rx, internal_tx }
     }
 
-    fn emit(&self, action: Action) {
-        if let Some(tx) = &self.action_tx {
-            let _ = tx.send(action);
+    fn emit(&self, event: InternalEvent) {
+        if let Some(tx) = &self.internal_tx {
+            let _ = tx.send(event);
         }
     }
 
@@ -156,13 +155,16 @@ impl Worker {
     async fn handle(&self, dispatch: Dispatch) -> Result<(), String> {
         // Emit TaskStarted for visibility in the app
         let label = format!("{}", dispatch.kind);
-        self.emit(Action::TaskStarted(dispatch.id, label));
+        self.emit(InternalEvent::TaskStarted {
+            id: dispatch.id,
+            label,
+        });
         match dispatch.kind {
             TaskKind::GenerateCert(params) => {
-                self.emit(Action::TaskLog(
-                    dispatch.id,
-                    "Generating certificate".into(),
-                ));
+                self.emit(InternalEvent::TaskLog {
+                    id: dispatch.id,
+                    message: "Generating certificate".into(),
+                });
                 match generate_self_signed_task(&params) {
                     CertTaskResult::Success { artifacts } => {
                         info!(
@@ -175,15 +177,15 @@ impl Worker {
                             artifacts.cert_pem.len(),
                             artifacts.key_pem.len()
                         );
-                        self.emit(Action::TaskFinished(
-                            dispatch.id,
-                            TaskResultKind::CertGenerated {
+                        self.emit(InternalEvent::TaskFinished {
+                            id: dispatch.id,
+                            result: TaskResultKind::CertGenerated {
                                 cn: params.common_name.clone(),
                                 cert_pem: artifacts.cert_pem,
                                 key_pem: artifacts.key_pem,
                                 output_path: params.output_path.clone(),
                             },
-                        ));
+                        });
                         Ok(())
                     }
                     CertTaskResult::Error { message } => {
@@ -191,13 +193,13 @@ impl Worker {
                             "[task:{}] certificate generation failed CN={} error={}",
                             dispatch.id, params.common_name, message
                         );
-                        self.emit(Action::TaskFinished(
-                            dispatch.id,
-                            TaskResultKind::CertFailed {
+                        self.emit(InternalEvent::TaskFinished {
+                            id: dispatch.id,
+                            result: TaskResultKind::CertFailed {
                                 cn: params.common_name.clone(),
                                 error: message.clone(),
                             },
-                        ));
+                        });
                         Err(message)
                     }
                 }
@@ -207,10 +209,10 @@ impl Worker {
                 cert_pem,
                 key_pem,
             } => {
-                self.emit(Action::TaskLog(
-                    dispatch.id,
-                    format!("Persisting certificate to {}", output_path),
-                ));
+                self.emit(InternalEvent::TaskLog {
+                    id: dispatch.id,
+                    message: format!("Persisting certificate to {}", output_path),
+                });
                 // Determine target file paths
                 let out = std::path::Path::new(&output_path);
                 let (cert_path, key_path) = if out.is_dir() {
@@ -235,13 +237,13 @@ impl Worker {
                             "[task:{}] failed to create directory for {}: {}",
                             dispatch.id, path_str, e
                         );
-                        self.emit(Action::TaskFinished(
-                            dispatch.id,
-                            TaskResultKind::PersistFailed {
+                        self.emit(InternalEvent::TaskFinished {
+                            id: dispatch.id,
+                            result: TaskResultKind::PersistFailed {
                                 path: path_str,
                                 error: e.to_string(),
                             },
-                        ));
+                        });
                         return Err(e.to_string());
                     }
                 }
@@ -252,13 +254,13 @@ impl Worker {
                             "[task:{}] failed to create directory for {}: {}",
                             dispatch.id, path_str, e
                         );
-                        self.emit(Action::TaskFinished(
-                            dispatch.id,
-                            TaskResultKind::PersistFailed {
+                        self.emit(InternalEvent::TaskFinished {
+                            id: dispatch.id,
+                            result: TaskResultKind::PersistFailed {
                                 path: path_str,
                                 error: e.to_string(),
                             },
-                        ));
+                        });
                         return Err(e.to_string());
                     }
                 }
@@ -270,13 +272,13 @@ impl Worker {
                         "[task:{}] failed to write certificate {}: {}",
                         dispatch.id, path_str, e
                     );
-                    self.emit(Action::TaskFinished(
-                        dispatch.id,
-                        TaskResultKind::PersistFailed {
+                    self.emit(InternalEvent::TaskFinished {
+                        id: dispatch.id,
+                        result: TaskResultKind::PersistFailed {
                             path: path_str,
                             error: e.to_string(),
                         },
-                    ));
+                    });
                     return Err(e.to_string());
                 }
                 if let Err(e) = std::fs::write(&key_path, key_pem) {
@@ -285,13 +287,13 @@ impl Worker {
                         "[task:{}] failed to write key {}: {}",
                         dispatch.id, path_str, e
                     );
-                    self.emit(Action::TaskFinished(
-                        dispatch.id,
-                        TaskResultKind::PersistFailed {
+                    self.emit(InternalEvent::TaskFinished {
+                        id: dispatch.id,
+                        result: TaskResultKind::PersistFailed {
                             path: path_str,
                             error: e.to_string(),
                         },
-                    ));
+                    });
                     return Err(e.to_string());
                 }
 
@@ -304,10 +306,10 @@ impl Worker {
                     "[task:{}] persisted certificate and key at {}",
                     dispatch.id, saved_path
                 );
-                self.emit(Action::TaskFinished(
-                    dispatch.id,
-                    TaskResultKind::Persisted { path: saved_path },
-                ));
+                self.emit(InternalEvent::TaskFinished {
+                    id: dispatch.id,
+                    result: TaskResultKind::Persisted { path: saved_path },
+                });
                 Ok(())
             }
         }

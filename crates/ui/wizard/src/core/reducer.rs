@@ -45,7 +45,7 @@
 //!       replaced by reducer-driven state transitions.
 
 use crate::action::{Action as LegacyAction, UiOutcome};
-use crate::core::effects::{Effect, TaskKind, TaskResultKind};
+use crate::core::effects::{Effect, InternalEvent, TaskKind, TaskResultKind};
 use crate::core::intent_model::Intent;
 use crate::core::state::{
     AppState, DashboardState, HealthState, RootState, SettingsState, SetupState,
@@ -209,6 +209,38 @@ fn map_index_to_app_state(index: usize, current: &AppState) -> AppState {
             }
         }
     }
+}
+
+pub fn reduce_internal_event(state: &mut RootState, ev: InternalEvent) -> Vec<Effect> {
+    let mut effects: Vec<Effect> = Vec::new();
+    match ev {
+        InternalEvent::TaskStarted { .. } => {}
+        InternalEvent::TaskLog { message, .. } => {
+            effects.push(Effect::Log(format!("[task] {message}")));
+        }
+        InternalEvent::TaskFinished { result, .. } => {
+            state.last_task = Some(result.clone());
+            match result {
+                TaskResultKind::CertGenerated { cn, .. } => {
+                    effects.push(Effect::Log(format!("Certificate generated for {cn}")));
+                }
+                TaskResultKind::CertFailed { cn, error } => {
+                    effects.push(Effect::Log(format!(
+                        "Certificate generation failed for {cn}: {error}"
+                    )));
+                }
+                TaskResultKind::Persisted { path } => {
+                    effects.push(Effect::Log(format!("Certificate persisted at {path}")));
+                }
+                TaskResultKind::PersistFailed { path, error } => {
+                    effects.push(Effect::Log(format!(
+                        "Certificate persistence failed at {path}: {error}"
+                    )));
+                }
+            }
+        }
+    }
+    effects
 }
 
 #[cfg(test)]

@@ -48,8 +48,10 @@ impl<'a> AppLoop<'a> {
     pub async fn run(&mut self) -> Result<()> {
         // Action channel (unbounded wie vorher)
         let (action_tx, mut action_rx) = mpsc::unbounded_channel::<Action>();
-        // Initialize TaskExecutor with action channel so it can emit Task* actions
-        let executor = TaskExecutor::new_with_action_tx(action_tx.clone());
+        // Internal event channel for executor callbacks
+        let (internal_tx, mut internal_rx) = mpsc::unbounded_channel::<InternalEvent>();
+        // Initialize TaskExecutor with internal event channel
+        let executor = TaskExecutor::new_with_internal_tx(internal_tx.clone());
 
         // Enter terminal UI
         self.tui.enter()?;
@@ -335,82 +337,6 @@ impl<'a> AppLoop<'a> {
 
                 match &action {
                     Action::Tick | Action::Render => {}
-                    Action::TaskStarted(id, label) => {
-                        log::info!("[task:{id}] started {label}");
-                        let _internal = InternalEvent::TaskStarted {
-                            id: *id,
-                            label: label.clone(),
-                        };
-                        log::trace!("[internal_event] {:?}", _internal);
-                    }
-                    Action::TaskLog(id, msg) => {
-                        log::info!("[task:{id}] {msg}");
-                        let _internal = InternalEvent::TaskLog {
-                            id: *id,
-                            message: msg.clone(),
-                        };
-                        log::trace!("[internal_event] {:?}", _internal);
-                    }
-                    Action::TaskFinished(id, res) => {
-                        let _internal = InternalEvent::TaskFinished {
-                            id: *id,
-                            result: res.clone(),
-                        };
-                        match res {
-                            TaskResultKind::CertGenerated { cn, .. } => {
-                                log::info!("[task:{id}] certificate generated for {cn}");
-                                // UI feedback: show an alert popup to confirm success
-                                let title = "Certificate generated";
-                                let message = format!("Certificate generated for {cn}");
-                                let popup = crate::components::popups::alert::AlertPopup::new(
-                                    title, message,
-                                );
-                                action_tx.send(Action::OpenPopup(Box::new(popup))).ok();
-
-                                // Auto-schedule persistence when an output path is provided
-                                if let crate::core::effects::TaskResultKind::CertGenerated {
-                                    cert_pem,
-                                    key_pem,
-                                    output_path,
-                                    ..
-                                } = res.clone()
-                                {
-                                    if let Some(output_path) = output_path {
-                                        let task = crate::core::effects::TaskKind::PersistCert {
-                                            output_path,
-                                            cert_pem,
-                                            key_pem,
-                                        };
-                                        executor.spawn(task);
-                                    }
-                                }
-                            }
-                            TaskResultKind::CertFailed { cn, error } => {
-                                log::warn!(
-                                    "[task:{id}] certificate generation failed for {cn}: {error}"
-                                );
-                            }
-                            TaskResultKind::Persisted { path } => {
-                                log::info!("[task:{id}] persisted certificate and key at {path}");
-                            }
-                            TaskResultKind::PersistFailed { path, error } => {
-                                log::warn!(
-                                    "[task:{id}] failed to persist certificate/key at {path}: {error}"
-                                );
-                            }
-                        }
-                        // Show confirmation when persistence finished successfully
-                        if let crate::core::effects::TaskResultKind::Persisted { path } =
-                            res.clone()
-                        {
-                            let popup = crate::components::popups::alert::AlertPopup::new(
-                                "Certificate saved",
-                                format!("Saved to {}", path),
-                            );
-                            action_tx.send(Action::OpenPopup(Box::new(popup))).ok();
-                        }
-                        log::trace!("[internal_event] {:?}", _internal);
-                    }
                     _ => log::debug!("{action}"),
                 }
 
@@ -530,6 +456,82 @@ impl<'a> AppLoop<'a> {
                 }
             }
 
+            // Process internal events from executor (TaskStarted/TaskLog/TaskFinished)
+            while let Ok(event) = internal_rx.try_recv() {
+                // Route internal event to reducer and handle effects
+                let internal_effects = crate::core::reducer::reduce_internal_event(
+                    &mut self.app.root_state,
+                    event.clone(),
+                );
+                for eff in internal_effects {
+                    match eff {
+                        Effect::None => {}
+                        Effect::Log(msg) => {
+                            log::info!("[effect] {msg}");
+                        }
+                        Effect::Async(task) => {
+                            log::info!("[effect] schedule async task: {task}");
+                            executor.spawn(task);
+                        }
+                    }
+                }
+                match event {
+                    InternalEvent::TaskStarted { id, label } => {
+                        log::info!("[task:{id}] started {label}");
+                    }
+                    InternalEvent::TaskLog { id, message } => {
+                        log::info!("[task:{id}] {message}");
+                    }
+                    InternalEvent::TaskFinished { id, result } => {
+                        match result.clone() {
+                            TaskResultKind::CertGenerated { cn, .. } => {
+                                log::info!("[task:{id}] certificate generated for {cn}");
+                                // UI feedback: show an alert popup to confirm success
+                                let title = "Certificate generated";
+                                let message = format!("Certificate generated for {cn}");
+                                let popup = crate::components::popups::alert::AlertPopup::new(
+                                    title, message,
+                                );
+                                action_tx.send(Action::OpenPopup(Box::new(popup))).ok();
+
+                                // Auto-schedule persistence when an output path is provided
+                                if let TaskResultKind::CertGenerated {
+                                    cert_pem,
+                                    key_pem,
+                                    output_path: Some(output_path),
+                                    ..
+                                } = result.clone()
+                                {
+                                    let task = crate::core::effects::TaskKind::PersistCert {
+                                        output_path,
+                                        cert_pem,
+                                        key_pem,
+                                    };
+                                    executor.spawn(task);
+                                }
+                            }
+                            TaskResultKind::CertFailed { cn, error } => {
+                                log::warn!(
+                                    "[task:{id}] certificate generation failed for {cn}: {error}"
+                                );
+                            }
+                            TaskResultKind::Persisted { path } => {
+                                log::info!("[task:{id}] persisted certificate and key at {path}");
+                                let popup = crate::components::popups::alert::AlertPopup::new(
+                                    "Certificate saved",
+                                    format!("Saved to {}", path),
+                                );
+                                action_tx.send(Action::OpenPopup(Box::new(popup))).ok();
+                            }
+                            TaskResultKind::PersistFailed { path, error } => {
+                                log::warn!(
+                                    "[task:{id}] failed to persist certificate/key at {path}: {error}"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
             // 3. Lifecycle: suspend / quit
             if self.app.should_suspend {
                 self.tui.suspend()?;
