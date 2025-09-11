@@ -2,7 +2,14 @@ use crate::{action::Action, components::Component, tui::Event};
 use color_eyre::Result;
 use crossterm::event::{KeyEvent, MouseEvent};
 use ratatui::{Frame, layout::Rect};
+
 use tokio::sync::mpsc::UnboundedSender;
+
+mod dashboard;
+mod setup;
+
+pub(crate) use dashboard::DashboardPage;
+pub(crate) use setup::SetupPage;
 
 /// A top-level screen composed of zero or more components.
 /// Pages own focus state among their components and expose high-level behaviors to the app.
@@ -37,6 +44,19 @@ pub trait Page {
     /// Active keymap context for this page (e.g. "global", "setup", "dashboard").
     fn keymap_context(&self) -> &'static str {
         "global"
+    }
+
+    /// Stable identifier for this page used for navigation (must be unique across pages).
+    /// Override in each concrete page implementation.
+    fn id(&self) -> &'static str {
+        "unknown"
+    }
+
+    /// Ordered list of component IDs for focus traversal (FocusNext / FocusPrev).
+    /// First entry is considered the initial logical focus. Return an empty slice
+    /// if the page has no focusable components or manages focus manually.
+    fn focus_order(&self) -> &'static [&'static str] {
+        &[]
     }
 
     /// The currently focused component id within the page for status/tooling.

@@ -12,16 +12,19 @@
 //! - This is a minimal, compiling scaffolding. Pages/components can be added incrementally.
 //! - Keybindings are not wired yet; events are routed to pages/components which may emit actions.
 
-pub mod settings;
+pub(crate) mod settings;
+pub(crate) mod task_manager;
 
+use self::task_manager::{TaskManager, TaskManagerHandle};
+use crate::layers::LayerRegistry;
 use crate::{
     action::{
-        Action, AppAction, LayerKind, LogicAction, Notification, TaskId, TaskKind, TaskProgress,
-        TaskResult, TaskSpec, UiAction, UiMode,
+        Action, AppAction, LayerKind, LogicAction, TaskId, TaskKind, TaskProgress, TaskResult,
+        TaskSpec, UiAction, UiMode,
     },
     cli::{Cli, Cmd, RunMode},
     components::Component,
-    pages::Page,
+    pages::{DashboardPage, Page, SetupPage},
     tui::{Event, Tui},
 };
 use app::AppBase;
@@ -78,12 +81,15 @@ pub struct App {
     // Navigation and focus
     active_page_index: Option<usize>,
     focused_component_index: Option<usize>,
+    /// Ordered cycle of focusable component indices (derived from page.focus_order()).
+    focus_cycle: Vec<usize>,
+    /// When a popup layer is active, normal component focus traversal is locked.
+    popup_focus_lock: bool,
     keymap_context: String,
     comp_id_to_index: HashMap<String, usize>,
 
-    // Layers & notifications
+    // Layers
     layers: Vec<LayerEntry>,
-    notifications: Vec<Notification>,
 
     // Background tasks
     tasks: HashMap<TaskId, TaskState>,
@@ -95,6 +101,13 @@ pub struct App {
     mode: Mode,
     ui_mode: UiMode,
 
+    // Help search prompt state
+    help_search_active: bool,
+    help_search_buffer: String,
+
+    // Layers registry
+    layer_registry: crate::layers::BasicLayerRegistry,
+
     // Timing / perf
     tick_rate: f64,
     frame_rate: f64,
@@ -103,6 +116,7 @@ pub struct App {
     // Action channel
     action_tx: mpsc::UnboundedSender<Action>,
     action_rx: mpsc::UnboundedReceiver<Action>,
+    task_mgr: TaskManagerHandle,
 }
 
 impl App {
@@ -120,20 +134,17 @@ impl App {
             Option<usize>,
         ) = match cli.cmd {
             Cmd::Run { mode } => match mode {
-                RunMode::Setup => {
-                    // TODO: register setup page and components
-                    (vec![], vec![], None)
-                }
-                RunMode::Dashboard => {
-                    // TODO: register dashboard page and components
-                    (vec![], vec![], None)
-                }
+                RunMode::Setup => (vec![Box::new(SetupPage::new())], vec![], Some(0)),
+                RunMode::Dashboard => (vec![Box::new(DashboardPage::new())], vec![], Some(0)),
             },
         };
 
         // Default rates; in the future read from settings::GeneralCfg
         let tick_rate = settings.get::<settings::Wizard>().unwrap().tick_rate;
         let frame_rate = settings.get::<settings::Wizard>().unwrap().fps;
+        // Start TaskManager loop; keep a handle to send commands. Join handle is currently discarded.
+        let (task_mgr, _task_mgr_join) = TaskManager::new(action_tx.clone());
+        let settings_for_layer = settings.clone();
 
         Ok(Self {
             base,
@@ -143,21 +154,57 @@ impl App {
             components,
             active_page_index,
             focused_component_index: None,
+            focus_cycle: Vec::new(),
+            popup_focus_lock: false,
             keymap_context: "global".to_string(),
             comp_id_to_index: HashMap::new(),
             layers: Vec::new(),
-            notifications: Vec::new(),
             tasks: HashMap::new(),
             next_task_seq: 0,
             should_quit: false,
             should_suspend: false,
             mode: Mode::Home,
             ui_mode: UiMode::Normal,
+            help_search_active: false,
+            help_search_buffer: String::new(),
+            layer_registry: {
+                let mut lr = crate::layers::BasicLayerRegistry::new();
+                lr.register_settings_handler(settings_for_layer.clone());
+                // Initialize show_global from settings
+                let help_show_global = settings_for_layer
+                    .get::<settings::Wizard>()
+                    .unwrap()
+                    .help_show_global;
+                if !help_show_global {
+                    lr.toggle_show_global();
+                }
+                // Initialize wrap_on from settings
+                let help_wrap_on = settings_for_layer
+                    .get::<settings::Wizard>()
+                    .unwrap()
+                    .help_wrap_on;
+                if !help_wrap_on {
+                    lr.toggle_wrap();
+                }
+                // Initialize last help search from settings (if any)
+                let help_last_search = settings_for_layer
+                    .get::<settings::Wizard>()
+                    .unwrap()
+                    .help_last_search
+                    .clone();
+                if let Some(q) = help_last_search {
+                    if !q.trim().is_empty() {
+                        lr.set_help_search(Some(q));
+                    }
+                }
+                lr
+            },
             tick_rate,
             frame_rate,
             last_tick_key_events: Vec::new(),
             action_tx,
             action_rx,
+            task_mgr,
         })
     }
 
@@ -190,7 +237,58 @@ impl App {
                 }
             }
             if !provided_all.is_empty() {
-                let _ = self.register_components(provided_all, size)?;
+                // Change detection: only (re)register if the set of component IDs differs.
+                let new_ids: std::collections::HashSet<String> =
+                    provided_all.iter().map(|(id, _)| id.clone()).collect();
+                let current_ids: std::collections::HashSet<String> =
+                    self.comp_id_to_index.keys().cloned().collect();
+
+                let changed = self.components.len() != provided_all.len() || new_ids != current_ids;
+
+                if changed {
+                    // Clear previous registry before re-registering.
+                    self.components.clear();
+                    self.comp_id_to_index.clear();
+                    self.focused_component_index = None;
+                    self.focus_cycle.clear();
+                    let _ = self.register_components(provided_all, size)?;
+                    // Rebuild focus cycle from active page's declared order (skip non-existent IDs).
+                    if let Some(ix) = self.active_page_index {
+                        if let Some(page) = self.pages.get(ix) {
+                            let order = page.focus_order();
+                            for id in order {
+                                if let Some(&cix) = self.comp_id_to_index.get(*id) {
+                                    self.focus_cycle.push(cix);
+                                }
+                            }
+                        }
+                    }
+                } else if self.focus_cycle.is_empty() {
+                    // Initial build (first run where list matched but cycle not yet built)
+                    if let Some(ix) = self.active_page_index {
+                        if let Some(page) = self.pages.get(ix) {
+                            let order = page.focus_order();
+                            for id in order {
+                                if let Some(&cix) = self.comp_id_to_index.get(*id) {
+                                    self.focus_cycle.push(cix);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Update keymap context from active page (scaffold) and trigger initial page focus reporting.
+        if let Some(ix) = self.active_page_index {
+            if let Some(page) = self.pages.get_mut(ix) {
+                self.keymap_context = page.keymap_context().to_string();
+                // Ask the page to emit its current focused component (UiAction::ReportFocusedComponent).
+                let _ = page.focus();
+                // Set initial focus to first in cycle if none reported yet.
+                if self.focused_component_index.is_none() && !self.focus_cycle.is_empty() {
+                    self.focused_component_index = Some(self.focus_cycle[0]);
+                }
             }
         }
 
@@ -265,9 +363,112 @@ impl App {
     }
 
     fn handle_key_event(&mut self, key: KeyEvent) -> Result<()> {
-        // Without a centralized keymap, we let pages/components process keys.
-        // Keep the multi-key buffer for future use.
-        self.last_tick_key_events.push(key);
+        use crossterm::event::{KeyCode, KeyModifiers};
+        // When the Help search prompt is active, capture input here
+        if self.help_search_active {
+            match key.code {
+                KeyCode::Enter => {
+                    let q = self.help_search_buffer.clone();
+                    self.help_search_active = false;
+                    self.help_search_buffer.clear();
+                    self.action_tx.send(Action::Ui(UiAction::HelpSearch(q)))?;
+                    return Ok(());
+                }
+                KeyCode::Esc => {
+                    self.help_search_active = false;
+                    self.help_search_buffer.clear();
+                    self.action_tx.send(Action::Ui(UiAction::HelpSearchClear))?;
+                    return Ok(());
+                }
+                KeyCode::Backspace | KeyCode::Char(_) => {
+                    // Forward key to help prompt widget
+                    let _ = self
+                        .action_tx
+                        .send(Action::Ui(UiAction::HelpPromptKey(key)));
+                }
+                _ => {
+                    // Forward other keys (arrows, ctrl shortcuts) to the prompt widget as well
+                    let _ = self
+                        .action_tx
+                        .send(Action::Ui(UiAction::HelpPromptKey(key)));
+                }
+            }
+            return Ok(());
+        }
+
+        // Build a chord string similar to the exported keymap format
+        let mut mods: Vec<&'static str> = Vec::new();
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            mods.push("ctrl");
+        }
+        if key.modifiers.contains(KeyModifiers::ALT) {
+            mods.push("alt");
+        }
+        if key.modifiers.contains(KeyModifiers::SHIFT) {
+            mods.push("shift");
+        }
+        let key_str = match key.code {
+            KeyCode::Char(c) => c.to_ascii_lowercase().to_string(),
+            KeyCode::Enter => "enter".into(),
+            KeyCode::Esc => "esc".into(),
+            KeyCode::Tab => "tab".into(),
+            KeyCode::Backspace => "backspace".into(),
+            KeyCode::Left => "left".into(),
+            KeyCode::Right => "right".into(),
+            KeyCode::Up => "up".into(),
+            KeyCode::Down => "down".into(),
+            _ => {
+                // Unhandled key; keep buffer for potential multi-key in the future
+                self.last_tick_key_events.push(key);
+                return Ok(());
+            }
+        };
+        let chord = if mods.is_empty() {
+            key_str
+        } else {
+            format!("{}+{}", mods.join("+"), key_str)
+        };
+
+        // Export keymap for current context and try to translate chord -> action
+        let map = self
+            .settings
+            .export_keymap_for(::settings::DeviceFilter::Keyboard, &self.keymap_context);
+
+        if let Some((action_name, _)) = map
+            .iter()
+            .find(|(_, chords)| chords.iter().any(|c| c.eq_ignore_ascii_case(&chord)))
+        {
+            let action = match action_name.as_str() {
+                "Quit" | "quit" => Some(Action::Quit),
+                "Help" | "help" => Some(Action::Help),
+                "OpenPopup" | "popup" => {
+                    Some(Action::Ui(UiAction::OpenPopup { id: "help".into() }))
+                }
+                "ModeInsert" | "insert" => Some(Action::Ui(UiAction::EnterEditMode)),
+                "ModeNormal" | "normal" => Some(Action::Ui(UiAction::ExitEditMode)),
+                "ModeCycle" | "modecycle" => Some(Action::Ui(UiAction::ToggleEditMode)),
+                "NextField" | "next" => Some(Action::Ui(UiAction::FocusNext)),
+                "PreviousField" | "prev" => Some(Action::Ui(UiAction::FocusPrev)),
+                // Help controls
+                "HelpToggleGlobal" | "helptoggleglobal" => {
+                    Some(Action::Ui(UiAction::HelpToggleGlobal))
+                }
+                "HelpToggleWrap" | "helptogglewrap" => Some(Action::Ui(UiAction::HelpToggleWrap)),
+                "HelpScrollUp" | "helpscrollup" => Some(Action::Ui(UiAction::HelpScrollUp)),
+                "HelpScrollDown" | "helpscrolldown" => Some(Action::Ui(UiAction::HelpScrollDown)),
+                "HelpPageUp" | "helppageup" => Some(Action::Ui(UiAction::HelpPageUp)),
+                "HelpPageDown" | "helppagedown" => Some(Action::Ui(UiAction::HelpPageDown)),
+                "HelpSearch" | "helpsearch" => Some(Action::Ui(UiAction::BeginHelpSearch)),
+                _ => None,
+            };
+            if let Some(a) = action {
+                self.action_tx.send(a)?;
+            }
+        } else {
+            // Fallback: buffer key for potential multi-key support later
+            self.last_tick_key_events.push(key);
+        }
+
         Ok(())
     }
 
@@ -280,6 +481,20 @@ impl App {
                 // Legacy/core actions
                 Action::Tick => {
                     self.last_tick_key_events.clear();
+                    // Refresh keymap context from the active page each tick and notify UI if it changed
+                    if let Some(ix) = self.active_page_index {
+                        if let Some(page) = self.pages.get(ix) {
+                            let new_ctx = page.keymap_context().to_string();
+                            if new_ctx != self.keymap_context {
+                                self.keymap_context = new_ctx.clone();
+                                let _ =
+                                    self.action_tx
+                                        .send(Action::App(AppAction::SetKeymapContext {
+                                            name: new_ctx,
+                                        }));
+                            }
+                        }
+                    }
                 }
                 Action::Quit => self.should_quit = true,
                 Action::Suspend => self.should_suspend = true,
@@ -291,7 +506,23 @@ impl App {
                     warn!("UI error: {msg}");
                 }
                 Action::Help => {
-                    // TODO: open a help popup layer
+                    // Toggle the help popup layer; report visibility accordingly
+                    if let Some(pos) = self.layers.iter().rposition(|l| {
+                        l.kind == LayerKind::Popup && l.id.as_deref() == Some("help")
+                    }) {
+                        self.layers.remove(pos);
+                        let _ = self
+                            .action_tx
+                            .send(Action::Ui(UiAction::ReportHelpVisible(false)));
+                    } else {
+                        self.layers.push(LayerEntry {
+                            kind: LayerKind::Popup,
+                            id: Some("help".into()),
+                        });
+                        let _ = self
+                            .action_tx
+                            .send(Action::Ui(UiAction::ReportHelpVisible(true)));
+                    }
                 }
 
                 // Structured actions: UI
@@ -304,6 +535,7 @@ impl App {
                 Action::Logic(logic) => self.handle_logic_action(logic)?,
             }
 
+            self.layer_registry.update_from_action(&action);
             // Propagate updates into active page first
             if let Some(ix) = self.active_page_index {
                 if let Some(page) = self.pages.get_mut(ix) {
@@ -325,31 +557,54 @@ impl App {
     fn handle_ui_action(&mut self, _tui: &mut Tui, ui: UiAction) -> Result<()> {
         match ui {
             UiAction::FocusNext => {
-                if self.components.is_empty() {
+                if self.popup_focus_lock {
+                    // Ignore traversal while popup active.
+                } else if self.focus_cycle.is_empty() {
                     self.focused_component_index = None;
                 } else {
-                    let next = self
+                    let pos = self
                         .focused_component_index
-                        .map(|i| (i + 1) % self.components.len())
+                        .and_then(|cur| self.focus_cycle.iter().position(|&c| c == cur))
                         .unwrap_or(0);
-                    self.focused_component_index = Some(next);
+                    let next_pos = (pos + 1) % self.focus_cycle.len();
+                    self.focused_component_index = Some(self.focus_cycle[next_pos]);
+                    // Emit ReportFocusedComponent so status bar/colors can react.
+                    if let Some((id, _)) = self
+                        .comp_id_to_index
+                        .iter()
+                        .find(|(_, ix)| **ix == self.focused_component_index.unwrap())
+                    {
+                        let _ = self
+                            .action_tx
+                            .send(Action::Ui(UiAction::ReportFocusedComponent(id.clone())));
+                    }
                 }
             }
             UiAction::FocusPrev => {
-                if self.components.is_empty() {
+                if self.popup_focus_lock {
+                    // Ignore traversal while popup active.
+                } else if self.focus_cycle.is_empty() {
                     self.focused_component_index = None;
                 } else {
-                    let prev = self
+                    let pos = self
                         .focused_component_index
-                        .map(|i| {
-                            if i == 0 {
-                                self.components.len() - 1
-                            } else {
-                                i - 1
-                            }
-                        })
-                        .unwrap_or(self.components.len() - 1);
-                    self.focused_component_index = Some(prev);
+                        .and_then(|cur| self.focus_cycle.iter().position(|&c| c == cur))
+                        .unwrap_or(0);
+                    let prev_pos = if pos == 0 {
+                        self.focus_cycle.len() - 1
+                    } else {
+                        pos - 1
+                    };
+                    self.focused_component_index = Some(self.focus_cycle[prev_pos]);
+                    if let Some((id, _)) = self
+                        .comp_id_to_index
+                        .iter()
+                        .find(|(_, ix)| **ix == self.focused_component_index.unwrap())
+                    {
+                        let _ = self
+                            .action_tx
+                            .send(Action::Ui(UiAction::ReportFocusedComponent(id.clone())));
+                    }
                 }
             }
             UiAction::FocusById(id) => {
@@ -380,10 +635,19 @@ impl App {
             }
 
             UiAction::OpenPopup { id } => {
+                let is_help = id == "help";
                 self.layers.push(LayerEntry {
                     kind: LayerKind::Popup,
-                    id: Some(id),
+                    id: Some(id.clone()),
                 });
+                self.popup_focus_lock = true;
+                // While popup is open we conceptually "blur" component focus.
+                self.focused_component_index = None;
+                if is_help {
+                    let _ = self
+                        .action_tx
+                        .send(Action::Ui(UiAction::ReportHelpVisible(true)));
+                }
             }
             UiAction::ClosePopup { id } => {
                 if let Some(pos) = self
@@ -393,26 +657,154 @@ impl App {
                 {
                     self.layers.remove(pos);
                 }
+                // If no more popups remain, release focus lock and restore first focus in cycle.
+                let any_popup = self.layers.iter().any(|l| l.kind == LayerKind::Popup);
+                if !any_popup {
+                    self.popup_focus_lock = false;
+                    if !self.focus_cycle.is_empty() {
+                        self.focused_component_index = Some(self.focus_cycle[0]);
+                        if let Some((id, _)) = self
+                            .comp_id_to_index
+                            .iter()
+                            .find(|(_, ix)| **ix == self.focused_component_index.unwrap())
+                        {
+                            let _ = self
+                                .action_tx
+                                .send(Action::Ui(UiAction::ReportFocusedComponent(id.clone())));
+                        }
+                    }
+                }
+                if id == "help"
+                    && !self
+                        .layers
+                        .iter()
+                        .any(|l| l.kind == LayerKind::Popup && l.id.as_deref() == Some("help"))
+                {
+                    let _ = self
+                        .action_tx
+                        .send(Action::Ui(UiAction::ReportHelpVisible(false)));
+                }
             }
             UiAction::PushLayer(kind) => {
                 self.layers.push(LayerEntry { kind, id: None });
             }
             UiAction::PopLayer => {
+                let help_before = self
+                    .layers
+                    .iter()
+                    .any(|l| l.kind == LayerKind::Popup && l.id.as_deref() == Some("help"));
                 self.layers.pop();
+                let help_after = self
+                    .layers
+                    .iter()
+                    .any(|l| l.kind == LayerKind::Popup && l.id.as_deref() == Some("help"));
+                if help_before && !help_after {
+                    let _ = self
+                        .action_tx
+                        .send(Action::Ui(UiAction::ReportHelpVisible(false)));
+                }
             }
 
-            UiAction::ShowNotification(n) => {
-                // Replace if same id exists
-                if let Some(pos) = self.notifications.iter().position(|x| x.id == n.id) {
-                    self.notifications[pos] = n;
+            UiAction::ShowNotification(_n) => {
+                // ToastManager handles notifications; no-op here.
+            }
+            UiAction::ReportNotificationCount(_n) => {
+                // App currently does not persist the visible count; it is forwarded to UI components.
+            }
+            UiAction::ReportNotificationSeverity(_sev) => {
+                // App does not persist the highest severity; components (e.g., StatusBar) consume this.
+            }
+            UiAction::DismissNotification { .. } => {
+                // ToastManager handles notifications; no-op here.
+            }
+
+            // Help controls: toggle global, scroll, paging, search
+            UiAction::HelpToggleGlobal => {
+                self.layer_registry.toggle_show_global();
+                let value = self.layer_registry.is_show_global();
+                let _ = self
+                    .action_tx
+                    .send(Action::Ui(UiAction::PersistHelpShowGlobal(value)));
+            }
+            UiAction::HelpScrollUp => {
+                self.layer_registry.scroll_help_lines(-1);
+            }
+            UiAction::HelpScrollDown => {
+                self.layer_registry.scroll_help_lines(1);
+            }
+            UiAction::HelpPageUp => {
+                // Approximate page size from terminal height (half height)
+                if let Ok(size) = _tui.size() {
+                    let page = (size.height as i16 / 2).max(1);
+                    self.layer_registry.scroll_help_lines(-page);
                 } else {
-                    self.notifications.push(n);
+                    self.layer_registry.scroll_help_lines(-10);
                 }
             }
-            UiAction::DismissNotification { id } => {
-                if let Some(pos) = self.notifications.iter().position(|x| x.id == id) {
-                    self.notifications.remove(pos);
+            UiAction::HelpPageDown => {
+                if let Ok(size) = _tui.size() {
+                    let page = (size.height as i16 / 2).max(1);
+                    self.layer_registry.scroll_help_lines(page);
+                } else {
+                    self.layer_registry.scroll_help_lines(10);
                 }
+            }
+            UiAction::HelpSearch(query) => {
+                self.layer_registry.set_help_search(Some(query.clone()));
+                // Persist last search (empty => clear)
+                let val = if query.trim().is_empty() {
+                    None
+                } else {
+                    Some(query)
+                };
+                let _ = self
+                    .settings
+                    .update::<settings::Wizard>(|w| w.help_last_search = val);
+            }
+            UiAction::HelpSearchClear => {
+                self.layer_registry.clear_help_search();
+                // Clear persisted last search
+                let _ = self
+                    .settings
+                    .update::<settings::Wizard>(|w| w.help_last_search = None);
+            }
+            UiAction::BeginHelpSearch => {
+                self.help_search_active = true;
+                self.help_search_buffer.clear();
+            }
+            UiAction::ReportHelpVisible(_v) => {
+                // Forward-only event for components (e.g., StatusBar).
+            }
+            UiAction::PersistHelpShowGlobal(value) => {
+                // Persist the current show_global preference into settings.
+                let _ = self
+                    .settings
+                    .update::<settings::Wizard>(|w| w.help_show_global = value);
+            }
+            UiAction::HelpToggleWrap => {
+                // Toggle wrap flag locally and persist the new setting.
+                self.layer_registry.toggle_wrap();
+                let current = self
+                    .settings
+                    .get::<settings::Wizard>()
+                    .map(|w| w.help_wrap_on)
+                    .unwrap_or(true);
+                let new_value = !current;
+                let _ = self
+                    .action_tx
+                    .send(Action::Ui(UiAction::PersistHelpWrapOn(new_value)));
+            }
+            UiAction::PersistHelpWrapOn(value) => {
+                // Persist the current wrap preference into settings.
+                let _ = self
+                    .settings
+                    .update::<settings::Wizard>(|w| w.help_wrap_on = value);
+            }
+            UiAction::HelpPromptKey(_key) => {
+                // No-op: prompt widget state is handled within the layer registry.
+            }
+            UiAction::ReportHelpSearchBuffer(_buf) => {
+                // No-op: can be used by UI elements to show live search input.
             }
         }
         Ok(())
@@ -421,10 +813,63 @@ impl App {
     fn handle_app_action(&mut self, app: AppAction) -> Result<()> {
         match app {
             AppAction::SetActivePage { id } => {
-                // For now we only store the name; when pages have stable IDs we can map them.
-                info!("Request to activate page: {id} (not mapped yet)");
+                if let Some((new_ix, _)) = self.pages.iter().enumerate().find(|(_, p)| p.id() == id)
+                {
+                    if self.active_page_index != Some(new_ix) {
+                        if let Some(old_ix) = self.active_page_index {
+                            if let Some(page) = self.pages.get_mut(old_ix) {
+                                let _ = page.unfocus();
+                            }
+                        }
+                        self.active_page_index = Some(new_ix);
+                        self.components.clear();
+                        self.comp_id_to_index.clear();
+                        self.focus_cycle.clear();
+                        self.focused_component_index = None;
+                        // Gather new page data in a scoped borrow
+                        let (provided, order_ids): (
+                            Vec<(String, Box<dyn Component>)>,
+                            Vec<&'static str>,
+                        );
+                        {
+                            let page = self.pages.get_mut(new_ix).expect("page index valid");
+                            let p = page.provide_components();
+                            let order_slice = page.focus_order();
+                            order_ids = order_slice.iter().copied().collect::<Vec<&'static str>>();
+                            provided = p;
+                            let _ = page.focus(); // emits ReportFocusedComponent
+                        }
+                        // Register components after releasing mutable borrow of page
+                        let size = Size {
+                            width: 0,
+                            height: 0,
+                        };
+                        for (cid, comp) in provided {
+                            let _ = self.register_component(cid, comp, size);
+                        }
+                        for id in order_ids {
+                            if let Some(&ix) = self.comp_id_to_index.get(id) {
+                                self.focus_cycle.push(ix);
+                            }
+                        }
+                        if let Some(page) = self.pages.get(new_ix) {
+                            self.keymap_context = page.keymap_context().to_string();
+                            let _ = self
+                                .action_tx
+                                .send(Action::App(AppAction::SetKeymapContext {
+                                    name: self.keymap_context.clone(),
+                                }));
+                        }
+                        if self.focused_component_index.is_none() && !self.focus_cycle.is_empty() {
+                            self.focused_component_index = Some(self.focus_cycle[0]);
+                        }
+                    }
+                } else {
+                    info!("Requested page id '{id}' not found");
+                }
             }
             AppAction::SetKeymapContext { name } => {
+                self.layer_registry.set_keymap_context(name.clone());
                 self.keymap_context = name;
             }
             AppAction::SetUiMode(mode) => {
@@ -450,7 +895,7 @@ impl App {
                 let id = format!("task-{}", self.next_task_seq);
                 let state = TaskState {
                     id: id.clone(),
-                    spec,
+                    spec: spec.clone(),
                     started: false,
                     finished: false,
                     cancelled: false,
@@ -463,9 +908,19 @@ impl App {
                 // Notify started
                 let _ = self
                     .action_tx
-                    .send(Action::Logic(LogicAction::TaskStarted { id }));
+                    .send(Action::Logic(LogicAction::TaskStarted { id: id.clone() }));
+
+                // Delegate execution to TaskManager (simulated task for now)
+                let _ = self.task_mgr.spawn_simulated(
+                    id.clone(),
+                    spec.label.clone(),
+                    10,
+                    150,
+                    spec.payload_json.clone(),
+                );
             }
             LogicAction::CancelTask { id } => {
+                let _ = self.task_mgr.cancel(id.clone());
                 if let Some(state) = self.tasks.get_mut(&id) {
                     state.cancelled = true;
                     state.finished = true;
@@ -504,12 +959,54 @@ impl App {
                 }
             }
             LogicAction::LoadConfig => {
-                // TODO: load config from disk
-                info!("LoadConfig requested (not implemented)");
+                // Register task and delegate to TaskManager
+                self.next_task_seq += 1;
+                let id = format!("task-{}", self.next_task_seq);
+                let spec = TaskSpec {
+                    kind: TaskKind::Io,
+                    label: "Load config".to_string(),
+                    payload_json: None,
+                };
+                self.tasks.insert(
+                    id.clone(),
+                    TaskState {
+                        id: id.clone(),
+                        spec: spec.clone(),
+                        started: false,
+                        finished: false,
+                        cancelled: false,
+                        progress: None,
+                        message: None,
+                        success: None,
+                        result_json: None,
+                    },
+                );
+                let _ = self.task_mgr.spawn_load_config(id);
             }
             LogicAction::SaveConfig => {
-                // TODO: save config to disk
-                info!("SaveConfig requested (not implemented)");
+                // Register task and delegate to TaskManager
+                self.next_task_seq += 1;
+                let id = format!("task-{}", self.next_task_seq);
+                let spec = TaskSpec {
+                    kind: TaskKind::Io,
+                    label: "Save config".to_string(),
+                    payload_json: None,
+                };
+                self.tasks.insert(
+                    id.clone(),
+                    TaskState {
+                        id: id.clone(),
+                        spec: spec.clone(),
+                        started: false,
+                        finished: false,
+                        cancelled: false,
+                        progress: None,
+                        message: None,
+                        success: None,
+                        result_json: None,
+                    },
+                );
+                let _ = self.task_mgr.spawn_save_config(id);
             }
         }
         Ok(())
@@ -524,11 +1021,25 @@ impl App {
     fn render(&mut self, tui: &mut Tui) -> Result<()> {
         tui.draw(|frame| {
             let area = frame.area();
+            let status_h: u16 = 1;
+            let (main_area, status_area) = if area.height > status_h {
+                (
+                    ratatui::layout::Rect::new(area.x, area.y, area.width, area.height - status_h),
+                    ratatui::layout::Rect::new(
+                        area.x,
+                        area.y + area.height - status_h,
+                        area.width,
+                        status_h,
+                    ),
+                )
+            } else {
+                (area, area)
+            };
 
             // Draw active page first (base layer)
             if let Some(ix) = self.active_page_index {
                 if let Some(page) = self.pages.get_mut(ix) {
-                    if let Err(err) = page.draw(frame, area) {
+                    if let Err(err) = page.draw(frame, main_area) {
                         let _ = self
                             .action_tx
                             .send(Action::Error(format!("Failed to draw page: {:?}", err)));
@@ -537,8 +1048,14 @@ impl App {
             }
 
             // Draw registered components (secondary base layer)
-            for component in self.components.iter_mut() {
-                if let Err(err) = component.draw(frame, area) {
+            let status_index = self.comp_id_to_index.get("status").cloned();
+            for (i, component) in self.components.iter_mut().enumerate() {
+                let target = if Some(i) == status_index {
+                    status_area
+                } else {
+                    main_area
+                };
+                if let Err(err) = component.draw(frame, target) {
                     let _ = self.action_tx.send(Action::Error(format!(
                         "Failed to draw component: {:?}",
                         err
@@ -551,19 +1068,24 @@ impl App {
             for layer in self.layers.iter() {
                 match layer.kind {
                     LayerKind::Popup | LayerKind::Overlay => {
-                        // TODO: Have a layer registry render popups/overlays as full-screen widgets
-                        let _ = layer; // placeholder
+                        if let Err(err) = self.layer_registry.render_layer(
+                            frame,
+                            area,
+                            layer.kind,
+                            layer.id.as_deref(),
+                        ) {
+                            let _ = self
+                                .action_tx
+                                .send(Action::Error(format!("Failed to render layer: {:?}", err)));
+                        }
                     }
                     LayerKind::Notification => {
-                        // Notifications are drawn at the very top; actual rendering TBD.
+                        // Notifications are rendered by the ToastManager component; keeping sentinel for z-order.
                     }
                 }
             }
 
-            // Notifications would logically be drawn last; kept here as a reminder.
-            for _n in self.notifications.iter() {
-                // TODO: Draw notification banners/toasts
-            }
+            // Status bar is now rendered as its own component at the bottom area; removed temporary overlay panel.
         })?;
         Ok(())
     }

@@ -4,3 +4,17 @@ version = "0.2.0"
 [wizard]
 tick_rate = 4
 fps = 60
+help_show_global = true
+help_wrap_on = true
+# Persist last help search query (optional)
+help_last_search = ""
+# Notifications: default lifetime (ms) and maximum visible at once
+notification_lifetime_ms = 4000
+notification_max = 3
+
+# Keymap placeholders (can be expanded later)
+[wizard.keymap]
+help_enabled = true
+show_context = true
+notification_lifetime_sec = 10
+max_notifications = 5

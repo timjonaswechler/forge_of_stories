@@ -6,6 +6,9 @@ pub enum WizardSettingField {
     MetaVersion,
     WizardTickRate,
     WizardFps,
+    WizardHelpShowGlobal,
+    WizardHelpWrapOn,
+    WizardHelpLastSearch,
 }
 
 fn default_value_for(field: WizardSettingField) -> Option<toml::Value> {
@@ -19,6 +22,9 @@ fn default_value_for(field: WizardSettingField) -> Option<toml::Value> {
         WizardSettingField::MetaVersion => &["meta", "version"][..],
         WizardSettingField::WizardTickRate => &["wizard", "tick_rate"][..],
         WizardSettingField::WizardFps => &["wizard", "fps"][..],
+        WizardSettingField::WizardHelpShowGlobal => &["wizard", "help_show_global"][..],
+        WizardSettingField::WizardHelpWrapOn => &["wizard", "help_wrap_on"][..],
+        WizardSettingField::WizardHelpLastSearch => &["wizard", "help_last_search"][..],
     };
 
     let mut cur = toml::Value::Table(tbl.clone());
@@ -75,6 +81,38 @@ pub fn apply_wizard_setting(
             };
             store.update::<Wizard>(|w| w.fps = v)?;
         }
+        WizardSettingField::WizardHelpShowGlobal => {
+            let v: bool = if s.is_empty() {
+                default_value_for(field)
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true)
+            } else {
+                parse_bool(s)?
+            };
+            store.update::<Wizard>(|w| w.help_show_global = v)?;
+        }
+        WizardSettingField::WizardHelpWrapOn => {
+            let v: bool = if s.is_empty() {
+                default_value_for(field)
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true)
+            } else {
+                parse_bool(s)?
+            };
+            store.update::<Wizard>(|w| w.help_wrap_on = v)?;
+        }
+        WizardSettingField::WizardHelpLastSearch => {
+            // Empty string resets to default (or clears to None)
+            let v: String = if s.is_empty() {
+                default_value_for(field)
+                    .and_then(|v| v.as_str().map(|n| n.to_string()))
+                    .unwrap_or_default()
+            } else {
+                s.to_string()
+            };
+            let val_opt = if v.trim().is_empty() { None } else { Some(v) };
+            store.update::<Wizard>(|w| w.help_last_search = val_opt)?;
+        }
     }
 
     Ok(())
@@ -90,6 +128,12 @@ pub struct MetaCfg {
 pub struct WizardCfg {
     pub tick_rate: f64,
     pub fps: f64,
+    /// Whether Help should include global key bindings by default.
+    pub help_show_global: bool,
+    /// Whether Help content wraps long lines by default.
+    pub help_wrap_on: bool,
+    /// Optional: last persisted help search query.
+    pub help_last_search: Option<String>,
 }
 
 // 2) SECTION-Bindings
@@ -118,6 +162,23 @@ pub fn build_wizard_settings_store() -> color_eyre::Result<SettingsStore> {
     store.register::<Wizard>()?;
 
     Ok(store)
+}
+
+/// Returns the last persisted Help search query, if any.
+pub fn get_help_last_search(store: &settings::SettingsStore) -> Option<String> {
+    store
+        .get::<Wizard>()
+        .ok()
+        .and_then(|w| w.help_last_search.clone())
+}
+
+/// Persists the last Help search query (set to None to clear).
+pub fn set_help_last_search(
+    store: &settings::SettingsStore,
+    value: Option<String>,
+) -> color_eyre::Result<()> {
+    store.update::<Wizard>(|w| w.help_last_search = value)?;
+    Ok(())
 }
 
 fn parse_bool(s: &str) -> color_eyre::Result<bool> {

@@ -2,8 +2,7 @@ mod action;
 mod app;
 mod cli;
 mod components;
-mod error_log;
-mod logging;
+mod layers;
 mod pages;
 mod tui;
 

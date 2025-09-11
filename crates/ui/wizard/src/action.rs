@@ -10,6 +10,7 @@
 //! - New flows can send `Action::Ui(..)`, `Action::App(..)`, and `Action::Logic(..)` over the same channel.
 //! - Over time we can move app code to match the structured variants.
 
+use crossterm::event::KeyEvent;
 use serde::{Deserialize, Serialize};
 use strum::Display;
 
@@ -119,10 +120,45 @@ pub enum UiAction {
 
     // Notifications
     ShowNotification(Notification),
+    /// Informative: the UI reports current visible notifications count (for status bars).
+    ReportNotificationCount(u32),
+    /// Informative: highest severity present among current notifications (None if no toasts).
+    ReportNotificationSeverity(Option<NotificationLevel>),
+    /// Informative: whether the Help popup is currently visible.
+    ReportHelpVisible(bool),
     /// Dismiss a notification by ID.
     DismissNotification {
         id: String,
     },
+
+    // Help pop-up controls
+    /// Toggle inclusion of global key bindings in Help.
+    HelpToggleGlobal,
+    /// Scroll Help content up by one line.
+    HelpScrollUp,
+    /// Scroll Help content down by one line.
+    HelpScrollDown,
+    /// Scroll Help content up by one page.
+    HelpPageUp,
+    /// Scroll Help content down by one page.
+    HelpPageDown,
+    /// Begin interactive input flow for Help search (UI should open an input prompt).
+    BeginHelpSearch,
+    /// Forward a raw KeyEvent to the help prompt widget.
+    HelpPromptKey(KeyEvent),
+    /// Live report of the current help search input buffer.
+    ReportHelpSearchBuffer(String),
+    /// Set a search query for Help (case-insensitive).
+    HelpSearch(String),
+    /// Clear the active Help search filter.
+    HelpSearchClear,
+
+    /// Persist the current 'show_global' preference for Help into settings.
+    PersistHelpShowGlobal(bool),
+    /// Toggle line wrapping in Help content.
+    HelpToggleWrap,
+    /// Persist the current 'wrap_on' preference for Help into settings.
+    PersistHelpWrapOn(bool),
 }
 
 //
