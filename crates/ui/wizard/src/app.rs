@@ -1,20 +1,31 @@
 //! Wizard application shell
 //!
 //! Responsibilities:
-//! - Initialize TUI, settings, pages, and components
-//! - Store current page and currently focused component at app level
-//! - Layer system scaffolding (popups, notifications)
-//! - Background task scaffolding
-//! - Split actions: UI, App, Logic, plus legacy core actions
-//! - Normal vs Edit mode toggling
+//! - Initialize TUI, settings, pages, components
+//! - Maintain active page + component focus cycle
+//! - Manage layer stack (Overlay, Popup, Notification)
+//! - Background task orchestration + action routing
+//! - Normal/Edit mode state & keymap context propagation
 //!
-//! Notes:
-//! - This is a minimal, compiling scaffolding. Pages/components can be added incrementally.
-//! - Keybindings are not wired yet; events are routed to pages/components which may emit actions.
+//! Rendering Pipeline (final form without toast/overlay as components):
+//! 1. Base Page (active page)
+//! 2. Base Components (page-provided, focusable)
+//! 3. Overlay Layers (LayerKind::Overlay; non-modal, drawn in insertion order)
+//! 4. Popup Layers (LayerKind::Popup; modal, newest on top; focus lock active while any popup exists)
+//! 5. Notifications (LayerKind::Notification; rendered last in a dedicated pass)
 //!
-//! Additions (central overlay + toast manager):
-//! - ToastManager & a global LayerOverlay are now owned by App (not by pages) and are non-fokusierbar.
-//! - Popups & overlays lock normal component focus while displayed.
+//! Toasts + Overlays are now rendered directly by the App / Layer system, not as Components:
+//! - Overlay visuals come from the layer registry render pass (no synthetic overlay component).
+//! - Notification/Toast drawing uses internal App toast state (lifetime, severity aggregation).
+//!
+//! Focus Rules:
+//! - While any Popup active: component focus traversal disabled (popup_focus_lock).
+//! - Closing last popup restores first entry in focus cycle (if available).
+//!
+//! Navigation:
+//! - Page cycling via UiAction::NextPage / UiAction::PrevPage (cyclic).
+//!
+//! This module intentionally keeps gameplay/UI specifics out; it is infrastructure only.
 
 pub(crate) mod settings;
 pub(crate) mod task_manager;
@@ -23,11 +34,11 @@ use self::task_manager::{TaskManager, TaskManagerHandle};
 use crate::layers::LayerRegistry;
 use crate::{
     action::{
-        Action, AppAction, LayerKind, LogicAction, TaskId, TaskKind, TaskProgress, TaskResult,
-        TaskSpec, UiAction, UiMode,
+        Action, AppAction, LayerKind, LogicAction, NotificationLevel, TaskId, TaskKind,
+        TaskProgress, TaskResult, TaskSpec, UiAction, UiMode,
     },
     cli::{Cli, Cmd, RunMode},
-    components::{Component, LayerOverlay},
+    components::Component,
     pages::{DashboardPage, Page, SetupPage},
     tui::{Event, Tui},
 };
@@ -121,6 +132,12 @@ pub struct App {
     action_tx: mpsc::UnboundedSender<Action>,
     action_rx: mpsc::UnboundedReceiver<Action>,
     task_mgr: TaskManagerHandle,
+
+    // --- Toast / Notification state (formerly ToastManager component) ---
+    toast_notifications: Vec<crate::action::Notification>,
+    toast_last_visible: u32,
+    toast_last_highest: Option<crate::action::NotificationLevel>,
+    toast_position: crate::layers::ToastPosition,
 }
 
 impl App {
@@ -209,6 +226,10 @@ impl App {
             action_tx,
             action_rx,
             task_mgr,
+            toast_notifications: Vec::new(),
+            toast_last_visible: 0,
+            toast_last_highest: None,
+            toast_position: crate::layers::ToastPosition::TopRight,
         })
     }
 
@@ -295,28 +316,7 @@ impl App {
                 }
             }
         }
-        // Register system components (toast manager & global overlay) once (non-focusable).
-        {
-            let rect = tui.size()?;
-            let size = Size {
-                width: rect.width,
-                height: rect.height,
-            };
-            if !self.comp_id_to_index.contains_key("toasts") {
-                let _ = self.register_component(
-                    "toasts".into(),
-                    Box::new(crate::layers::ToastManager::new()),
-                    size,
-                );
-            }
-            if !self.comp_id_to_index.contains_key("overlay_global") {
-                let _ = self.register_component(
-                    "overlay_global".into(),
-                    Box::new(LayerOverlay::new("global")),
-                    size,
-                );
-            }
-        }
+        // System components (toast / overlay) now handled by layer & app-render pipeline; no component registration needed.
         self.apply_focus_state();
 
         // Register actions and settings for all components
@@ -750,8 +750,8 @@ impl App {
                 }
             }
 
-            UiAction::ShowNotification(_n) => {
-                // ToastManager handles notifications; no-op here.
+            UiAction::ShowNotification(n) => {
+                self.toast_insert(n);
             }
             UiAction::ReportNotificationCount(_n) => {
                 // App currently does not persist the visible count; it is forwarded to UI components.
@@ -759,8 +759,9 @@ impl App {
             UiAction::ReportNotificationSeverity(_sev) => {
                 // App does not persist the highest severity; components (e.g., StatusBar) consume this.
             }
-            UiAction::DismissNotification { .. } => {
-                // ToastManager handles notifications; no-op here.
+            UiAction::DismissNotification { id } => {
+                self.toast_notifications.retain(|n| n.id != id);
+                self.toast_post_prune();
             }
 
             // Help controls: toggle global, scroll, paging, search
@@ -1093,14 +1094,9 @@ impl App {
                 }
             }
 
-            // Draw registered components (secondary base layer, excluding global overlay which is conditional)
+            // Draw registered components (secondary base layer)
             let status_index = self.comp_id_to_index.get("status").cloned();
-            let overlay_global_index = self.comp_id_to_index.get("overlay_global").cloned();
             for (i, component) in self.components.iter_mut().enumerate() {
-                // Defer overlay_global drawing until after base components, before popups.
-                if Some(i) == overlay_global_index {
-                    continue;
-                }
                 let target = if Some(i) == status_index {
                     status_area
                 } else {
@@ -1114,44 +1110,58 @@ impl App {
                 }
             }
 
-            // Conditional overlay: only draw the global overlay layer if at least one Overlay layer is active.
-            if let Some(overlay_ix) = overlay_global_index {
-                if self
-                    .layers
-                    .iter()
-                    .any(|l| matches!(l.kind, LayerKind::Overlay))
-                {
-                    if let Some(component) = self.components.get_mut(overlay_ix) {
-                        if let Err(err) = component.draw(frame, main_area) {
-                            let _ = self.action_tx.send(Action::Error(format!(
-                                "Failed to draw overlay component: {:?}",
-                                err
-                            )));
-                        }
-                    }
+            // Draw layers on top (popups, overlays, notifications)
+            // This is only scaffolding; concrete rendering belongs to pages/components.
+            // Partition layers to enforce rendering order: Overlays -> Popups
+            let mut overlays = Vec::new();
+            let mut popups = Vec::new();
+            let mut notifications_present = false;
+            for l in &self.layers {
+                match l.kind {
+                    LayerKind::Overlay => overlays.push(l.clone()),
+                    LayerKind::Popup => popups.push(l.clone()),
+                    LayerKind::Notification => notifications_present = true,
                 }
             }
 
-            // Draw layers on top (popups, overlays, notifications)
-            // This is only scaffolding; concrete rendering belongs to pages/components.
-            for layer in self.layers.iter() {
-                match layer.kind {
-                    LayerKind::Popup | LayerKind::Overlay => {
-                        if let Err(err) = self.layer_registry.render_layer(
-                            frame,
-                            area,
-                            layer.kind,
-                            layer.id.as_deref(),
-                        ) {
-                            let _ = self
-                                .action_tx
-                                .send(Action::Error(format!("Failed to render layer: {:?}", err)));
-                        }
-                    }
-                    LayerKind::Notification => {
-                        // Notifications are rendered by the ToastManager component; keeping sentinel for z-order.
-                    }
+            for layer in overlays.into_iter() {
+                if let Err(err) =
+                    self.layer_registry
+                        .render_layer(frame, area, layer.kind, layer.id.as_deref())
+                {
+                    let _ = self.action_tx.send(Action::Error(format!(
+                        "Failed to render overlay layer: {:?}",
+                        err
+                    )));
                 }
+            }
+            // Dim background if any popup present (simple dark overlay)
+            if !popups.is_empty() {
+                use ratatui::{
+                    style::{Color, Style},
+                    widgets::{Block, Borders, Clear},
+                };
+                frame.render_widget(Clear, area);
+                let dim = Block::default()
+                    .borders(Borders::NONE)
+                    .style(Style::default().bg(Color::Black));
+                frame.render_widget(dim, area);
+            }
+            for layer in popups.into_iter() {
+                if let Err(err) =
+                    self.layer_registry
+                        .render_layer(frame, area, layer.kind, layer.id.as_deref())
+                {
+                    let _ = self.action_tx.send(Action::Error(format!(
+                        "Failed to render popup layer: {:?}",
+                        err
+                    )));
+                }
+            }
+
+            // Notifications (toast stack) — ignore LayerKind::Notification entries content-wise; we just need presence
+            if notifications_present || !self.toast_notifications.is_empty() {
+                self.render_toasts(frame, area);
             }
 
             // Status bar is now rendered as its own component at the bottom area; removed temporary overlay panel.
@@ -1196,6 +1206,178 @@ impl App {
             indices.push(ix);
         }
         Ok(indices)
+    }
+
+    /// Toast insertion (applies lifetime if missing) and pruning + reporting.
+    fn toast_insert(&mut self, mut n: crate::action::Notification) {
+        if n.timeout_ms.is_none() {
+            let (lifetime_ms, _) = self.toast_cfg();
+            n.timeout_ms = Some(self.now_unix_ms() + lifetime_ms);
+        }
+        if let Some(pos) = self.toast_notifications.iter().position(|x| x.id == n.id) {
+            self.toast_notifications[pos] = n;
+        } else {
+            self.toast_notifications.push(n);
+        }
+        self.toast_post_prune();
+    }
+
+    fn toast_post_prune(&mut self) {
+        let now = self.now_unix_ms();
+        self.toast_notifications
+            .retain(|n| n.timeout_ms.map(|dl| now < dl).unwrap_or(true));
+
+        let (_, max_visible) = self.toast_cfg();
+        if self.toast_notifications.len() > max_visible {
+            let keep = self
+                .toast_notifications
+                .split_off(self.toast_notifications.len() - max_visible);
+            self.toast_notifications = keep;
+        }
+
+        let visible = self.toast_notifications.len() as u32;
+        if visible != self.toast_last_visible {
+            self.toast_last_visible = visible;
+            let _ = self
+                .action_tx
+                .send(Action::Ui(UiAction::ReportNotificationCount(visible)));
+        }
+
+        let highest =
+            self.toast_notifications
+                .iter()
+                .map(|n| n.level)
+                .max_by_key(|lvl| match lvl {
+                    NotificationLevel::Error => 4,
+                    NotificationLevel::Warning => 3,
+                    NotificationLevel::Success => 2,
+                    NotificationLevel::Info => 1,
+                });
+        if highest != self.toast_last_highest {
+            self.toast_last_highest = highest;
+            let _ = self
+                .action_tx
+                .send(Action::Ui(UiAction::ReportNotificationSeverity(highest)));
+        }
+    }
+
+    fn render_toasts(&mut self, frame: &mut ratatui::Frame<'_>, area: ratatui::layout::Rect) {
+        self.toast_post_prune();
+        if self.toast_notifications.is_empty() {
+            return;
+        }
+        use ratatui::{
+            style::{Color, Style},
+            widgets::{Block, Borders, Clear, Paragraph},
+        };
+        let width = area.width.min(50);
+        let height_per = 3u16;
+        for (i, notif) in self.toast_notifications.iter().rev().enumerate() {
+            let i = i as u16;
+            let (x, y) = match self.toast_position {
+                crate::layers::ToastPosition::TopRight => (
+                    area.x + area.width.saturating_sub(width),
+                    area.y + i * height_per,
+                ),
+                crate::layers::ToastPosition::BottomRight => (
+                    area.x + area.width.saturating_sub(width),
+                    area.y
+                        + area
+                            .height
+                            .saturating_sub((i + 1) * height_per)
+                            .saturating_sub(1),
+                ),
+                crate::layers::ToastPosition::TopLeft => (area.x, area.y + i * height_per),
+                crate::layers::ToastPosition::BottomLeft => (
+                    area.x,
+                    area.y
+                        + area
+                            .height
+                            .saturating_sub((i + 1) * height_per)
+                            .saturating_sub(1),
+                ),
+            };
+            let toast_area = ratatui::layout::Rect::new(
+                x,
+                y,
+                width,
+                height_per.min(area.height.saturating_sub(y)),
+            );
+            let (fg, bg) = match notif.level {
+                NotificationLevel::Info => (Color::White, Color::Reset),
+                NotificationLevel::Success => (Color::Green, Color::Reset),
+                NotificationLevel::Warning => (Color::Yellow, Color::Reset),
+                NotificationLevel::Error => (Color::Red, Color::Reset),
+            };
+            let style = Style::default().fg(fg).bg(bg);
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .style(style)
+                .title(format!("Notif — {:?}", notif.level));
+            let para = Paragraph::new(notif.message.clone())
+                .style(style)
+                .block(block);
+            frame.render_widget(Clear, toast_area);
+            frame.render_widget(para, toast_area);
+        }
+    }
+
+    fn now_unix_ms(&self) -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64
+    }
+
+    /// Read toast configuration (lifetime, max_visible) from settings (falls back to defaults).
+    fn toast_cfg(&self) -> (u64, usize) {
+        let map = self.settings.effective_settings();
+        let wiz_tbl = map.get("wizard").and_then(|v| v.as_table());
+        let lifetime_ms: u64 = wiz_tbl
+            .and_then(|t| t.get("notification_lifetime_ms"))
+            .and_then(|v| v.as_integer())
+            .map(|n| n as u64)
+            .unwrap_or(4000);
+        let max_visible: usize = wiz_tbl
+            .and_then(|t| t.get("notification_max"))
+            .and_then(|v| v.as_integer())
+            .map(|n| n as usize)
+            .unwrap_or(3);
+        (lifetime_ms, max_visible)
+    }
+
+    /// Close only the top-most popup (if any). Returns true if one was closed.
+    fn close_top_popup(&mut self) -> bool {
+        if let Some(pos) = self
+            .layers
+            .iter()
+            .rposition(|l| matches!(l.kind, LayerKind::Popup))
+        {
+            self.layers.remove(pos);
+            if !self
+                .layers
+                .iter()
+                .any(|l| matches!(l.kind, LayerKind::Popup))
+            {
+                self.popup_focus_lock = false;
+                if !self.focus_cycle.is_empty() {
+                    self.focused_component_index = Some(self.focus_cycle[0]);
+                    self.apply_focus_state();
+                }
+            }
+            return true;
+        }
+        false
+    }
+
+    /// Close all popup layers and restore focus.
+    fn close_all_popups(&mut self) {
+        self.layers.retain(|l| !matches!(l.kind, LayerKind::Popup));
+        self.popup_focus_lock = false;
+        if !self.focus_cycle.is_empty() {
+            self.focused_component_index = Some(self.focus_cycle[0]);
+            self.apply_focus_state();
+        }
     }
 
     /// Apply current focus state to all registered components (non-focusable system components
