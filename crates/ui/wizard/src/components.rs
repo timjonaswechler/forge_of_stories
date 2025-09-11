@@ -12,11 +12,11 @@ use crate::{action::Action, app::settings::SettingsStore, tui::Event};
 
 pub mod fps;
 pub mod home;
-mod layer_overlay;
+mod logo;
 mod status_bar;
 mod task_list;
 
-pub(crate) use layer_overlay::LayerOverlay;
+pub(crate) use logo::{LogoComponent, WizardLogoComponent};
 pub(crate) use status_bar::StatusBar;
 pub(crate) use task_list::TaskList;
 

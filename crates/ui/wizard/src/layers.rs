@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use color_eyre::Result;
-use crossterm::event::{Event as CEvent, KeyEvent};
+use crossterm::event::Event as CEvent;
 use ratatui::{
     Frame,
     layout::Rect,
@@ -13,10 +13,8 @@ use ratatui::{
 use tui_input::{Input, backend::crossterm::EventHandler};
 
 use crate::{
-    action::{Action, AppAction, LayerKind, Notification, NotificationLevel, UiAction},
+    action::{Action, AppAction, LayerKind, UiAction},
     app::settings::SettingsStore,
-    components::Component,
-    tui::Event,
 };
 
 //
@@ -397,7 +395,7 @@ impl LayerRegistry for BasicLayerRegistry {
         id: Option<&str>,
     ) -> Result<()> {
         match kind {
-            LayerKind::Popup | LayerKind::Overlay => match id {
+            LayerKind::Popup | LayerKind::Overlay | LayerKind::ModalOverlay => match id {
                 Some("help") => self.render_help(f, area)?,
                 Some("confirm") => self.render_confirm(f, area)?,
                 Some("error_details") => self.render_error_details(f, area)?,
@@ -418,8 +416,8 @@ impl LayerRegistry for BasicLayerRegistry {
                 }
             },
             LayerKind::Notification => {
-                // Notification rendering is delegated to `ToastManager` component.
-                // The registry doesn't draw here.
+                // Notifications (toasts) are now rendered directly by the App (toast system).
+                // No drawing required here.
             }
         }
         Ok(())
@@ -444,234 +442,3 @@ impl Default for ToastPosition {
         ToastPosition::TopRight
     }
 }
-
-/// A simple toast manager component that:
-/// - Listens for `UiAction::ShowNotification` and `UiAction::DismissNotification`.
-/// - Applies default lifetime from settings if not set.
-/// - Renders a stacked list of toasts with severity-based styles.
-/// - Emits `UiAction::ReportNotificationCount` when the visible count changes.
-pub struct ToastManager {
-    tx: Option<tokio::sync::mpsc::UnboundedSender<Action>>,
-    settings: Option<Arc<SettingsStore>>,
-
-    // State
-    notifications: Vec<Notification>,
-    position: ToastPosition,
-
-    // Cached last visible count to avoid spamming the channel every frame
-    last_visible_count: u32,
-    // Highest severity last reported
-    last_highest_severity: Option<NotificationLevel>,
-}
-
-impl ToastManager {
-    pub fn new() -> Self {
-        Self {
-            tx: None,
-            settings: None,
-            notifications: Vec::new(),
-            position: ToastPosition::TopRight,
-            last_visible_count: 0,
-            last_highest_severity: None,
-        }
-    }
-
-    /// Set where the toast stack should be drawn.
-    pub fn set_position(&mut self, pos: ToastPosition) {
-        self.position = pos;
-    }
-
-    fn settings_notification_cfg(&self) -> (u64, usize) {
-        // Returns (lifetime_ms, max_visible)
-        if let Some(settings) = &self.settings {
-            let map = settings.effective_settings();
-            let wiz_tbl = map.get("wizard").and_then(|v| v.as_table());
-            let lifetime_ms: u64 = wiz_tbl
-                .and_then(|t| t.get("notification_lifetime_ms"))
-                .and_then(|v| v.as_integer())
-                .map(|n| n as u64)
-                .unwrap_or(4000);
-            let max_visible: usize = wiz_tbl
-                .and_then(|t| t.get("notification_max"))
-                .and_then(|v| v.as_integer())
-                .map(|n| n as usize)
-                .unwrap_or(3);
-            (lifetime_ms, max_visible)
-        } else {
-            (4000, 3)
-        }
-    }
-
-    fn prune_and_cap(&mut self) {
-        let now_ms = now_unix_ms();
-        // Keep only those not expired (timeout_ms is absolute deadline)
-        self.notifications
-            .retain(|n| n.timeout_ms.map(|dl| now_ms < dl).unwrap_or(true));
-
-        // Cap visible number by settings
-        let (_, max_visible) = self.settings_notification_cfg();
-        if self.notifications.len() > max_visible {
-            let keep = self
-                .notifications
-                .split_off(self.notifications.len() - max_visible);
-            self.notifications = keep;
-        }
-
-        let visible_count = self.notifications.len() as u32;
-        if visible_count != self.last_visible_count {
-            self.last_visible_count = visible_count;
-            if let Some(tx) = &self.tx {
-                let _ = tx.send(Action::Ui(UiAction::ReportNotificationCount(visible_count)));
-            }
-        }
-        // compute and report highest severity
-        let highest = self
-            .notifications
-            .iter()
-            .map(|n| n.level)
-            .max_by_key(|lvl| match lvl {
-                NotificationLevel::Error => 4,
-                NotificationLevel::Warning => 3,
-                NotificationLevel::Success => 2,
-                NotificationLevel::Info => 1,
-            });
-        if highest != self.last_highest_severity {
-            self.last_highest_severity = highest;
-            if let Some(tx) = &self.tx {
-                let _ = tx.send(Action::Ui(UiAction::ReportNotificationSeverity(highest)));
-            }
-        }
-    }
-
-    fn ensure_deadline(&self, n: &mut Notification) {
-        if n.timeout_ms.is_some() {
-            return;
-        }
-        let (lifetime_ms, _) = self.settings_notification_cfg();
-        n.timeout_ms = Some(now_unix_ms() + lifetime_ms);
-    }
-}
-
-impl Component for ToastManager {
-    fn register_action_handler(
-        &mut self,
-        tx: tokio::sync::mpsc::UnboundedSender<Action>,
-    ) -> Result<()> {
-        self.tx = Some(tx);
-        Ok(())
-    }
-
-    fn register_settings_handler(&mut self, settings: Arc<SettingsStore>) -> Result<()> {
-        self.settings = Some(settings);
-        Ok(())
-    }
-
-    fn init(&mut self, _area: ratatui::layout::Size) -> Result<()> {
-        Ok(())
-    }
-
-    fn handle_events(&mut self, _event: Option<Event>) -> Result<Option<Action>> {
-        Ok(None)
-    }
-
-    fn update(&mut self, action: Action) -> Result<Option<Action>> {
-        match action {
-            Action::Ui(UiAction::ShowNotification(mut n)) => {
-                self.ensure_deadline(&mut n);
-                if let Some(pos) = self.notifications.iter().position(|x| x.id == n.id) {
-                    self.notifications[pos] = n;
-                } else {
-                    self.notifications.push(n);
-                }
-                self.prune_and_cap();
-            }
-            Action::Ui(UiAction::DismissNotification { id }) => {
-                if let Some(pos) = self.notifications.iter().position(|x| x.id == id) {
-                    self.notifications.remove(pos);
-                }
-                self.prune_and_cap();
-            }
-            // Keep the visible count in sync if someone else prunes (harmless).
-            Action::Ui(UiAction::ReportNotificationCount(_)) => {}
-            _ => {}
-        }
-        Ok(None)
-    }
-
-    fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
-        // Prune/cap on each draw to keep visuals correct.
-        self.prune_and_cap();
-
-        if self.notifications.is_empty() {
-            return Ok(());
-        }
-
-        let width = area.width.min(50);
-        let height_per = 3u16;
-
-        // Last notifications are the most recent; stack them accordingly.
-        for (i, notif) in self.notifications.iter().rev().enumerate() {
-            let i = i as u16;
-            let n_area = toast_rect(area, width, height_per, i, self.position);
-            let (fg, bg) = toast_colors(notif.level);
-            let style = Style::default().fg(fg).bg(bg);
-            let title = format!("Notification — {:?}", notif.level);
-            let block = Block::default()
-                .borders(Borders::ALL)
-                .style(style)
-                .title(title);
-
-            let para = Paragraph::new(notif.message.clone())
-                .style(style)
-                .block(block);
-
-            // Clear background for the toast and render
-            f.render_widget(Clear, n_area);
-            f.render_widget(para, n_area);
-        }
-
-        Ok(())
-    }
-}
-
-//
-// Helpers
-//
-
-fn toast_colors(level: NotificationLevel) -> (Color, Color) {
-    match level {
-        NotificationLevel::Info => (Color::White, Color::Blue),
-        NotificationLevel::Success => (Color::Black, Color::Green),
-        NotificationLevel::Warning => (Color::Black, Color::Yellow),
-        NotificationLevel::Error => (Color::White, Color::Red),
-    }
-}
-
-fn toast_rect(area: Rect, w: u16, h: u16, index: u16, pos: ToastPosition) -> Rect {
-    let x_left = area.x;
-    let x_right = area.x + area.width.saturating_sub(w);
-
-    match pos {
-        ToastPosition::TopRight => Rect::new(x_right, area.y + index * h, w, h),
-        ToastPosition::BottomRight => {
-            let y0 = area.y + area.height.saturating_sub((index + 1) * h);
-            Rect::new(x_right, y0, w, h)
-        }
-        ToastPosition::TopLeft => Rect::new(x_left, area.y + index * h, w, h),
-        ToastPosition::BottomLeft => {
-            let y0 = area.y + area.height.saturating_sub((index + 1) * h);
-            Rect::new(x_left, y0, w, h)
-        }
-    }
-}
-
-fn now_unix_ms() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
-}
-
-//
-// Small utility to render a titled line (unused currently, kept for future layer expansions)
-//

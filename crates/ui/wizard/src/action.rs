@@ -58,10 +58,13 @@ pub enum UiMode {
 
 /// Layers that may be drawn above base content.
 /// - Popup: modal, blocks interaction with lower layers; covers full available area by policy.
+/// - ModalOverlay: semi-modal overlay (e.g. dim / focus trap) that blocks component interaction but may allow certain global keys.
 /// - Notification: ephemeral, highest visual layer; does not necessarily block interaction.
+/// - Overlay: non-modal decorative or informational layer drawn above base components.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Display, Serialize, Deserialize)]
 pub enum LayerKind {
     Popup,
+    ModalOverlay,
     Notification,
     Overlay,
 }
@@ -98,8 +101,6 @@ pub enum UiAction {
     // Page-level selection for UI-only routing (does not change app routing by itself)
     /// Informative: the UI reports the focused component name (for status bars/tooltips).
     ReportFocusedComponent(String),
-    /// Request navigation to a page by its stable id (UI intent; app will translate to AppAction::SetActivePage).
-    GoToPage(String),
 
     // Edit mode
     ToggleEditMode,
@@ -108,17 +109,34 @@ pub enum UiAction {
 
     // Layering primitives
     /// Push a popup layer with a known ID (page/component decides what to render).
+    /// Optional priority overrides auto-incremented stacking order (higher draws later).
     OpenPopup {
         id: String,
+        priority: Option<i32>,
     },
     /// Close a popup layer by ID (no-op if missing).
     ClosePopup {
         id: String,
     },
+    /// Open a modal overlay (blocks component focus/interaction; sits beneath popups by priority rules).
+    OpenModalOverlay {
+        id: String,
+        priority: Option<i32>,
+    },
+    /// Close a modal overlay layer by ID (no-op if missing).
+    CloseModalOverlay {
+        id: String,
+    },
+    /// Close all modal overlay layers (non-popups).
+    CloseAllModalOverlays,
     /// Push a generic layer kind (e.g., overlay). Concrete meaning is page-defined.
     PushLayer(LayerKind),
     /// Pop the top-most layer (if any).
     PopLayer,
+    /// Close only the top-most popup layer (if any).
+    CloseTopPopup,
+    /// Close all popup layers.
+    CloseAllPopups,
 
     // Notifications
     ShowNotification(Notification),
@@ -161,6 +179,10 @@ pub enum UiAction {
     HelpToggleWrap,
     /// Persist the current 'wrap_on' preference for Help into settings.
     PersistHelpWrapOn(bool),
+    /// Cycle to next page (cyclic order)
+    NextPage,
+    /// Cycle to previous page (cyclic order)
+    PrevPage,
 }
 
 //

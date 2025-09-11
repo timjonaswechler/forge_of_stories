@@ -1,6 +1,6 @@
 use crate::{
     action::{Action, UiAction},
-    components::{Component, StatusBar},
+    components::Component,
     pages::Page,
 };
 use color_eyre::Result;
@@ -12,8 +12,8 @@ use ratatui::{
 };
 use tokio::sync::mpsc::UnboundedSender;
 
-/// SetupPage: registers only the status bar (overlay & toasts now managed centrally).
-/// It reports its focused component via UiAction::ReportFocusedComponent.
+/// SetupPage: base page without per-page StatusBar (now rendered globally in App).
+/// Focus handling is trivial (no intrinsic components).
 pub struct SetupPage {
     tx: Option<UnboundedSender<Action>>,
     focused: Option<String>,
@@ -23,7 +23,7 @@ impl SetupPage {
     pub fn new() -> Self {
         Self {
             tx: None,
-            focused: Some("status".to_string()),
+            focused: None,
         }
     }
 }
@@ -39,18 +39,13 @@ impl Page for SetupPage {
     }
 
     fn provide_components(&mut self) -> Vec<(String, Box<dyn Component>)> {
-        vec![(
-            "status".to_string(),
-            Box::new(StatusBar::new("Setup")) as Box<dyn Component>,
-        )]
+        Vec::new()
     }
 
     fn focus(&mut self) -> Result<()> {
-        if let Some(tx) = &self.tx {
-            let _ = tx.send(Action::Ui(UiAction::ReportFocusedComponent(
-                "status".to_string(),
-            )));
-        }
+        // No page-owned components to focus; status bar handled globally.
+        // (Any future focusable components would emit ReportFocusedComponent here.)
+
         Ok(())
     }
 
@@ -67,7 +62,7 @@ impl Page for SetupPage {
     }
 
     fn focus_order(&self) -> &'static [&'static str] {
-        &["status"]
+        &[]
     }
 
     fn focused_component_id(&self) -> Option<&str> {

@@ -6,10 +6,14 @@ use ratatui::{Frame, layout::Rect};
 use tokio::sync::mpsc::UnboundedSender;
 
 mod dashboard;
+mod dashboard2;
 mod setup;
+mod welcome;
 
 pub(crate) use dashboard::DashboardPage;
+pub(crate) use dashboard2::Dashboard2Page;
 pub(crate) use setup::SetupPage;
+pub(crate) use welcome::WelcomePage;
 
 /// A top-level screen composed of zero or more components.
 /// Pages own focus state among their components and expose high-level behaviors to the app.
@@ -66,6 +70,13 @@ pub trait Page {
         None
     }
 
+    /// Compute the layout for this page: mapping component IDs to sub-rectangles.
+    /// Default: empty layout (App falls back to drawing components in the full area).
+    fn layout(&self, area: Rect) -> PageLayout {
+        let _ = area;
+        PageLayout::empty()
+    }
+
     /// Route an optional event to the page. Return an action to send back to the app.
     fn handle_events(&mut self, event: Option<Event>) -> Result<Option<Action>> {
         let action = match event {
@@ -96,4 +107,24 @@ pub trait Page {
 
     /// Draw the page to the provided area.
     fn draw(&mut self, f: &mut Frame, area: Rect) -> Result<()>;
+}
+
+/// Layout description for a Page.
+/// The App will consult this mapping when positioning components.
+#[derive(Default)]
+pub struct PageLayout {
+    pub regions: std::collections::HashMap<String, Rect>,
+}
+
+impl PageLayout {
+    pub fn empty() -> Self {
+        Self {
+            regions: std::collections::HashMap::new(),
+        }
+    }
+
+    pub fn with(mut self, id: &str, rect: Rect) -> Self {
+        self.regions.insert(id.to_string(), rect);
+        self
+    }
 }

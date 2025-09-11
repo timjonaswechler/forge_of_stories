@@ -62,6 +62,13 @@ impl StatusBar {
         }
     }
 
+    /// Update the page label shown on the left side of the status bar.
+    /// This is useful when the StatusBar is owned centrally by the App instead
+    /// of being recreated per page.
+    pub fn set_page<S: Into<String>>(&mut self, page: S) {
+        self.page = page.into();
+    }
+
     fn left_text(&self) -> Line<'static> {
         let page = Span::styled(
             format!(" {} ", self.page),

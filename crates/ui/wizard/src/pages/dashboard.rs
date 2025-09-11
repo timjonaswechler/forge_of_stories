@@ -1,6 +1,6 @@
 use crate::{
     action::{Action, UiAction},
-    components::{Component, StatusBar, TaskList},
+    components::{Component, TaskList},
     pages::Page,
 };
 use color_eyre::Result;
@@ -12,10 +12,11 @@ use ratatui::{
 };
 use tokio::sync::mpsc::UnboundedSender;
 
-/// DashboardPage: registers status bar and task list components.
+/// DashboardPage: registers task list component (StatusBar now rendered globally by App).
 pub struct DashboardPage {
     tx: Option<UnboundedSender<Action>>,
     focused: Option<String>,
+    focusables: [&'static str; 2],
 }
 
 impl DashboardPage {
@@ -23,6 +24,7 @@ impl DashboardPage {
         Self {
             tx: None,
             focused: None,
+            focusables: ["tasks", "fps_panel"],
         }
     }
 }
@@ -40,21 +42,19 @@ impl Page for DashboardPage {
     fn provide_components(&mut self) -> Vec<(String, Box<dyn Component>)> {
         vec![
             (
-                "status".to_string(),
-                Box::new(StatusBar::new("Dashboard")) as Box<dyn Component>,
-            ),
-            (
                 "tasks".to_string(),
                 Box::new(TaskList::new()) as Box<dyn Component>,
             ),
-            // (ToastManager removed: now managed centrally by App, not focusable)
+            // StatusBar removed; rendered globally by App
+            // Placeholder lines to keep line count stable
+            // (additional components may be added here later)
         ]
     }
 
     fn focus(&mut self) -> Result<()> {
         if let Some(tx) = &self.tx {
             let _ = tx.send(Action::Ui(UiAction::ReportFocusedComponent(
-                "status".to_string(),
+                "tasks".to_string(),
             )));
         }
         Ok(())
@@ -73,7 +73,7 @@ impl Page for DashboardPage {
     }
 
     fn focus_order(&self) -> &'static [&'static str] {
-        &["status", "tasks"]
+        &["tasks"]
     }
 
     fn focused_component_id(&self) -> Option<&str> {

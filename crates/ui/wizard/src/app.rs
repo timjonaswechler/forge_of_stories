@@ -32,13 +32,14 @@ pub(crate) mod task_manager;
 
 use self::task_manager::{TaskManager, TaskManagerHandle};
 use crate::layers::LayerRegistry;
+use crate::pages::WelcomePage;
 use crate::{
     action::{
         Action, AppAction, LayerKind, LogicAction, NotificationLevel, TaskId, TaskKind,
         TaskProgress, TaskResult, TaskSpec, UiAction, UiMode,
     },
     cli::{Cli, Cmd, RunMode},
-    components::Component,
+    components::{Component, StatusBar},
     pages::{DashboardPage, Page, SetupPage},
     tui::{Event, Tui},
 };
@@ -64,6 +65,8 @@ pub enum Mode {
 pub struct LayerEntry {
     pub kind: LayerKind,
     pub id: Option<String>,
+    /// Z-order / priority (higher draws later). Currently unused => default 0.
+    pub priority: i32,
 }
 
 /// Background task state tracked by the application.
@@ -92,6 +95,8 @@ pub struct App {
     // UI collections
     pages: Vec<Box<dyn Page>>,
     components: Vec<Box<dyn Component>>,
+    /// Global status bar (no longer provided by each page).
+    status_bar: StatusBar,
 
     // Navigation and focus
     active_page_index: Option<usize>,
@@ -133,7 +138,7 @@ pub struct App {
     action_rx: mpsc::UnboundedReceiver<Action>,
     task_mgr: TaskManagerHandle,
 
-    // --- Toast / Notification state (formerly ToastManager component) ---
+    // --- Toast / Notification state ---
     toast_notifications: Vec<crate::action::Notification>,
     toast_last_visible: u32,
     toast_last_highest: Option<crate::action::NotificationLevel>,
@@ -149,14 +154,25 @@ impl App {
         let aether_settings = Arc::new(settings::build_wizard_settings_store()?);
 
         // Initial UI collections; pages/components can be registered here based on CLI.
-        let (pages, components, active_page_index): (
+        let (pages, components, active_page_index, page_label): (
             Vec<Box<dyn Page>>,
             Vec<Box<dyn Component>>,
             Option<usize>,
+            String,
         ) = match cli.cmd {
             Cmd::Run { mode } => match mode {
-                RunMode::Setup => (vec![Box::new(SetupPage::new())], vec![], Some(0)),
-                RunMode::Dashboard => (vec![Box::new(DashboardPage::new())], vec![], Some(0)),
+                RunMode::Setup => (
+                    vec![Box::new(WelcomePage::new())],
+                    vec![],
+                    Some(0),
+                    "Welcome".to_string(),
+                ),
+                RunMode::Dashboard => (
+                    vec![Box::new(DashboardPage::new())],
+                    vec![],
+                    Some(0),
+                    "Dashboard".to_string(),
+                ),
             },
         };
 
@@ -166,6 +182,24 @@ impl App {
         // Start TaskManager loop; keep a handle to send commands. Join handle is currently discarded.
         let (task_mgr, _task_mgr_join) = TaskManager::new(action_tx.clone());
         let settings_for_layer = settings.clone();
+        // Derive toast position from settings (wizard.toast_position) with graceful fallback.
+        let toast_position_value = {
+            use crate::layers::ToastPosition;
+            let map = settings_for_layer.effective_settings();
+            let tbl_opt = map.get("wizard").and_then(|v| v.as_table());
+            let s_opt = tbl_opt
+                .and_then(|t| t.get("toast_position"))
+                .and_then(|v| v.as_str());
+            match s_opt.map(|s| s.to_ascii_lowercase()) {
+                Some(ref s) if s == "top_left" || s == "topleft" => ToastPosition::TopLeft,
+                Some(ref s) if s == "bottom_left" || s == "bottomleft" => ToastPosition::BottomLeft,
+                Some(ref s) if s == "bottom_right" || s == "bottomright" => {
+                    ToastPosition::BottomRight
+                }
+                Some(ref s) if s == "top_right" || s == "topright" => ToastPosition::TopRight,
+                _ => ToastPosition::TopRight,
+            }
+        };
 
         Ok(Self {
             base,
@@ -173,6 +207,7 @@ impl App {
             aether_settings,
             pages,
             components,
+            status_bar: StatusBar::new(&page_label),
             active_page_index,
             focused_component_index: None,
             focus_cycle: Vec::new(),
@@ -229,7 +264,7 @@ impl App {
             toast_notifications: Vec::new(),
             toast_last_visible: 0,
             toast_last_highest: None,
-            toast_position: crate::layers::ToastPosition::TopRight,
+            toast_position: toast_position_value,
         })
     }
 
@@ -245,15 +280,12 @@ impl App {
             page.register_action_handler(self.action_tx.clone())?;
             page.init()?;
         }
-        // Pages provide their owned components; App registers them so focus can be tracked by index or id
         {
             let rect = tui.size()?;
             let size = Size {
                 width: rect.width,
                 height: rect.height,
             };
-            // Collect page-provided components first to avoid borrowing `self.pages`
-            // while calling `self.register_components(...)`.
             let mut provided_all = Vec::new();
             for page in self.pages.iter_mut() {
                 let provided = page.provide_components();
@@ -262,7 +294,6 @@ impl App {
                 }
             }
             if !provided_all.is_empty() {
-                // Change detection: only (re)register if the set of component IDs differs.
                 let new_ids: std::collections::HashSet<String> =
                     provided_all.iter().map(|(id, _)| id.clone()).collect();
                 let current_ids: std::collections::HashSet<String> =
@@ -271,29 +302,34 @@ impl App {
                 let changed = self.components.len() != provided_all.len() || new_ids != current_ids;
 
                 if changed {
-                    // Clear previous registry before re-registering.
                     self.components.clear();
                     self.comp_id_to_index.clear();
                     self.focused_component_index = None;
                     self.focus_cycle.clear();
                     let _ = self.register_components(provided_all, size)?;
-                    // Rebuild focus cycle from active page's declared order (skip non-existent IDs).
                     if let Some(ix) = self.active_page_index {
                         if let Some(page) = self.pages.get(ix) {
-                            let order = page.focus_order();
-                            for id in order {
+                            for id in page.focus_order() {
                                 if let Some(&cix) = self.comp_id_to_index.get(*id) {
                                     self.focus_cycle.push(cix);
+                                }
+                            }
+                            // Auto-derive focus order if page provided none
+                            if self.focus_cycle.is_empty() {
+                                let mut pairs: Vec<(&String, &usize)> =
+                                    self.comp_id_to_index.iter().collect();
+                                // Preserve registration / visual order by component index
+                                pairs.sort_by_key(|(_, ix)| *ix);
+                                for (_, ix) in pairs {
+                                    self.focus_cycle.push(*ix);
                                 }
                             }
                         }
                     }
                 } else if self.focus_cycle.is_empty() {
-                    // Initial build (first run where list matched but cycle not yet built)
                     if let Some(ix) = self.active_page_index {
                         if let Some(page) = self.pages.get(ix) {
-                            let order = page.focus_order();
-                            for id in order {
+                            for id in page.focus_order() {
                                 if let Some(&cix) = self.comp_id_to_index.get(*id) {
                                     self.focus_cycle.push(cix);
                                 }
@@ -304,29 +340,24 @@ impl App {
             }
         }
 
-        // Update keymap context from active page (scaffold) and trigger initial page focus reporting.
         if let Some(ix) = self.active_page_index {
             if let Some(page) = self.pages.get_mut(ix) {
                 self.keymap_context = page.keymap_context().to_string();
-                // Ask the page to emit its current focused component (UiAction::ReportFocusedComponent).
                 let _ = page.focus();
-                // Set initial focus to first in cycle if none reported yet.
                 if self.focused_component_index.is_none() && !self.focus_cycle.is_empty() {
                     self.focused_component_index = Some(self.focus_cycle[0]);
                 }
+                self.status_bar.set_page(page.id());
             }
         }
-        // System components (toast / overlay) now handled by layer & app-render pipeline; no component registration needed.
         self.apply_focus_state();
 
-        // Register actions and settings for all components
         for component in self.components.iter_mut() {
             component.register_action_handler(self.action_tx.clone())?;
         }
         for component in self.components.iter_mut() {
             component.register_settings_handler(self.settings.clone())?;
         }
-        // Initialize components with terminal size
         {
             let rect = tui.size()?;
             let size = Size {
@@ -336,6 +367,12 @@ impl App {
             for component in self.components.iter_mut() {
                 component.init(size)?;
             }
+            // Initialize status bar
+            self.status_bar
+                .register_action_handler(self.action_tx.clone())?;
+            self.status_bar
+                .register_settings_handler(self.settings.clone())?;
+            self.status_bar.init(size)?;
         }
 
         let action_tx = self.action_tx.clone();
@@ -346,7 +383,6 @@ impl App {
                 tui.suspend()?;
                 action_tx.send(Action::Resume)?;
                 action_tx.send(Action::ClearScreen)?;
-                // tui.mouse(true);
                 tui.enter()?;
             } else if self.should_quit {
                 tui.stop()?;
@@ -371,7 +407,6 @@ impl App {
             _ => {}
         }
 
-        // Route event to active page (if any)
         if let Some(ix) = self.active_page_index {
             if let Some(page) = self.pages.get_mut(ix) {
                 if let Some(action) = page.handle_events(Some(event.clone()))? {
@@ -379,19 +414,18 @@ impl App {
                 }
             }
         }
-
-        // Route event to components
         for component in self.components.iter_mut() {
             if let Some(action) = component.handle_events(Some(event.clone()))? {
                 action_tx.send(action)?;
             }
         }
+        // Status bar consumes events only for potential future interactive features
+        let _ = self.status_bar.handle_events(Some(event));
         Ok(())
     }
 
     fn handle_key_event(&mut self, key: KeyEvent) -> Result<()> {
         use crossterm::event::{KeyCode, KeyModifiers};
-        // When the Help search prompt is active, capture input here
         if self.help_search_active {
             match key.code {
                 KeyCode::Enter => {
@@ -408,13 +442,11 @@ impl App {
                     return Ok(());
                 }
                 KeyCode::Backspace | KeyCode::Char(_) => {
-                    // Forward key to help prompt widget
                     let _ = self
                         .action_tx
                         .send(Action::Ui(UiAction::HelpPromptKey(key)));
                 }
                 _ => {
-                    // Forward other keys (arrows, ctrl shortcuts) to the prompt widget as well
                     let _ = self
                         .action_tx
                         .send(Action::Ui(UiAction::HelpPromptKey(key)));
@@ -422,8 +454,22 @@ impl App {
             }
             return Ok(());
         }
-
-        // Build a chord string similar to the exported keymap format
+        {
+            if key.code == KeyCode::Esc {
+                if key.modifiers.contains(KeyModifiers::ALT) {
+                    let _ = self.action_tx.send(Action::Ui(UiAction::CloseAllPopups));
+                } else if self
+                    .layers
+                    .iter()
+                    .any(|l| matches!(l.kind, LayerKind::Popup | LayerKind::ModalOverlay))
+                {
+                    let _ = self.action_tx.send(Action::Ui(UiAction::CloseTopPopup));
+                } else if self.ui_mode == UiMode::Edit {
+                    let _ = self.action_tx.send(Action::Ui(UiAction::ExitEditMode));
+                }
+                return Ok(());
+            }
+        }
         let mut mods: Vec<&'static str> = Vec::new();
         if key.modifiers.contains(KeyModifiers::CONTROL) {
             mods.push("ctrl");
@@ -445,7 +491,6 @@ impl App {
             KeyCode::Up => "up".into(),
             KeyCode::Down => "down".into(),
             _ => {
-                // Unhandled key; keep buffer for potential multi-key in the future
                 self.last_tick_key_events.push(key);
                 return Ok(());
             }
@@ -455,12 +500,9 @@ impl App {
         } else {
             format!("{}+{}", mods.join("+"), key_str)
         };
-
-        // Export keymap for current context and try to translate chord -> action
         let map = self
             .settings
             .export_keymap_for(::settings::DeviceFilter::Keyboard, &self.keymap_context);
-
         if let Some((action_name, _)) = map
             .iter()
             .find(|(_, chords)| chords.iter().any(|c| c.eq_ignore_ascii_case(&chord)))
@@ -468,22 +510,17 @@ impl App {
             let action = match action_name.as_str() {
                 "Quit" | "quit" => Some(Action::Quit),
                 "Help" | "help" => Some(Action::Help),
-                "OpenPopup" | "popup" => {
-                    Some(Action::Ui(UiAction::OpenPopup { id: "help".into() }))
-                }
+                "OpenPopup" | "popup" => Some(Action::Ui(UiAction::OpenPopup {
+                    id: "help".into(),
+                    priority: None,
+                })),
                 "ModeInsert" | "insert" => Some(Action::Ui(UiAction::EnterEditMode)),
                 "ModeNormal" | "normal" => Some(Action::Ui(UiAction::ExitEditMode)),
                 "ModeCycle" | "modecycle" => Some(Action::Ui(UiAction::ToggleEditMode)),
                 "NextField" | "next" => Some(Action::Ui(UiAction::FocusNext)),
                 "PreviousField" | "prev" => Some(Action::Ui(UiAction::FocusPrev)),
-                // Page navigation (direct)
-                "GoToPageSetup" | "gotopagesetup" => {
-                    Some(Action::Ui(UiAction::GoToPage("setup".into())))
-                }
-                "GoToPageDashboard" | "gotopagedashboard" => {
-                    Some(Action::Ui(UiAction::GoToPage("dashboard".into())))
-                }
-                // Help controls
+                "NextPage" | "nextpage" => Some(Action::Ui(UiAction::NextPage)),
+                "PrevPage" | "prevpage" | "previouspage" => Some(Action::Ui(UiAction::PrevPage)),
                 "HelpToggleGlobal" | "helptoggleglobal" => {
                     Some(Action::Ui(UiAction::HelpToggleGlobal))
                 }
@@ -499,10 +536,8 @@ impl App {
                 self.action_tx.send(a)?;
             }
         } else {
-            // Fallback: buffer key for potential multi-key support later
             self.last_tick_key_events.push(key);
         }
-
         Ok(())
     }
 
@@ -512,10 +547,8 @@ impl App {
                 debug!("{action:?}");
             }
             match action.clone() {
-                // Legacy/core actions
                 Action::Tick => {
                     self.last_tick_key_events.clear();
-                    // Refresh keymap context from the active page each tick and notify UI if it changed
                     if let Some(ix) = self.active_page_index {
                         if let Some(page) = self.pages.get(ix) {
                             let new_ctx = page.keymap_context().to_string();
@@ -540,7 +573,6 @@ impl App {
                     warn!("UI error: {msg}");
                 }
                 Action::Help => {
-                    // Toggle the help popup layer; report visibility accordingly
                     if let Some(pos) = self.layers.iter().rposition(|l| {
                         l.kind == LayerKind::Popup && l.id.as_deref() == Some("help")
                     }) {
@@ -549,28 +581,24 @@ impl App {
                             .action_tx
                             .send(Action::Ui(UiAction::ReportHelpVisible(false)));
                     } else {
+                        let next_prio =
+                            self.layers.iter().map(|l| l.priority).max().unwrap_or(0) + 1;
                         self.layers.push(LayerEntry {
                             kind: LayerKind::Popup,
                             id: Some("help".into()),
+                            priority: next_prio,
                         });
                         let _ = self
                             .action_tx
                             .send(Action::Ui(UiAction::ReportHelpVisible(true)));
                     }
                 }
-
-                // Structured actions: UI
                 Action::Ui(ui) => self.handle_ui_action(tui, ui)?,
-
-                // Structured actions: App
                 Action::App(app) => self.handle_app_action(app)?,
-
-                // Structured actions: Logic
                 Action::Logic(logic) => self.handle_logic_action(logic)?,
             }
 
             self.layer_registry.update_from_action(&action);
-            // Propagate updates into active page first
             if let Some(ix) = self.active_page_index {
                 if let Some(page) = self.pages.get_mut(ix) {
                     if let Some(follow_up) = page.update(action.clone())? {
@@ -578,11 +606,13 @@ impl App {
                     }
                 }
             }
-            // Then components
             for component in self.components.iter_mut() {
                 if let Some(follow_up) = component.update(action.clone())? {
                     self.action_tx.send(follow_up)?
                 }
+            }
+            if let Some(follow_up) = self.status_bar.update(action.clone())? {
+                self.action_tx.send(follow_up)?;
             }
         }
         Ok(())
@@ -592,7 +622,6 @@ impl App {
         match ui {
             UiAction::FocusNext => {
                 if self.popup_focus_lock {
-                    // Ignore traversal while popup active.
                 } else if self.focus_cycle.is_empty() {
                     self.focused_component_index = None;
                 } else {
@@ -603,7 +632,6 @@ impl App {
                     let next_pos = (pos + 1) % self.focus_cycle.len();
                     self.focused_component_index = Some(self.focus_cycle[next_pos]);
                     self.apply_focus_state();
-                    // Emit ReportFocusedComponent so status bar/colors can react.
                     if let Some((id, _)) = self
                         .comp_id_to_index
                         .iter()
@@ -617,7 +645,6 @@ impl App {
             }
             UiAction::FocusPrev => {
                 if self.popup_focus_lock {
-                    // Ignore traversal while popup active.
                 } else if self.focus_cycle.is_empty() {
                     self.focused_component_index = None;
                 } else {
@@ -655,13 +682,6 @@ impl App {
                     self.apply_focus_state();
                 }
             }
-            UiAction::GoToPage(id) => {
-                // Translate UI intent into an App-level page switch.
-                let _ = self
-                    .action_tx
-                    .send(Action::App(AppAction::SetActivePage { id }));
-            }
-
             UiAction::ToggleEditMode => {
                 self.ui_mode = match self.ui_mode {
                     UiMode::Normal => UiMode::Edit,
@@ -677,15 +697,17 @@ impl App {
                 self.ui_mode = UiMode::Normal;
                 info!("UI mode changed to Normal");
             }
-
-            UiAction::OpenPopup { id } => {
+            UiAction::OpenPopup { id, priority } => {
                 let is_help = id == "help";
+                let next_prio = priority.unwrap_or_else(|| {
+                    self.layers.iter().map(|l| l.priority).max().unwrap_or(0) + 1
+                });
                 self.layers.push(LayerEntry {
                     kind: LayerKind::Popup,
                     id: Some(id.clone()),
+                    priority: next_prio,
                 });
                 self.popup_focus_lock = true;
-                // While popup is open we conceptually "blur" component focus.
                 self.focused_component_index = None;
                 if is_help {
                     let _ = self
@@ -701,7 +723,6 @@ impl App {
                 {
                     self.layers.remove(pos);
                 }
-                // If no more popups remain, release focus lock and restore first focus in cycle.
                 let any_popup = self.layers.iter().any(|l| l.kind == LayerKind::Popup);
                 if !any_popup {
                     self.popup_focus_lock = false;
@@ -731,7 +752,12 @@ impl App {
                 }
             }
             UiAction::PushLayer(kind) => {
-                self.layers.push(LayerEntry { kind, id: None });
+                let next_prio = self.layers.iter().map(|l| l.priority).max().unwrap_or(0) + 1;
+                self.layers.push(LayerEntry {
+                    kind,
+                    id: None,
+                    priority: next_prio,
+                });
             }
             UiAction::PopLayer => {
                 let help_before = self
@@ -749,22 +775,40 @@ impl App {
                         .send(Action::Ui(UiAction::ReportHelpVisible(false)));
                 }
             }
-
+            UiAction::CloseTopPopup => {
+                if self.close_top_popup() {
+                    if !self
+                        .layers
+                        .iter()
+                        .any(|l| l.kind == LayerKind::Popup && l.id.as_deref() == Some("help"))
+                    {
+                        let _ = self
+                            .action_tx
+                            .send(Action::Ui(UiAction::ReportHelpVisible(false)));
+                    }
+                }
+            }
+            UiAction::CloseAllPopups => {
+                let had_help = self
+                    .layers
+                    .iter()
+                    .any(|l| l.kind == LayerKind::Popup && l.id.as_deref() == Some("help"));
+                self.close_all_popups();
+                if had_help {
+                    let _ = self
+                        .action_tx
+                        .send(Action::Ui(UiAction::ReportHelpVisible(false)));
+                }
+            }
             UiAction::ShowNotification(n) => {
                 self.toast_insert(n);
             }
-            UiAction::ReportNotificationCount(_n) => {
-                // App currently does not persist the visible count; it is forwarded to UI components.
-            }
-            UiAction::ReportNotificationSeverity(_sev) => {
-                // App does not persist the highest severity; components (e.g., StatusBar) consume this.
-            }
+            UiAction::ReportNotificationCount(_n) => {}
+            UiAction::ReportNotificationSeverity(_sev) => {}
             UiAction::DismissNotification { id } => {
                 self.toast_notifications.retain(|n| n.id != id);
                 self.toast_post_prune();
             }
-
-            // Help controls: toggle global, scroll, paging, search
             UiAction::HelpToggleGlobal => {
                 self.layer_registry.toggle_show_global();
                 let value = self.layer_registry.is_show_global();
@@ -779,7 +823,6 @@ impl App {
                 self.layer_registry.scroll_help_lines(1);
             }
             UiAction::HelpPageUp => {
-                // Approximate page size from terminal height (half height)
                 if let Ok(size) = _tui.size() {
                     let page = (size.height as i16 / 2).max(1);
                     self.layer_registry.scroll_help_lines(-page);
@@ -797,7 +840,6 @@ impl App {
             }
             UiAction::HelpSearch(query) => {
                 self.layer_registry.set_help_search(Some(query.clone()));
-                // Persist last search (empty => clear)
                 let val = if query.trim().is_empty() {
                     None
                 } else {
@@ -809,7 +851,6 @@ impl App {
             }
             UiAction::HelpSearchClear => {
                 self.layer_registry.clear_help_search();
-                // Clear persisted last search
                 let _ = self
                     .settings
                     .update::<settings::Wizard>(|w| w.help_last_search = None);
@@ -818,17 +859,13 @@ impl App {
                 self.help_search_active = true;
                 self.help_search_buffer.clear();
             }
-            UiAction::ReportHelpVisible(_v) => {
-                // Forward-only event for components (e.g., StatusBar).
-            }
+            UiAction::ReportHelpVisible(_v) => {}
             UiAction::PersistHelpShowGlobal(value) => {
-                // Persist the current show_global preference into settings.
                 let _ = self
                     .settings
                     .update::<settings::Wizard>(|w| w.help_show_global = value);
             }
             UiAction::HelpToggleWrap => {
-                // Toggle wrap flag locally and persist the new setting.
                 self.layer_registry.toggle_wrap();
                 let current = self
                     .settings
@@ -841,16 +878,40 @@ impl App {
                     .send(Action::Ui(UiAction::PersistHelpWrapOn(new_value)));
             }
             UiAction::PersistHelpWrapOn(value) => {
-                // Persist the current wrap preference into settings.
                 let _ = self
                     .settings
                     .update::<settings::Wizard>(|w| w.help_wrap_on = value);
             }
-            UiAction::HelpPromptKey(_key) => {
-                // No-op: prompt widget state is handled within the layer registry.
+            UiAction::HelpPromptKey(_key) => {}
+            UiAction::ReportHelpSearchBuffer(_buf) => {}
+            UiAction::OpenModalOverlay { .. } => {}
+            UiAction::CloseModalOverlay { .. } => {}
+            UiAction::CloseAllModalOverlays => {}
+            UiAction::NextPage => {
+                if self.pages.len() > 1 {
+                    let cur = self.active_page_index.unwrap_or(0);
+                    let next = (cur + 1) % self.pages.len();
+                    if let Some(page) = self.pages.get(next) {
+                        let _ = self.action_tx.send(Action::App(AppAction::SetActivePage {
+                            id: page.id().to_string(),
+                        }));
+                    }
+                }
             }
-            UiAction::ReportHelpSearchBuffer(_buf) => {
-                // No-op: can be used by UI elements to show live search input.
+            UiAction::PrevPage => {
+                if self.pages.len() > 1 {
+                    let cur = self.active_page_index.unwrap_or(0);
+                    let prev = if cur == 0 {
+                        self.pages.len() - 1
+                    } else {
+                        cur - 1
+                    };
+                    if let Some(page) = self.pages.get(prev) {
+                        let _ = self.action_tx.send(Action::App(AppAction::SetActivePage {
+                            id: page.id().to_string(),
+                        }));
+                    }
+                }
             }
         }
         Ok(())
@@ -872,7 +933,6 @@ impl App {
                         self.comp_id_to_index.clear();
                         self.focus_cycle.clear();
                         self.focused_component_index = None;
-                        // Gather new page data in a scoped borrow
                         let (provided, order_ids): (
                             Vec<(String, Box<dyn Component>)>,
                             Vec<&'static str>,
@@ -883,9 +943,9 @@ impl App {
                             let order_slice = page.focus_order();
                             order_ids = order_slice.iter().copied().collect::<Vec<&'static str>>();
                             provided = p;
-                            let _ = page.focus(); // emits ReportFocusedComponent
+                            self.status_bar.set_page(page.id());
+                            let _ = page.focus();
                         }
-                        // Register components after releasing mutable borrow of page
                         let size = Size {
                             width: 0,
                             height: 0,
@@ -896,6 +956,15 @@ impl App {
                         for id in order_ids {
                             if let Some(&ix) = self.comp_id_to_index.get(id) {
                                 self.focus_cycle.push(ix);
+                            }
+                        }
+                        // Auto-derive focus order if page declares none
+                        if self.focus_cycle.is_empty() {
+                            let mut pairs: Vec<(&String, &usize)> =
+                                self.comp_id_to_index.iter().collect();
+                            pairs.sort_by_key(|(_, ix)| *ix);
+                            for (_, ix) in pairs {
+                                self.focus_cycle.push(*ix);
                             }
                         }
                         if let Some(page) = self.pages.get(new_ix) {
@@ -923,11 +992,9 @@ impl App {
                 self.ui_mode = mode;
             }
             AppAction::SaveSettings => {
-                // TODO: implement settings persistence
                 info!("SaveSettings requested (not implemented)");
             }
             AppAction::LoadSettings => {
-                // TODO: implement settings loading
                 info!("LoadSettings requested (not implemented)");
             }
         }
@@ -937,7 +1004,6 @@ impl App {
     fn handle_logic_action(&mut self, logic: LogicAction) -> Result<()> {
         match logic {
             LogicAction::SpawnTask(spec) => {
-                // Assign a task id and register it
                 self.next_task_seq += 1;
                 let id = format!("task-{}", self.next_task_seq);
                 let state = TaskState {
@@ -952,12 +1018,9 @@ impl App {
                     result_json: None,
                 };
                 self.tasks.insert(id.clone(), state);
-                // Notify started
                 let _ = self
                     .action_tx
                     .send(Action::Logic(LogicAction::TaskStarted { id: id.clone() }));
-
-                // Delegate execution to TaskManager (simulated task for now)
                 let _ = self.task_mgr.spawn_simulated(
                     id.clone(),
                     spec.label.clone(),
@@ -1006,7 +1069,6 @@ impl App {
                 }
             }
             LogicAction::LoadConfig => {
-                // Register task and delegate to TaskManager
                 self.next_task_seq += 1;
                 let id = format!("task-{}", self.next_task_seq);
                 let spec = TaskSpec {
@@ -1031,7 +1093,6 @@ impl App {
                 let _ = self.task_mgr.spawn_load_config(id);
             }
             LogicAction::SaveConfig => {
-                // Register task and delegate to TaskManager
                 self.next_task_seq += 1;
                 let id = format!("task-{}", self.next_task_seq);
                 let spec = TaskSpec {
@@ -1083,7 +1144,7 @@ impl App {
                 (area, area)
             };
 
-            // Draw active page first (base layer)
+            // Page first
             if let Some(ix) = self.active_page_index {
                 if let Some(page) = self.pages.get_mut(ix) {
                     if let Err(err) = page.draw(frame, main_area) {
@@ -1093,37 +1154,42 @@ impl App {
                     }
                 }
             }
-
-            // Draw registered components (secondary base layer)
-            let status_index = self.comp_id_to_index.get("status").cloned();
-            for (i, component) in self.components.iter_mut().enumerate() {
-                let target = if Some(i) == status_index {
-                    status_area
+            // Page layout mapping (component id -> Rect) provided by active page
+            let page_layout = if let Some(ix) = self.active_page_index {
+                if let Some(page) = self.pages.get(ix) {
+                    page.layout(main_area)
                 } else {
-                    main_area
-                };
-                if let Err(err) = component.draw(frame, target) {
-                    let _ = self.action_tx.send(Action::Error(format!(
-                        "Failed to draw component: {:?}",
-                        err
-                    )));
+                    crate::pages::PageLayout::empty()
+                }
+            } else {
+                crate::pages::PageLayout::empty()
+            };
+            // Draw components using page-provided rects (fallback: main_area)
+            for (cid, &cix) in self.comp_id_to_index.iter() {
+                if let Some(component) = self.components.get_mut(cix) {
+                    let target = page_layout.regions.get(cid).cloned().unwrap_or(main_area);
+                    if let Err(err) = component.draw(frame, target) {
+                        let _ = self.action_tx.send(Action::Error(format!(
+                            "Failed to draw component {cid}: {:?}",
+                            err
+                        )));
+                    }
                 }
             }
 
-            // Draw layers on top (popups, overlays, notifications)
-            // This is only scaffolding; concrete rendering belongs to pages/components.
-            // Partition layers to enforce rendering order: Overlays -> Popups
+            // Layers
             let mut overlays = Vec::new();
             let mut popups = Vec::new();
             let mut notifications_present = false;
             for l in &self.layers {
                 match l.kind {
-                    LayerKind::Overlay => overlays.push(l.clone()),
+                    LayerKind::Overlay | LayerKind::ModalOverlay => overlays.push(l.clone()),
                     LayerKind::Popup => popups.push(l.clone()),
                     LayerKind::Notification => notifications_present = true,
                 }
             }
-
+            overlays.sort_by_key(|l| l.priority);
+            popups.sort_by_key(|l| l.priority);
             for layer in overlays.into_iter() {
                 if let Err(err) =
                     self.layer_registry
@@ -1135,7 +1201,6 @@ impl App {
                     )));
                 }
             }
-            // Dim background if any popup present (simple dark overlay)
             if !popups.is_empty() {
                 use ratatui::{
                     style::{Color, Style},
@@ -1144,7 +1209,7 @@ impl App {
                 frame.render_widget(Clear, area);
                 let dim = Block::default()
                     .borders(Borders::NONE)
-                    .style(Style::default().bg(Color::Black));
+                    .style(Style::default().bg(Color::DarkGray));
                 frame.render_widget(dim, area);
             }
             for layer in popups.into_iter() {
@@ -1158,35 +1223,32 @@ impl App {
                     )));
                 }
             }
-
-            // Notifications (toast stack) — ignore LayerKind::Notification entries content-wise; we just need presence
             if notifications_present || !self.toast_notifications.is_empty() {
                 self.render_toasts(frame, area);
             }
-
-            // Status bar is now rendered as its own component at the bottom area; removed temporary overlay panel.
+            // Global status bar (drawn last so it stays visible above page baseline)
+            if let Err(err) = self.status_bar.draw(frame, status_area) {
+                let _ = self.action_tx.send(Action::Error(format!(
+                    "Failed to draw status bar: {:?}",
+                    err
+                )));
+            }
         })?;
         Ok(())
     }
 
-    /// Register a component provided by a page, returning its index.
-    /// The page should pass a stable `id` to enable focus by id.
     pub fn register_component(
         &mut self,
         id: String,
         mut component: Box<dyn Component>,
         initial_size: Size,
     ) -> Result<usize> {
-        // Wire action/settings and initialize with the current terminal size
         component.register_action_handler(self.action_tx.clone())?;
         component.register_settings_handler(self.settings.clone())?;
         component.init(initial_size)?;
-
         let index = self.components.len();
         self.components.push(component);
         self.comp_id_to_index.insert(id, index);
-
-        // If nothing focused yet, focus the first registered component
         if self.focused_component_index.is_none() {
             self.focused_component_index = Some(index);
         }
@@ -1194,7 +1256,6 @@ impl App {
         Ok(index)
     }
 
-    /// Bulk register components from a page.
     pub fn register_components(
         &mut self,
         list: Vec<(String, Box<dyn Component>)>,
@@ -1208,7 +1269,6 @@ impl App {
         Ok(indices)
     }
 
-    /// Toast insertion (applies lifetime if missing) and pruning + reporting.
     fn toast_insert(&mut self, mut n: crate::action::Notification) {
         if n.timeout_ms.is_none() {
             let (lifetime_ms, _) = self.toast_cfg();
@@ -1226,7 +1286,6 @@ impl App {
         let now = self.now_unix_ms();
         self.toast_notifications
             .retain(|n| n.timeout_ms.map(|dl| now < dl).unwrap_or(true));
-
         let (_, max_visible) = self.toast_cfg();
         if self.toast_notifications.len() > max_visible {
             let keep = self
@@ -1234,7 +1293,6 @@ impl App {
                 .split_off(self.toast_notifications.len() - max_visible);
             self.toast_notifications = keep;
         }
-
         let visible = self.toast_notifications.len() as u32;
         if visible != self.toast_last_visible {
             self.toast_last_visible = visible;
@@ -1242,7 +1300,6 @@ impl App {
                 .action_tx
                 .send(Action::Ui(UiAction::ReportNotificationCount(visible)));
         }
-
         let highest =
             self.toast_notifications
                 .iter()
@@ -1329,7 +1386,6 @@ impl App {
             .as_millis() as u64
     }
 
-    /// Read toast configuration (lifetime, max_visible) from settings (falls back to defaults).
     fn toast_cfg(&self) -> (u64, usize) {
         let map = self.settings.effective_settings();
         let wiz_tbl = map.get("wizard").and_then(|v| v.as_table());
@@ -1346,7 +1402,6 @@ impl App {
         (lifetime_ms, max_visible)
     }
 
-    /// Close only the top-most popup (if any). Returns true if one was closed.
     fn close_top_popup(&mut self) -> bool {
         if let Some(pos) = self
             .layers
@@ -1370,7 +1425,6 @@ impl App {
         false
     }
 
-    /// Close all popup layers and restore focus.
     fn close_all_popups(&mut self) {
         self.layers.retain(|l| !matches!(l.kind, LayerKind::Popup));
         self.popup_focus_lock = false;
@@ -1380,8 +1434,6 @@ impl App {
         }
     }
 
-    /// Apply current focus state to all registered components (non-focusable system components
-    /// remain unaffected except they simply receive focused=false).
     fn apply_focus_state(&mut self) {
         for (i, c) in self.components.iter_mut().enumerate() {
             let is_focused = Some(i) == self.focused_component_index && !self.popup_focus_lock;
