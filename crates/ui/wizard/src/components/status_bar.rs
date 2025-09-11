@@ -213,6 +213,10 @@ impl Component for StatusBar {
         Ok(None)
     }
 
+    fn set_focused(&mut self, _focused: bool) {
+        // StatusBar is not a focus target; ignore focus state.
+    }
+
     fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
         // Split horizontally into left (info) and right (hints+notif)
         let right_w = area.width.min(50);

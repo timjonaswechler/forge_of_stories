@@ -98,6 +98,8 @@ pub enum UiAction {
     // Page-level selection for UI-only routing (does not change app routing by itself)
     /// Informative: the UI reports the focused component name (for status bars/tooltips).
     ReportFocusedComponent(String),
+    /// Request navigation to a page by its stable id (UI intent; app will translate to AppAction::SetActivePage).
+    GoToPage(String),
 
     // Edit mode
     ToggleEditMode,

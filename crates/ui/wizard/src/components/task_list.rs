@@ -9,6 +9,7 @@ use color_eyre::Result;
 use ratatui::{
     Frame,
     layout::Rect,
+    style::{Color, Style},
     widgets::{Block, Borders, Paragraph},
 };
 use std::collections::HashMap;
@@ -19,6 +20,7 @@ use tokio::time::{Duration, sleep};
 pub(crate) struct TaskList {
     tx: Option<UnboundedSender<Action>>,
     tasks: HashMap<TaskId, TaskInfo>,
+    focused: bool,
 }
 
 #[derive(Clone, Default)]
@@ -34,6 +36,7 @@ impl TaskList {
         Self {
             tx: None,
             tasks: HashMap::new(),
+            focused: false,
         }
     }
 
@@ -68,6 +71,10 @@ impl Component for TaskList {
     fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
         self.tx = Some(tx);
         Ok(())
+    }
+
+    fn set_focused(&mut self, focused: bool) {
+        self.focused = focused;
     }
 
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
@@ -147,7 +154,10 @@ impl Component for TaskList {
         if lines.is_empty() {
             lines.push("No running tasks".to_string());
         }
-        let block = Block::default().borders(Borders::ALL).title("Tasks");
+        let mut block = Block::default().borders(Borders::ALL).title("Tasks");
+        if self.focused {
+            block = block.style(Style::default().fg(Color::Yellow));
+        }
         let para = Paragraph::new(lines.join("\n")).block(block);
         f.render_widget(para, area);
         Ok(())

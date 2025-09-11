@@ -9,23 +9,29 @@ use ratatui::{Frame, layout::Rect};
 use crate::components::Component;
 
 /// No-op FPS component stub.
-pub struct Fps;
+pub struct Fps {
+    focused: bool,
+}
 
 impl Fps {
     pub fn new() -> Self {
-        Self
+        Self { focused: false }
     }
 }
 
 impl Default for Fps {
     fn default() -> Self {
-        Self
+        Self { focused: false }
     }
 }
 
 impl Component for Fps {
+    fn set_focused(&mut self, focused: bool) {
+        self.focused = focused;
+    }
+
     fn draw(&mut self, _frame: &mut Frame<'_>, _area: Rect) -> Result<()> {
-        // Intentionally draw nothing for now.
+        // Intentionally draw nothing for now (even if focused).
         Ok(())
     }
 }

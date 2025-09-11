@@ -17,12 +17,14 @@ use crate::components::Component;
 /// Basic "Home" component that draws a bordered, centered title.
 pub struct Home {
     title: String,
+    focused: bool,
 }
 
 impl Home {
     pub fn new() -> Self {
         Self {
             title: "Home".to_string(),
+            focused: false,
         }
     }
 }
@@ -34,13 +36,24 @@ impl Default for Home {
 }
 
 impl Component for Home {
+    fn set_focused(&mut self, focused: bool) {
+        self.focused = focused;
+    }
+
     fn draw(&mut self, frame: &mut Frame<'_>, area: Rect) -> Result<()> {
-        let block = Block::default().borders(Borders::ALL).title(Span::styled(
+        let mut block = Block::default().borders(Borders::ALL).title(Span::styled(
             &self.title,
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
         ));
+        if self.focused {
+            block = block.style(
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            );
+        }
 
         let content = Paragraph::new(Line::from(vec![
             Span::raw("Welcome to "),

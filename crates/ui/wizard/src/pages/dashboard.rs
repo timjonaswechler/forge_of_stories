@@ -1,7 +1,6 @@
 use crate::{
     action::{Action, UiAction},
     components::{Component, StatusBar, TaskList},
-    layers::ToastManager,
     pages::Page,
 };
 use color_eyre::Result;
@@ -48,11 +47,7 @@ impl Page for DashboardPage {
                 "tasks".to_string(),
                 Box::new(TaskList::new()) as Box<dyn Component>,
             ),
-            // Toasts: render notifications with severity styles; layered via LayerKind::Notification sentinel.
-            (
-                "toasts".to_string(),
-                Box::new(ToastManager::new()) as Box<dyn Component>,
-            ),
+            // (ToastManager removed: now managed centrally by App, not focusable)
         ]
     }
 

@@ -11,6 +11,10 @@
 //! Notes:
 //! - This is a minimal, compiling scaffolding. Pages/components can be added incrementally.
 //! - Keybindings are not wired yet; events are routed to pages/components which may emit actions.
+//!
+//! Additions (central overlay + toast manager):
+//! - ToastManager & a global LayerOverlay are now owned by App (not by pages) and are non-fokusierbar.
+//! - Popups & overlays lock normal component focus while displayed.
 
 pub(crate) mod settings;
 pub(crate) mod task_manager;
@@ -23,7 +27,7 @@ use crate::{
         TaskSpec, UiAction, UiMode,
     },
     cli::{Cli, Cmd, RunMode},
-    components::Component,
+    components::{Component, LayerOverlay},
     pages::{DashboardPage, Page, SetupPage},
     tui::{Event, Tui},
 };
@@ -291,6 +295,29 @@ impl App {
                 }
             }
         }
+        // Register system components (toast manager & global overlay) once (non-focusable).
+        {
+            let rect = tui.size()?;
+            let size = Size {
+                width: rect.width,
+                height: rect.height,
+            };
+            if !self.comp_id_to_index.contains_key("toasts") {
+                let _ = self.register_component(
+                    "toasts".into(),
+                    Box::new(crate::layers::ToastManager::new()),
+                    size,
+                );
+            }
+            if !self.comp_id_to_index.contains_key("overlay_global") {
+                let _ = self.register_component(
+                    "overlay_global".into(),
+                    Box::new(LayerOverlay::new("global")),
+                    size,
+                );
+            }
+        }
+        self.apply_focus_state();
 
         // Register actions and settings for all components
         for component in self.components.iter_mut() {
@@ -449,6 +476,13 @@ impl App {
                 "ModeCycle" | "modecycle" => Some(Action::Ui(UiAction::ToggleEditMode)),
                 "NextField" | "next" => Some(Action::Ui(UiAction::FocusNext)),
                 "PreviousField" | "prev" => Some(Action::Ui(UiAction::FocusPrev)),
+                // Page navigation (direct)
+                "GoToPageSetup" | "gotopagesetup" => {
+                    Some(Action::Ui(UiAction::GoToPage("setup".into())))
+                }
+                "GoToPageDashboard" | "gotopagedashboard" => {
+                    Some(Action::Ui(UiAction::GoToPage("dashboard".into())))
+                }
                 // Help controls
                 "HelpToggleGlobal" | "helptoggleglobal" => {
                     Some(Action::Ui(UiAction::HelpToggleGlobal))
@@ -568,6 +602,7 @@ impl App {
                         .unwrap_or(0);
                     let next_pos = (pos + 1) % self.focus_cycle.len();
                     self.focused_component_index = Some(self.focus_cycle[next_pos]);
+                    self.apply_focus_state();
                     // Emit ReportFocusedComponent so status bar/colors can react.
                     if let Some((id, _)) = self
                         .comp_id_to_index
@@ -596,6 +631,7 @@ impl App {
                         pos - 1
                     };
                     self.focused_component_index = Some(self.focus_cycle[prev_pos]);
+                    self.apply_focus_state();
                     if let Some((id, _)) = self
                         .comp_id_to_index
                         .iter()
@@ -610,12 +646,20 @@ impl App {
             UiAction::FocusById(id) => {
                 if let Some(ix) = self.comp_id_to_index.get(&id).cloned() {
                     self.focused_component_index = Some(ix);
+                    self.apply_focus_state();
                 }
             }
             UiAction::ReportFocusedComponent(id) => {
                 if let Some(ix) = self.comp_id_to_index.get(&id).cloned() {
                     self.focused_component_index = Some(ix);
+                    self.apply_focus_state();
                 }
+            }
+            UiAction::GoToPage(id) => {
+                // Translate UI intent into an App-level page switch.
+                let _ = self
+                    .action_tx
+                    .send(Action::App(AppAction::SetActivePage { id }));
             }
 
             UiAction::ToggleEditMode => {
@@ -663,6 +707,7 @@ impl App {
                     self.popup_focus_lock = false;
                     if !self.focus_cycle.is_empty() {
                         self.focused_component_index = Some(self.focus_cycle[0]);
+                        self.apply_focus_state();
                         if let Some((id, _)) = self
                             .comp_id_to_index
                             .iter()
@@ -862,6 +907,7 @@ impl App {
                         }
                         if self.focused_component_index.is_none() && !self.focus_cycle.is_empty() {
                             self.focused_component_index = Some(self.focus_cycle[0]);
+                            self.apply_focus_state();
                         }
                     }
                 } else {
@@ -1047,9 +1093,14 @@ impl App {
                 }
             }
 
-            // Draw registered components (secondary base layer)
+            // Draw registered components (secondary base layer, excluding global overlay which is conditional)
             let status_index = self.comp_id_to_index.get("status").cloned();
+            let overlay_global_index = self.comp_id_to_index.get("overlay_global").cloned();
             for (i, component) in self.components.iter_mut().enumerate() {
+                // Defer overlay_global drawing until after base components, before popups.
+                if Some(i) == overlay_global_index {
+                    continue;
+                }
                 let target = if Some(i) == status_index {
                     status_area
                 } else {
@@ -1060,6 +1111,24 @@ impl App {
                         "Failed to draw component: {:?}",
                         err
                     )));
+                }
+            }
+
+            // Conditional overlay: only draw the global overlay layer if at least one Overlay layer is active.
+            if let Some(overlay_ix) = overlay_global_index {
+                if self
+                    .layers
+                    .iter()
+                    .any(|l| matches!(l.kind, LayerKind::Overlay))
+                {
+                    if let Some(component) = self.components.get_mut(overlay_ix) {
+                        if let Err(err) = component.draw(frame, main_area) {
+                            let _ = self.action_tx.send(Action::Error(format!(
+                                "Failed to draw overlay component: {:?}",
+                                err
+                            )));
+                        }
+                    }
                 }
             }
 
@@ -1111,6 +1180,7 @@ impl App {
         if self.focused_component_index.is_none() {
             self.focused_component_index = Some(index);
         }
+        self.apply_focus_state();
         Ok(index)
     }
 
@@ -1126,5 +1196,14 @@ impl App {
             indices.push(ix);
         }
         Ok(indices)
+    }
+
+    /// Apply current focus state to all registered components (non-focusable system components
+    /// remain unaffected except they simply receive focused=false).
+    fn apply_focus_state(&mut self) {
+        for (i, c) in self.components.iter_mut().enumerate() {
+            let is_focused = Some(i) == self.focused_component_index && !self.popup_focus_lock;
+            c.set_focused(is_focused);
+        }
     }
 }

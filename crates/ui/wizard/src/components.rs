@@ -46,6 +46,12 @@ pub trait Component {
         Ok(())
     }
 
+    /// Inform the component that its focus state changed (true = focused).
+    /// Default: no-op. Override to store focus state for custom rendering.
+    fn set_focused(&mut self, focused: bool) {
+        let _ = focused; // default no-op
+    }
+
     /// Route a high-level TUI event to this component.
     fn handle_events(&mut self, event: Option<Event>) -> Result<Option<Action>> {
         let action = match event {

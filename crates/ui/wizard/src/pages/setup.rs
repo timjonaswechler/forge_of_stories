@@ -1,7 +1,6 @@
 use crate::{
     action::{Action, UiAction},
-    components::{Component, LayerOverlay, StatusBar},
-    layers::ToastManager,
+    components::{Component, StatusBar},
     pages::Page,
 };
 use color_eyre::Result;
@@ -13,7 +12,7 @@ use ratatui::{
 };
 use tokio::sync::mpsc::UnboundedSender;
 
-/// SetupPage: registers status bar, task list, and a basic overlay component.
+/// SetupPage: registers only the status bar (overlay & toasts now managed centrally).
 /// It reports its focused component via UiAction::ReportFocusedComponent.
 pub struct SetupPage {
     tx: Option<UnboundedSender<Action>>,
@@ -40,21 +39,10 @@ impl Page for SetupPage {
     }
 
     fn provide_components(&mut self) -> Vec<(String, Box<dyn Component>)> {
-        vec![
-            (
-                "status".to_string(),
-                Box::new(StatusBar::new("Setup")) as Box<dyn Component>,
-            ),
-            // Toasts: render notifications with severity styles; layered via LayerKind::Notification sentinel.
-            (
-                "toasts".to_string(),
-                Box::new(ToastManager::new()) as Box<dyn Component>,
-            ),
-            (
-                "overlay".to_string(),
-                Box::new(LayerOverlay::new("setup_help")) as Box<dyn Component>,
-            ),
-        ]
+        vec![(
+            "status".to_string(),
+            Box::new(StatusBar::new("Setup")) as Box<dyn Component>,
+        )]
     }
 
     fn focus(&mut self) -> Result<()> {
@@ -79,8 +67,7 @@ impl Page for SetupPage {
     }
 
     fn focus_order(&self) -> &'static [&'static str] {
-        // Order of focus traversal for this page (exclude non-focusable like toasts)
-        &["status", "overlay"]
+        &["status"]
     }
 
     fn focused_component_id(&self) -> Option<&str> {
