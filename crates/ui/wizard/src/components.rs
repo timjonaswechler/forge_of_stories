@@ -10,12 +10,14 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{action::Action, app::settings::SettingsStore, tui::Event};
 
+mod aether_status_component;
 pub mod fps;
 pub mod home;
 mod logo;
 mod status_bar;
 mod task_list;
 
+pub(crate) use aether_status_component::AetherStatusListComponent;
 pub(crate) use logo::{LogoComponent, WizardLogoComponent};
 pub(crate) use status_bar::StatusBar;
 pub(crate) use task_list::TaskList;

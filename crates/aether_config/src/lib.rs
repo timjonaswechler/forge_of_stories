@@ -261,3 +261,40 @@ pub fn find_setting() -> bool {
         false
     }
 }
+
+/// Placeholder: does the settings file exist?
+/// Alias kept for clearer intent at call sites inside UI code.
+pub fn settings_found() -> bool {
+    find_setting()
+}
+
+/// Placeholder: are the settings valid?
+/// Currently returns true if the settings file exists. Replace with real semantic validation:
+/// - Parse TOML
+/// - Validate required sections/fields
+/// - Range / value checks
+pub fn settings_valid() -> bool {
+    // TODO: implement real validation logic
+    settings_found()
+}
+
+/// Placeholder: was a server certificate (and optionally key) found?
+/// For now we just check for a single PEM file in the config directory.
+/// Adjust path / strategy once certificate management is implemented.
+pub fn certificate_found() -> bool {
+    paths::config_dir().join("server_cert.pem").exists()
+}
+
+/// Placeholder: does a (planned) Unix Domain Socket file exist?
+/// On non-unix platforms this always returns false.
+pub fn uds_found() -> bool {
+    #[cfg(unix)]
+    {
+        // TODO: replace with actual runtime dir / socket discovery logic.
+        paths::config_dir().join("aether.sock").exists()
+    }
+    #[cfg(not(unix))]
+    {
+        false
+    }
+}
