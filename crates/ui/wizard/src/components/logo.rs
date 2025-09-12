@@ -2,6 +2,7 @@ use super::Component;
 use crate::action::Action;
 use color_eyre::Result;
 use ratatui::Frame;
+use ratatui::layout::{Constraint, Flex, Layout, Rect};
 use ratatui::{prelude::*, widgets::*};
 use std::collections::HashMap;
 use tokio::sync::mpsc::UnboundedSender;
@@ -132,20 +133,19 @@ impl WizardLogoComponent {
     pub fn new() -> Self {
         Self::default()
     }
-    pub(crate) fn size() -> (u16, u16) {
-        (49, 7)
+
+    pub(crate) fn width() -> u16 {
+        49
+    }
+    pub(crate) fn height() -> u16 {
+        7
     }
 }
 impl Component for WizardLogoComponent {
     fn draw(&mut self, frame: &mut Frame, body: Rect) -> Result<()> {
-        let vertical = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(0), Constraint::Max(16), Constraint::Min(0)])
-            .split(body);
-        let horizontal = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Min(0), Constraint::Max(71), Constraint::Min(0)])
-            .split(vertical[1]);
+        let [area] = Layout::horizontal([Constraint::Length(47)])
+            .flex(Flex::Center)
+            .areas(body);
 
         let logo_lines = vec![
             "                                               ",
@@ -212,12 +212,11 @@ impl Component for WizardLogoComponent {
 
             styled_lines.push(Line::from(spans));
         }
-
         let logo = Paragraph::new(styled_lines)
             .block(Block::default())
             .wrap(ratatui::widgets::Wrap { trim: false });
-
-        frame.render_widget(logo, horizontal[1]);
+        // frame.render_widget(Block::new().style(Style::default().bg(Color::Green)), area);
+        frame.render_widget(logo, area);
         Ok(())
     }
 }

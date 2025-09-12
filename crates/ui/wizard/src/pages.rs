@@ -106,7 +106,9 @@ pub trait Page {
     }
 
     /// Draw the page to the provided area.
-    fn draw(&mut self, f: &mut Frame, area: Rect) -> Result<()>;
+    fn draw(&mut self, f: &mut Frame, area: Rect) -> Result<()> {
+        Ok(())
+    }
 }
 
 /// Layout description for a Page.

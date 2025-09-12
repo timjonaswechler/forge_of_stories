@@ -130,7 +130,7 @@ pub fn apply_server_setting(
     Ok(())
 }
 use settings::{Settings, SettingsStore};
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 
 // 1) Typisierte Modelle
 #[derive(Clone, Default, Serialize, Deserialize)]
@@ -252,4 +252,12 @@ pub enum ServerSettingField {
     SecurityTlsCertPath,
     MonitoringMetricsEnabled,
     UdsPath,
+}
+
+pub fn find_setting() -> bool {
+    if paths::config_dir().join("aether.toml").exists() {
+        true
+    } else {
+        false
+    }
 }

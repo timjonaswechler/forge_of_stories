@@ -85,8 +85,6 @@ impl Page for SetupPage {
     }
 
     fn draw(&mut self, f: &mut Frame, area: Rect) -> Result<()> {
-        let block = Block::default().borders(Borders::ALL).title("Setup");
-        f.render_widget(block, area);
         Ok(())
     }
 }
