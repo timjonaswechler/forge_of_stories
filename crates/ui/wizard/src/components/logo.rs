@@ -1,17 +1,12 @@
 use super::Component;
-use crate::action::Action;
 use color_eyre::Result;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Flex, Layout, Rect};
 use ratatui::{prelude::*, widgets::*};
 use std::collections::HashMap;
-use tokio::sync::mpsc::UnboundedSender;
 
 #[derive(Default)]
-pub struct LogoComponent {
-    command_tx: Option<UnboundedSender<Action>>,
-}
-
+pub struct LogoComponent {}
 impl LogoComponent {
     pub fn new() -> Self {
         Self::default()
@@ -67,27 +62,27 @@ impl Component for LogoComponent {
             "    PPPPPPPPP     PPPPP   PPPPPP  PPPPP     PPPPP  PPPPPP  PPPPPP      ",
         ];
 
-        let color_map: HashMap<char, Color> = [
-            ('A', Color::Rgb(255, 246, 161)),
-            ('B', Color::Rgb(255, 235, 151)),
-            ('C', Color::Rgb(255, 225, 141)),
-            ('D', Color::Rgb(255, 208, 127)),
-            ('E', Color::Rgb(255, 201, 121)),
-            ('F', Color::Rgb(255, 193, 113)),
-            ('G', Color::Rgb(255, 185, 106)),
-            ('H', Color::Rgb(255, 176, 98)),
-            ('I', Color::Rgb(255, 164, 88)),
-            ('J', Color::Rgb(255, 154, 79)),
-            ('K', Color::Rgb(255, 145, 72)),
-            ('L', Color::Rgb(255, 134, 62)),
-            ('M', Color::Rgb(255, 119, 48)),
-            ('N', Color::Rgb(255, 109, 39)),
-            ('O', Color::Rgb(255, 99, 30)),
-            ('P', Color::Rgb(255, 85, 18)),
-        ]
-        .iter()
-        .cloned()
-        .collect();
+        // let color_map: HashMap<char, Color> = [
+        //     ('A', Color::Rgb(255, 246, 161)),
+        //     ('B', Color::Rgb(255, 235, 151)),
+        //     ('C', Color::Rgb(255, 225, 141)),
+        //     ('D', Color::Rgb(255, 208, 127)),
+        //     ('E', Color::Rgb(255, 201, 121)),
+        //     ('F', Color::Rgb(255, 193, 113)),
+        //     ('G', Color::Rgb(255, 185, 106)),
+        //     ('H', Color::Rgb(255, 176, 98)),
+        //     ('I', Color::Rgb(255, 164, 88)),
+        //     ('J', Color::Rgb(255, 154, 79)),
+        //     ('K', Color::Rgb(255, 145, 72)),
+        //     ('L', Color::Rgb(255, 134, 62)),
+        //     ('M', Color::Rgb(255, 119, 48)),
+        //     ('N', Color::Rgb(255, 109, 39)),
+        //     ('O', Color::Rgb(255, 99, 30)),
+        //     ('P', Color::Rgb(255, 85, 18)),
+        // ]
+        // .iter()
+        // .cloned()
+        // .collect();
 
         let mut styled_lines = Vec::new();
 
@@ -126,19 +121,10 @@ impl Component for LogoComponent {
 }
 
 #[derive(Default)]
-pub struct WizardLogoComponent {
-    command_tx: Option<UnboundedSender<Action>>,
-}
+pub struct WizardLogoComponent {}
 impl WizardLogoComponent {
     pub fn new() -> Self {
         Self::default()
-    }
-
-    pub(crate) fn width() -> u16 {
-        49
-    }
-    pub(crate) fn height() -> u16 {
-        7
     }
 }
 impl Component for WizardLogoComponent {

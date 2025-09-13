@@ -6,12 +6,10 @@ use ratatui::{Frame, layout::Rect};
 use tokio::sync::mpsc::UnboundedSender;
 
 mod dashboard;
-mod dashboard2;
 mod setup;
 mod welcome;
 
 pub(crate) use dashboard::DashboardPage;
-pub(crate) use dashboard2::Dashboard2Page;
 pub(crate) use setup::SetupPage;
 pub(crate) use welcome::WelcomePage;
 
@@ -106,6 +104,7 @@ pub trait Page {
     }
 
     /// Draw the page to the provided area.
+    #[allow(unused_variables)]
     fn draw(&mut self, f: &mut Frame, area: Rect) -> Result<()> {
         Ok(())
     }

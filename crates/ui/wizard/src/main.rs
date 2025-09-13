@@ -14,6 +14,7 @@ use color_eyre::Result;
 // Bring our application type into scope with a clear alias.
 use crate::app::App as WizardApp;
 use crate::cli::Cli;
+use tracing_subscriber::EnvFilter;
 
 // A zero-sized type implementing the platform `Application` trait used by `app::init`.
 struct Wizard;
@@ -32,13 +33,23 @@ impl ::app::Application for Wizard {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Install logging/tracing (env overrideable via RUST_LOG / RUST_TRACE)
+    // Example: RUST_LOG=debug,wizard=debug,settings=debug
+    let default_filter = "info,wizard=debug,settings=debug";
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_filter)),
+        )
+        .with_target(true)
+        .compact()
+        .init();
+
     let cli = Cli::parse();
 
-    // Use the re-exported `init` function from our local module, but provide a type
-    // that implements the external platform `Application` trait.
+    // Initialize platform base (paths, etc.)
     let base = crate::app::init::<Wizard>().expect("Initialization went wrong");
 
-    // Fix argument order to match `App::new(base, cli)`.
+    // Build and run the Wizard TUI
     let mut app = WizardApp::new(base, cli)?;
     app.run().await?;
     Ok(())

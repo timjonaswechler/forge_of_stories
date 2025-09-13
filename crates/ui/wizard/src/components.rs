@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use color_eyre::Result;
-use crossterm::event::{KeyEvent, MouseEvent};
+use crossterm::event::MouseEvent;
 use ratatui::{
     Frame,
     layout::{Rect, Size},
@@ -11,14 +11,12 @@ use tokio::sync::mpsc::UnboundedSender;
 use crate::{action::Action, app::settings::SettingsStore, tui::Event};
 
 mod aether_status_component;
-pub mod fps;
-pub mod home;
 mod logo;
 mod status_bar;
 mod task_list;
 
 pub(crate) use aether_status_component::AetherStatusListComponent;
-pub(crate) use logo::{LogoComponent, WizardLogoComponent};
+pub(crate) use logo::WizardLogoComponent;
 pub(crate) use status_bar::StatusBar;
 pub(crate) use task_list::TaskList;
 
@@ -57,16 +55,15 @@ pub trait Component {
     /// Route a high-level TUI event to this component.
     fn handle_events(&mut self, event: Option<Event>) -> Result<Option<Action>> {
         let action = match event {
-            Some(Event::Key(key_event)) => self.handle_key_event(key_event)?,
             Some(Event::Mouse(mouse_event)) => self.handle_mouse_event(mouse_event)?,
             _ => None,
         };
         Ok(action)
     }
 
-    /// Handle a key event. Return an Action to be dispatched if appropriate.
-    fn handle_key_event(&mut self, key: KeyEvent) -> Result<Option<Action>> {
-        let _ = key; // to appease clippy
+    /// Handle an action dispatched to this component. Return an Action to be re-dispatched if appropriate.
+    fn handle_action(&mut self, action: &Action) -> Result<Option<Action>> {
+        let _ = action; // to appease clippy
         Ok(None)
     }
 

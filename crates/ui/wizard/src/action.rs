@@ -98,6 +98,18 @@ pub enum UiAction {
     /// Focus component by an identifier (page-defined).
     FocusById(String),
 
+    // Component-level navigation actions
+    /// Navigate up within a component (e.g., list item up)
+    NavigateUp,
+    /// Navigate down within a component (e.g., list item down)
+    NavigateDown,
+    /// Navigate left within a component
+    NavigateLeft,
+    /// Navigate right within a component
+    NavigateRight,
+    /// Activate/select the current item in a component
+    ActivateSelected,
+
     // Page-level selection for UI-only routing (does not change app routing by itself)
     /// Informative: the UI reports the focused component name (for status bars/tooltips).
     ReportFocusedComponent(String),

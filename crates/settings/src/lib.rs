@@ -1,14 +1,14 @@
 #[cfg(feature = "bevy")]
 mod bevy_adapter;
 pub(crate) mod embedded;
-pub(crate) mod keymap;
+pub mod keymap; // Make keymap public for ActionRegistry trait
 pub(crate) mod settings;
 pub(crate) mod store;
 
 #[cfg(feature = "bevy")]
 pub use bevy_adapter::*;
 pub use embedded::*;
-pub use keymap::DeviceFilter;
+pub use keymap::{ActionRegistry, DeviceFilter}; // Also export ActionRegistry
 pub use settings::{Settings, SettingsStore};
 
 pub fn parse_bool(s: &str) -> color_eyre::Result<bool> {

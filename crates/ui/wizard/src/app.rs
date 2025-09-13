@@ -27,6 +27,7 @@
 //!
 //! This module intentionally keeps gameplay/UI specifics out; it is infrastructure only.
 
+pub(crate) mod keymap_registry;
 pub(crate) mod settings;
 pub(crate) mod task_manager;
 
@@ -43,21 +44,18 @@ use crate::{
     pages::{DashboardPage, Page, SetupPage},
     tui::{Event, Tui},
 };
+use ::settings::DeviceFilter;
 use app::AppBase;
 pub use app::init;
 use color_eyre::Result;
 use crossterm::event::KeyEvent;
+use keymap_registry::WizardActionRegistry;
 use ratatui::layout::{Rect, Size};
 use serde::{Deserialize, Serialize};
+use settings::ActionRegistry;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
-
-#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum Mode {
-    #[default]
-    Home,
-}
 
 /// Layer entry tracked by the application shell.
 /// Rendering is page/component specific and not implemented here.
@@ -106,6 +104,10 @@ pub struct App {
     /// When a popup layer is active, normal component focus traversal is locked.
     popup_focus_lock: bool,
     keymap_context: String,
+    /// Stack of active contexts for the new keymap system
+    active_contexts: Vec<String>,
+    /// Action registry for resolving keymap actions
+    action_registry: WizardActionRegistry,
     comp_id_to_index: HashMap<String, usize>,
 
     // Layers
@@ -118,7 +120,6 @@ pub struct App {
     // App state
     should_quit: bool,
     should_suspend: bool,
-    mode: Mode,
     ui_mode: UiMode,
 
     // Help search prompt state
@@ -175,7 +176,10 @@ impl App {
                 ),
             },
         };
-
+        // println!(
+        //     "{:#?}",
+        //     settings.export_keymap_for(DeviceFilter::Keyboard, "global")
+        // );
         // Default rates; in the future read from settings::GeneralCfg
         let tick_rate = settings.get::<settings::Wizard>().unwrap().tick_rate;
         let frame_rate = settings.get::<settings::Wizard>().unwrap().fps;
@@ -200,7 +204,6 @@ impl App {
                 _ => ToastPosition::TopRight,
             }
         };
-
         Ok(Self {
             base,
             settings,
@@ -213,13 +216,14 @@ impl App {
             focus_cycle: Vec::new(),
             popup_focus_lock: false,
             keymap_context: "global".to_string(),
+            active_contexts: vec!["global".to_string()],
+            action_registry: WizardActionRegistry::new(),
             comp_id_to_index: HashMap::new(),
             layers: Vec::new(),
             tasks: HashMap::new(),
             next_task_seq: 0,
             should_quit: false,
             should_suspend: false,
-            mode: Mode::Home,
             ui_mode: UiMode::Normal,
             help_search_active: false,
             help_search_buffer: String::new(),
@@ -241,17 +245,6 @@ impl App {
                     .help_wrap_on;
                 if !help_wrap_on {
                     lr.toggle_wrap();
-                }
-                // Initialize last help search from settings (if any)
-                let help_last_search = settings_for_layer
-                    .get::<settings::Wizard>()
-                    .unwrap()
-                    .help_last_search
-                    .clone();
-                if let Some(q) = help_last_search {
-                    if !q.trim().is_empty() {
-                        lr.set_help_search(Some(q));
-                    }
                 }
                 lr
             },
@@ -500,42 +493,16 @@ impl App {
         } else {
             format!("{}+{}", mods.join("+"), key_str)
         };
-        let map = self
-            .settings
-            .export_keymap_for(::settings::DeviceFilter::Keyboard, &self.keymap_context);
-        if let Some((action_name, _)) = map
-            .iter()
-            .find(|(_, chords)| chords.iter().any(|c| c.eq_ignore_ascii_case(&chord)))
+        // Refresh dynamic contexts (page, mode, layers, focus, etc.) per key event
+        self.update_active_contexts();
+        let active_contexts = &self.active_contexts;
+        if let Some(action) =
+            self.settings
+                .resolve_action_for_key(&chord, &active_contexts, &self.action_registry)
         {
-            let action = match action_name.as_str() {
-                "Quit" | "quit" => Some(Action::Quit),
-                "Help" | "help" => Some(Action::Help),
-                "OpenPopup" | "popup" => Some(Action::Ui(UiAction::OpenPopup {
-                    id: "help".into(),
-                    priority: None,
-                })),
-                "ModeInsert" | "insert" => Some(Action::Ui(UiAction::EnterEditMode)),
-                "ModeNormal" | "normal" => Some(Action::Ui(UiAction::ExitEditMode)),
-                "ModeCycle" | "modecycle" => Some(Action::Ui(UiAction::ToggleEditMode)),
-                "NextField" | "next" => Some(Action::Ui(UiAction::FocusNext)),
-                "PreviousField" | "prev" => Some(Action::Ui(UiAction::FocusPrev)),
-                "NextPage" | "nextpage" => Some(Action::Ui(UiAction::NextPage)),
-                "PrevPage" | "prevpage" | "previouspage" => Some(Action::Ui(UiAction::PrevPage)),
-                "HelpToggleGlobal" | "helptoggleglobal" => {
-                    Some(Action::Ui(UiAction::HelpToggleGlobal))
-                }
-                "HelpToggleWrap" | "helptogglewrap" => Some(Action::Ui(UiAction::HelpToggleWrap)),
-                "HelpScrollUp" | "helpscrollup" => Some(Action::Ui(UiAction::HelpScrollUp)),
-                "HelpScrollDown" | "helpscrolldown" => Some(Action::Ui(UiAction::HelpScrollDown)),
-                "HelpPageUp" | "helppageup" => Some(Action::Ui(UiAction::HelpPageUp)),
-                "HelpPageDown" | "helppagedown" => Some(Action::Ui(UiAction::HelpPageDown)),
-                "HelpSearch" | "helpsearch" => Some(Action::Ui(UiAction::BeginHelpSearch)),
-                _ => None,
-            };
-            if let Some(a) = action {
-                self.action_tx.send(a)?;
-            }
+            self.action_tx.send(action)?;
         } else {
+            println!("DEBUG: No action found for key '{}'", chord);
             self.last_tick_key_events.push(key);
         }
         Ok(())
@@ -543,9 +510,15 @@ impl App {
 
     fn handle_actions(&mut self, tui: &mut Tui) -> Result<()> {
         while let Ok(action) = self.action_rx.try_recv() {
-            if action != Action::Tick && action != Action::Render {
-                debug!("{action:?}");
+            // if action != Action::Tick && action != Action::Render {
+            //     debug!("{action:?}");
+            // }
+
+            // First, try to route component-specific actions to focused component
+            if let Some(response_action) = self.route_action_to_focused_component(&action)? {
+                self.action_tx.send(response_action)?;
             }
+
             match action.clone() {
                 Action::Tick => {
                     self.last_tick_key_events.clear();
@@ -562,6 +535,8 @@ impl App {
                             }
                         }
                     }
+                    // Update active contexts on every tick
+                    self.update_active_contexts();
                 }
                 Action::Quit => self.should_quit = true,
                 Action::Suspend => self.should_suspend = true,
@@ -840,20 +815,14 @@ impl App {
             }
             UiAction::HelpSearch(query) => {
                 self.layer_registry.set_help_search(Some(query.clone()));
-                let val = if query.trim().is_empty() {
+                if query.trim().is_empty() {
                     None
                 } else {
                     Some(query)
                 };
-                let _ = self
-                    .settings
-                    .update::<settings::Wizard>(|w| w.help_last_search = val);
             }
             UiAction::HelpSearchClear => {
                 self.layer_registry.clear_help_search();
-                let _ = self
-                    .settings
-                    .update::<settings::Wizard>(|w| w.help_last_search = None);
             }
             UiAction::BeginHelpSearch => {
                 self.help_search_active = true;
@@ -912,6 +881,22 @@ impl App {
                         }));
                     }
                 }
+            }
+            // Component navigation actions - these are handled by components directly
+            UiAction::NavigateUp => {
+                // Routed to focused component in route_action_to_focused_component
+            }
+            UiAction::NavigateDown => {
+                // Routed to focused component in route_action_to_focused_component
+            }
+            UiAction::NavigateLeft => {
+                // Routed to focused component in route_action_to_focused_component
+            }
+            UiAction::NavigateRight => {
+                // Routed to focused component in route_action_to_focused_component
+            }
+            UiAction::ActivateSelected => {
+                // Routed to focused component in route_action_to_focused_component
             }
         }
         Ok(())
@@ -1439,5 +1424,351 @@ impl App {
             let is_focused = Some(i) == self.focused_component_index && !self.popup_focus_lock;
             c.set_focused(is_focused);
         }
+    }
+
+    /// Updates the active contexts based on current app state
+    fn update_active_contexts(&mut self) {
+        let mut contexts = vec!["global".to_string()];
+
+        // Add current page context
+        if let Some(page_idx) = self.active_page_index {
+            if let Some(page) = self.pages.get(page_idx) {
+                let page_context = page.keymap_context();
+                if page_context != "global" {
+                    contexts.push(page_context.to_string());
+                }
+            }
+        }
+
+        // Add UI mode context
+        match self.ui_mode {
+            UiMode::Edit => contexts.push("edit-mode".to_string()),
+            UiMode::Normal => contexts.push("normal-mode".to_string()),
+        }
+
+        // Add popup context if any popups are active
+        let has_popups = self
+            .layers
+            .iter()
+            .any(|l| matches!(l.kind, LayerKind::Popup));
+        if has_popups {
+            contexts.push("popup-visible".to_string());
+        }
+
+        // Add specific help popup context if help popup is visible
+        let help_popup_visible = self
+            .layers
+            .iter()
+            .any(|l| matches!(l.kind, LayerKind::Popup) && l.id.as_deref() == Some("help"));
+        if help_popup_visible {
+            contexts.push("help-active".to_string());
+        }
+
+        // Add modal overlay context if any modal overlays are active
+        let has_modal_overlays = self
+            .layers
+            .iter()
+            .any(|l| matches!(l.kind, LayerKind::ModalOverlay));
+        if has_modal_overlays {
+            contexts.push("modal-overlay-visible".to_string());
+        }
+
+        // Add help search context if help search is active
+        if self.help_search_active {
+            contexts.push("help-search-active".to_string());
+        }
+
+        // Add component-specific context if a component is focused
+        if let Some(focused_idx) = self.focused_component_index {
+            if let Some(component_id) = self.get_component_id_by_index(focused_idx) {
+                contexts.push(component_id);
+            }
+        }
+
+        self.active_contexts = contexts;
+    }
+
+    /// Gets the component ID for a given component index
+    fn get_component_id_by_index(&self, index: usize) -> Option<String> {
+        self.comp_id_to_index
+            .iter()
+            .find(|(_, ix)| **ix == index)
+            .map(|(id, _)| id.clone())
+    }
+
+    /// Routes component-specific actions to the currently focused component
+    fn route_action_to_focused_component(&mut self, action: &Action) -> Result<Option<Action>> {
+        // Only route specific component navigation actions
+        match action {
+            Action::Ui(UiAction::NavigateUp)
+            | Action::Ui(UiAction::NavigateDown)
+            | Action::Ui(UiAction::NavigateLeft)
+            | Action::Ui(UiAction::NavigateRight)
+            | Action::Ui(UiAction::ActivateSelected) => {
+                // println!(
+                //     "DEBUG: Routing action {:?} to focused component. Focused index: {:?}, Components count: {}",
+                //     action,
+                //     self.focused_component_index,
+                //     self.components.len()
+                // );
+                if let Some(focused_idx) = self.focused_component_index {
+                    if let Some(component) = self.components.get_mut(focused_idx) {
+                        // println!(
+                        //     "DEBUG: Found component at index {}, forwarding action",
+                        //     focused_idx
+                        // );
+                        return component.handle_action(action);
+                    } else {
+                        println!("DEBUG: No component found at focused index {}", focused_idx);
+                    }
+                } else {
+                    println!("DEBUG: No focused component");
+                }
+            }
+            _ => {
+                // For other actions, always send to focused component for processing
+                if let Some(focused_idx) = self.focused_component_index {
+                    if let Some(component) = self.components.get_mut(focused_idx) {
+                        return component.handle_action(action);
+                    }
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    /// Converts a KeyEvent to a chord string (e.g., "ctrl+c", "tab", "esc")
+    fn key_event_to_chord_string(&self, key: &KeyEvent) -> String {
+        use crossterm::event::{KeyCode, KeyModifiers};
+
+        let mut mods: Vec<&'static str> = Vec::new();
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            mods.push("ctrl");
+        }
+        if key.modifiers.contains(KeyModifiers::ALT) {
+            mods.push("alt");
+        }
+        if key.modifiers.contains(KeyModifiers::SHIFT) {
+            mods.push("shift");
+        }
+
+        let key_str = match key.code {
+            KeyCode::Char(c) => c.to_ascii_lowercase().to_string(),
+            KeyCode::Enter => "enter".into(),
+            KeyCode::Esc => "esc".into(),
+            KeyCode::Tab => "tab".into(),
+            KeyCode::Backspace => "backspace".into(),
+            KeyCode::Left => "left".into(),
+            KeyCode::Right => "right".into(),
+            KeyCode::Up => "up".into(),
+            KeyCode::Down => "down".into(),
+            KeyCode::Delete => "delete".into(),
+            KeyCode::Home => "home".into(),
+            KeyCode::End => "end".into(),
+            KeyCode::PageUp => "pageup".into(),
+            KeyCode::PageDown => "pagedown".into(),
+            KeyCode::F(n) => format!("f{}", n),
+            _ => return "unknown".to_string(),
+        };
+
+        if mods.is_empty() {
+            key_str
+        } else {
+            format!("{}+{}", mods.join("+"), key_str)
+        }
+    }
+}
+
+/// Implementation des ActionRegistry-Traits für die Wizard-App
+impl ActionRegistry for App {
+    type Action = Action;
+
+    fn resolve_action(
+        &self,
+        action_name: &str,
+        action_data: Option<&toml::Value>,
+    ) -> Option<Self::Action> {
+        debug!(
+            "ActionRegistry: Resolving action '{}' with data {:?}",
+            action_name, action_data
+        );
+        match action_name {
+            // Legacy/Core Actions
+            "Quit" => Some(Action::Quit),
+            "Help" => Some(Action::Help),
+            "Tick" => Some(Action::Tick),
+            "Render" => Some(Action::Render),
+            "ClearScreen" => Some(Action::ClearScreen),
+            "Suspend" => Some(Action::Suspend),
+            "Resume" => Some(Action::Resume),
+
+            // UI Actions
+            "FocusNext" | "NextField" => Some(Action::Ui(UiAction::FocusNext)),
+            "FocusPrev" | "PrevField" | "PreviousField" => Some(Action::Ui(UiAction::FocusPrev)),
+
+            // Component navigation
+            "NavigateUp" => Some(Action::Ui(UiAction::NavigateUp)),
+            "NavigateDown" => Some(Action::Ui(UiAction::NavigateDown)),
+            "NavigateLeft" => Some(Action::Ui(UiAction::NavigateLeft)),
+            "NavigateRight" => Some(Action::Ui(UiAction::NavigateRight)),
+            "ActivateSelected" => Some(Action::Ui(UiAction::ActivateSelected)),
+            "ToggleEditMode" | "ModeCycle" => Some(Action::Ui(UiAction::ToggleEditMode)),
+            "EnterEditMode" | "ModeInsert" => Some(Action::Ui(UiAction::EnterEditMode)),
+            "ExitEditMode" | "ModeNormal" => Some(Action::Ui(UiAction::ExitEditMode)),
+            "NextPage" => Some(Action::Ui(UiAction::NextPage)),
+            "PrevPage" | "PreviousPage" => Some(Action::Ui(UiAction::PrevPage)),
+
+            // Popup/Layer Actions
+            "OpenPopup" => {
+                if let Some(data) = action_data {
+                    if let Some(id) = data.get("id").and_then(|v| v.as_str()) {
+                        let priority = data
+                            .get("priority")
+                            .and_then(|v| v.as_integer())
+                            .map(|i| i as i32);
+                        return Some(Action::Ui(UiAction::OpenPopup {
+                            id: id.to_string(),
+                            priority,
+                        }));
+                    }
+                }
+                // Default: open help popup
+                Some(Action::Ui(UiAction::OpenPopup {
+                    id: "help".to_string(),
+                    priority: None,
+                }))
+            }
+            "ClosePopup" | "CloseTopPopup" => Some(Action::Ui(UiAction::CloseTopPopup)),
+            "CloseAllPopups" => Some(Action::Ui(UiAction::CloseAllPopups)),
+
+            // Help Actions
+            "HelpToggleGlobal" => Some(Action::Ui(UiAction::HelpToggleGlobal)),
+            "HelpToggleWrap" => Some(Action::Ui(UiAction::HelpToggleWrap)),
+            "HelpScrollUp" => Some(Action::Ui(UiAction::HelpScrollUp)),
+            "HelpScrollDown" => Some(Action::Ui(UiAction::HelpScrollDown)),
+            "HelpPageUp" => Some(Action::Ui(UiAction::HelpPageUp)),
+            "HelpPageDown" => Some(Action::Ui(UiAction::HelpPageDown)),
+            "HelpSearch" | "BeginHelpSearch" => Some(Action::Ui(UiAction::BeginHelpSearch)),
+            "HelpSearchClear" => Some(Action::Ui(UiAction::HelpSearchClear)),
+
+            // Notification Actions
+            "ShowNotification" => {
+                if let Some(data) = action_data {
+                    let id = data
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("notification")
+                        .to_string();
+                    let level = data.get("level").and_then(|v| v.as_str()).unwrap_or("info");
+                    let message = data
+                        .get("message")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let timeout_ms = data
+                        .get("timeout_ms")
+                        .and_then(|v| v.as_integer())
+                        .map(|i| i as u64);
+
+                    let notification_level = match level {
+                        "error" => crate::action::NotificationLevel::Error,
+                        "warning" => crate::action::NotificationLevel::Warning,
+                        "success" => crate::action::NotificationLevel::Success,
+                        _ => crate::action::NotificationLevel::Info,
+                    };
+
+                    return Some(Action::Ui(UiAction::ShowNotification(
+                        crate::action::Notification {
+                            id,
+                            level: notification_level,
+                            message,
+                            timeout_ms,
+                        },
+                    )));
+                }
+                None
+            }
+            "DismissNotification" => {
+                if let Some(data) = action_data {
+                    if let Some(id) = data.get("id").and_then(|v| v.as_str()) {
+                        return Some(Action::Ui(UiAction::DismissNotification {
+                            id: id.to_string(),
+                        }));
+                    }
+                }
+                None
+            }
+
+            // App Actions
+            "SetActivePage" => {
+                if let Some(data) = action_data {
+                    if let Some(id) = data.get("id").and_then(|v| v.as_str()) {
+                        return Some(Action::App(AppAction::SetActivePage { id: id.to_string() }));
+                    }
+                }
+                None
+            }
+            "SaveSettings" => Some(Action::App(AppAction::SaveSettings)),
+            "LoadSettings" => Some(Action::App(AppAction::LoadSettings)),
+
+            _ => None,
+        }
+    }
+
+    fn get_action_names(&self) -> Vec<String> {
+        vec![
+            // Core
+            "Quit".to_string(),
+            "Help".to_string(),
+            "Tick".to_string(),
+            "Render".to_string(),
+            "ClearScreen".to_string(),
+            "Suspend".to_string(),
+            "Resume".to_string(),
+            // UI Navigation
+            "FocusNext".to_string(),
+            "NextField".to_string(),
+            "FocusPrev".to_string(),
+            "PrevField".to_string(),
+            "PreviousField".to_string(),
+            "NextPage".to_string(),
+            "PrevPage".to_string(),
+            "PreviousPage".to_string(),
+            // Component Navigation
+            "NavigateUp".to_string(),
+            "NavigateDown".to_string(),
+            "NavigateLeft".to_string(),
+            "NavigateRight".to_string(),
+            "ActivateSelected".to_string(),
+            // UI Mode
+            "ToggleEditMode".to_string(),
+            "ModeCycle".to_string(),
+            "EnterEditMode".to_string(),
+            "ModeInsert".to_string(),
+            "ExitEditMode".to_string(),
+            "ModeNormal".to_string(),
+            // Popups/Layers
+            "OpenPopup".to_string(),
+            "ClosePopup".to_string(),
+            "CloseTopPopup".to_string(),
+            "CloseAllPopups".to_string(),
+            // Help
+            "HelpToggleGlobal".to_string(),
+            "HelpToggleWrap".to_string(),
+            "HelpScrollUp".to_string(),
+            "HelpScrollDown".to_string(),
+            "HelpPageUp".to_string(),
+            "HelpPageDown".to_string(),
+            "HelpSearch".to_string(),
+            "BeginHelpSearch".to_string(),
+            "HelpSearchClear".to_string(),
+            // Notifications
+            "ShowNotification".to_string(),
+            "DismissNotification".to_string(),
+            // App
+            "SetActivePage".to_string(),
+            "SaveSettings".to_string(),
+            "LoadSettings".to_string(),
+        ]
     }
 }

@@ -355,14 +355,28 @@ impl SettingsStore {
             }
         }
 
+        // 3.5) Compile new TOML-based keymaps to resolved_bindings
+        let new_resolved_bindings = self.compile_toml_keymaps_from_layers(&layers)?;
+        // log::debug!(
+        //     "settings: reload_all compiled {} resolved key bindings (layers={})",
+        //     new_resolved_bindings.len(),
+        //     layers.len()
+        // );
+
         // 4) Unter konsistenter Lock-Reihenfolge effektiv tauschen und Snapshots aktualisieren
         {
             let mut es = self.effective_settings.write().unwrap();
             let mut ek = self.effective_keymaps.write().unwrap();
+            let mut keymap_state = self.keymap_state.write().unwrap();
             let mut snaps = self.snapshots.write().unwrap();
 
             *es = new_settings;
             *ek = new_keymaps;
+
+            // Update resolved bindings if we found new TOML-based keymaps
+            if !new_resolved_bindings.is_empty() {
+                keymap_state.resolved_bindings = new_resolved_bindings;
+            }
 
             for (tid, snap) in rebuilt {
                 snaps.insert(tid, snap);
@@ -370,6 +384,98 @@ impl SettingsStore {
         }
 
         Ok(())
+    }
+
+    /// Compiles TOML-based keymaps from layers to resolved bindings
+    fn compile_toml_keymaps_from_layers(
+        &self,
+        layers: &[Layer],
+    ) -> Result<Vec<crate::keymap::ResolvedBinding>, SettingsError> {
+        use crate::keymap::{KeymapFile, KeymapState};
+
+        let mut combined_bindings = Vec::new();
+        // log::debug!(
+        //     "settings: compile_toml_keymaps_from_layers: scanning {} layers",
+        //     layers.len()
+        // );
+
+        // Process layers in order (later layers have higher priority)
+        for (idx, layer) in layers.iter().enumerate() {
+            let toml_content = match &layer.kind {
+                LayerKind::EmbeddedKeyMapText(s) => {
+                    if s.trim().is_empty() {
+                        // log::debug!(
+                        //     "settings: keymap layer {} (embedded) empty/whitespace – skipping",
+                        //     idx
+                        // );
+                        continue;
+                    }
+                    s.clone()
+                }
+                LayerKind::KeyMapFile(path) => match std::fs::read_to_string(path) {
+                    Ok(content) if !content.trim().is_empty() => content,
+                    Ok(_) => {
+                        // log::debug!(
+                        //     "settings: keymap layer {} file {} empty – skipping",
+                        //     idx,
+                        //     path.display()
+                        // );
+                        continue;
+                    }
+                    Err(err) => {
+                        log::debug!(
+                            "settings: keymap layer {} file {} not readable ({} ) – skipping",
+                            idx,
+                            path.display(),
+                            err
+                        );
+                        continue;
+                    }
+                },
+                _ => continue, // Not a keymap layer
+            };
+
+            // Try to parse as new TOML keymap format ([[bindings]] groups)
+            match toml::from_str::<KeymapFile>(&toml_content) {
+                Ok(keymap_file) => {
+                    let group_count = keymap_file.bindings.len();
+                    match KeymapState::compile_keymap(&keymap_file) {
+                        Ok(mut resolved_bindings) => {
+                            let added = resolved_bindings.len();
+                            // log::debug!(
+                            //     "settings: keymap layer {} parsed OK (groups={}, resolved_bindings={})",
+                            //     idx,
+                            //     group_count,
+                            //     added
+                            // );
+                            combined_bindings.append(&mut resolved_bindings);
+                        }
+                        Err(e) => {
+                            log::warn!(
+                                "settings: keymap layer {} compile_keymap failed: {}",
+                                idx,
+                                e
+                            );
+                        }
+                    }
+                }
+                Err(parse_err) => {
+                    // Not the structured KeymapFile format; we silently ignore here (legacy formats
+                    // would be handled by deep_merge_keymaps for effective_keymaps, but that's orthogonal).
+                    log::debug!(
+                        "settings: keymap layer {} not KeymapFile format (parse error: {}) – ignoring for resolved bindings",
+                        idx,
+                        parse_err
+                    );
+                }
+            }
+        }
+
+        // log::debug!(
+        //     "settings: compile_toml_keymaps_from_layers: total resolved bindings = {}",
+        //     combined_bindings.len()
+        // );
+        Ok(combined_bindings)
     }
 
     // Registrierung+Zugriff
@@ -420,6 +526,35 @@ impl SettingsStore {
             .ok_or(SettingsError::NotRegistered)
     }
 
+    /// Resolves an action for a key chord and active contexts using the ActionRegistry
+    pub fn resolve_action_for_key<R: crate::keymap::ActionRegistry>(
+        &self,
+        key_chord: &str,
+        active_contexts: &[String],
+        registry: &R,
+    ) -> Option<R::Action> {
+        let keymap_state = self.keymap_state.read().unwrap();
+        keymap_state.resolve_action_for_key(key_chord, active_contexts, registry)
+    }
+
+    /// Debug helper: returns a short summary of the currently compiled (TOML) keymap bindings.
+    pub fn debug_keymap_state_summary(&self) -> String {
+        let state = self.keymap_state.read().unwrap();
+        let total = state.resolved_bindings.len();
+        // Show a few of the highest-priority (front of vector after our reverse) bindings for quick inspection
+        let sample: Vec<String> = state
+            .resolved_bindings
+            .iter()
+            .take(5)
+            .map(|b| format!("{}@{:?}:{}", b.key_chord, b.device, b.action_name))
+            .collect();
+        format!(
+            "resolved_bindings={}, sample=[{}]",
+            total,
+            sample.join(", ")
+        )
+    }
+
     // ---- Keymap: (optionale) High-Level-API Platzhalter ----
     pub fn keymap_set_input_scheme(&self, scheme: InputScheme) {
         self.keymap_state.write().unwrap().scheme = scheme;
@@ -443,6 +578,38 @@ impl SettingsStore {
 
         // Reihenfolge: global (Basis) -> context (überschreibt)
         let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
+
+        // Fallback: Wenn das Legacy-Kontextmodell leer ist (km.contexts.is_empty()),
+        // bauen wir eine Mapping-Ansicht direkt aus den kompilierten resolved_bindings
+        // des neuen [[bindings]]-Systems. Damit funktioniert die Help-/Export-Anzeige
+        // auch ohne legacy keymap Struktur.
+        if km.contexts.is_empty() {
+            let state = self.keymap_state.read().unwrap();
+            let mut seen = std::collections::HashSet::<(String, String)>::new();
+            // Basis-Kontextliste für Evaluierung
+            let base_contexts: Vec<&str> = if context == "global" {
+                vec!["global"]
+            } else {
+                vec!["global", context]
+            };
+            for binding in &state.resolved_bindings {
+                if binding.device != want_device {
+                    continue;
+                }
+                // Evaluieren, ob das Binding im (global | global+context) aktiv wäre
+                if !binding.context.eval(&base_contexts) {
+                    continue;
+                }
+                let chord = binding.key_chord.clone();
+                let key_id = (binding.action_name.clone(), chord.clone());
+                if seen.insert(key_id) {
+                    out.entry(binding.action_name.clone())
+                        .or_default()
+                        .push(chord);
+                }
+            }
+            return out;
+        }
 
         // Helfer: Action-Map eines Kontextes in out mergen (per Gerät last-wins)
         let mut merge_ctx = |ctx_name: &str| {

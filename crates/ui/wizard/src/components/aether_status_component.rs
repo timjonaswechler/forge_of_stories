@@ -213,35 +213,34 @@ impl Component for AetherStatusListComponent {
         self.focused = focused;
     }
 
-    fn handle_key_event(&mut self, key: KeyEvent) -> Result<Option<Action>> {
-        use crossterm::event::KeyCode::*;
-        match key.code {
-            Up => {
+    fn handle_action(&mut self, action: &Action) -> Result<Option<Action>> {
+        match action {
+            Action::Ui(UiAction::NavigateUp) => {
+                // println!("DEBUG: AetherStatusListComponent handling NavigateUp");
                 self.handle_nav(-1);
-                return Ok(None);
+                Ok(None)
             }
-            Down => {
+            Action::Ui(UiAction::NavigateDown) => {
+                // println!("DEBUG: AetherStatusListComponent handling NavigateDown");
                 self.handle_nav(1);
-                return Ok(None);
+                Ok(None)
             }
-            Char('k') => {
-                self.handle_nav(-1);
-                return Ok(None);
-            }
-            Char('j') => {
-                self.handle_nav(1);
-                return Ok(None);
-            }
-            Enter => {
+            Action::Ui(UiAction::ActivateSelected) => {
+                // println!("DEBUG: AetherStatusListComponent handling ActivateSelected");
                 // Open popup for selected item
-                return Ok(Some(Action::Ui(UiAction::OpenPopup {
+                Ok(Some(Action::Ui(UiAction::OpenPopup {
                     id: self.popup_id().to_string(),
                     priority: None,
-                })));
+                })))
             }
-            _ => {}
+            _ => {
+                // println!(
+                //     "DEBUG: AetherStatusListComponent ignoring action: {:?}",
+                //     action
+                // );
+                Ok(None)
+            }
         }
-        Ok(None)
     }
 
     fn update(&mut self, action: Action) -> Result<Option<Action>> {

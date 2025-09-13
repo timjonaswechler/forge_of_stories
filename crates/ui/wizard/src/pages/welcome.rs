@@ -89,9 +89,3 @@ impl Page for WelcomePage {
             .with("aether_status", vertical[1])
     }
 }
-
-// ------------------------------------------------------------------------------------------------
-// AetherStatusListComponent
-// ------------------------------------------------------------------------------------------------
-
-// (Removed old list-widget based implementation and helper color constants.)

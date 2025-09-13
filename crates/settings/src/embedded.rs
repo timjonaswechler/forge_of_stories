@@ -48,5 +48,5 @@ pub fn default_gamepad_keymap() -> Cow<'static, str> {
 }
 
 pub fn default_wizard_keymap() -> Cow<'static, str> {
-    asset_str::<SettingsAssets>("keymaps/default-wizard.toml")
+    asset_str::<SettingsAssets>("keymaps/wizard-default.toml")
 }

@@ -130,7 +130,7 @@ pub fn apply_server_setting(
     Ok(())
 }
 use settings::{Settings, SettingsStore};
-use std::{path::Path, sync::Arc};
+use std::sync::Arc;
 
 // 1) Typisierte Modelle
 #[derive(Clone, Default, Serialize, Deserialize)]
