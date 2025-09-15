@@ -80,9 +80,7 @@ impl StatusBar {
         let focused = if self.focused.is_some() {
             Span::styled(
                 format!("Focus: {}  ", focused_val),
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().add_modifier(Modifier::BOLD),
             )
         } else {
             Span::raw(format!("Focus: {}  ", focused_val))

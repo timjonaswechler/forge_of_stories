@@ -82,10 +82,15 @@ impl Page for WelcomePage {
     fn layout(&self, area: Rect) -> PageLayout {
         let vertical = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(9), Constraint::Min(3)])
+            .constraints([
+                Constraint::Length(9),
+                Constraint::Length(6),
+                Constraint::Length(3),
+            ])
             .split(area);
         PageLayout::empty()
             .with("wizard_logo", vertical[0])
             .with("aether_status", vertical[1])
+            .with("welcome_message", vertical[2])
     }
 }

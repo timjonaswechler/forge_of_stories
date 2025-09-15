@@ -4,10 +4,12 @@ use color_eyre::Result;
 use crossterm::event::Event as CEvent;
 use ratatui::{
     Frame,
-    layout::Rect,
+    layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
+    symbols,
     widgets::{
-        Block, Borders, Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap,
+        Block, BorderType, Borders, Clear, Paragraph, Scrollbar, ScrollbarOrientation,
+        ScrollbarState, Wrap,
     },
 };
 use tui_input::{Input, backend::crossterm::EventHandler};
@@ -221,133 +223,156 @@ impl BasicLayerRegistry {
         let w = area.width.saturating_sub(area.width / 5);
         let h = area.height.saturating_sub(area.height / 5);
         let x = area.x + (area.width.saturating_sub(w)) / 2;
-        let y = area.y + (area.height.saturating_sub(h)) / 2;
+        let y = area.height - (h + 2);
         let popup_area = Rect::new(x, y, w, h);
-
-        // Build a scrollable text from keymaps
-        let mut lines: Vec<String> = Vec::new();
-
-        // Helper to push a section (context or global) optionally filtered
-        let filter = self.help_search.as_ref().map(|s| s.to_ascii_lowercase());
-
-        let push_section = |title: &str,
-                            map: std::collections::BTreeMap<String, Vec<String>>,
-                            out: &mut Vec<String>,
-                            filter: &Option<String>| {
-            out.push(format!("== {} ==", title));
-            out.push("Action — Keys".to_string());
-            for (action_name, chords) in map {
-                let chord_str = chords.join(", ");
-                let include = match filter {
-                    Some(q) => {
-                        let an = action_name.to_ascii_lowercase();
-                        let cs = chord_str.to_ascii_lowercase();
-                        an.contains(q) || cs.contains(q)
-                    }
-                    None => true,
-                };
-                if include {
-                    out.push(format!("- {:<20} {}", action_name, chord_str));
-                }
-            }
-            out.push(String::new());
+        let collapsed_border_set = symbols::border::Set {
+            top_left: symbols::line::NORMAL.vertical_right,
+            top_right: symbols::line::NORMAL.vertical_left,
+            bottom_left: symbols::line::ROUNDED.bottom_left,
+            bottom_right: symbols::line::ROUNDED.bottom_right,
+            ..symbols::border::PLAIN
         };
-
-        if let Some(settings) = &self.settings {
-            // Context
-            let ctx_map =
-                settings.export_keymap_for(settings::DeviceFilter::Keyboard, &self.keymap_context);
-            push_section(
-                &format!("Context ({})", self.keymap_context),
-                ctx_map,
-                &mut lines,
-                &filter,
-            );
-
-            // Global (optional)
-            if self.show_global && self.keymap_context != "global" {
-                let g_map = settings.export_keymap_for(settings::DeviceFilter::Keyboard, "global");
-                push_section("Global", g_map, &mut lines, &filter);
-            }
-        } else {
-            // Fallback content
-            let mut map = std::collections::BTreeMap::new();
-            map.insert("Help".to_string(), vec!["f1".to_string()]);
-            map.insert("Quit".to_string(), vec!["ctrl+c".to_string()]);
-            push_section("Example (no settings)", map, &mut lines, &filter);
-        }
-
-        let title_extra = match (&self.help_search, self.show_global) {
-            (Some(_), true) => format!(" — {} [global+search]", self.keymap_context),
-            (Some(_), false) => format!(" — {} [search]", self.keymap_context),
-            (None, true) => format!(" — {} [global]", self.keymap_context),
-            (None, false) => format!(" — {}", self.keymap_context),
-        };
-
-        // Compute viewport and scroll positioning
-        let content_len: u16 = lines.len() as u16;
-        // account for borders inside the block (approx. 2 rows) + 1 reserved line for prompt if active
-        let reserved: u16 = if self.help_prompt_active { 1 } else { 0 };
-        let viewport_h: u16 = popup_area.height.saturating_sub(2 + reserved);
-        let max_pos = content_len.saturating_sub(viewport_h);
-        let pos = self.help_scroll.min(max_pos);
-
-        // Reserve one column on the right for the scrollbar and optionally a top row for the prompt
-        let para_area = Rect::new(
-            popup_area.x,
-            popup_area.y + reserved,
-            popup_area.width.saturating_sub(1),
-            popup_area.height.saturating_sub(reserved),
+        let [search_area, key_table_area] =
+            Layout::vertical([Constraint::Length(4), Constraint::Fill(1)]).areas(popup_area);
+        f.render_widget(
+            Block::new()
+                .border_type(BorderType::Rounded)
+                .borders(Borders::TOP | Borders::LEFT | Borders::RIGHT)
+                .title("Search"),
+            search_area,
         );
-
-        let mut para = Paragraph::new(lines.join("\n")).scroll((pos, 0)).block(
-            Block::default()
+        f.render_widget(
+            Block::new()
                 .borders(Borders::ALL)
-                .title(format!("Help{}", title_extra)),
+                .border_set(collapsed_border_set)
+                .title("Key Table"),
+            key_table_area,
         );
-        if self.wrap_on {
-            para = para.wrap(Wrap { trim: true });
-        }
 
-        // Scrollbar state and widget (vertical, right side)
-        let mut sb_state = ScrollbarState::new(content_len as usize).position(pos as usize);
-        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-            .thumb_symbol("█")
-            .thumb_style(
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            )
-            .track_symbol(Some(" "))
-            .track_style(Style::default().fg(Color::DarkGray));
+        // // Build a scrollable text from keymaps
+        // let mut lines: Vec<String> = Vec::new();
 
-        f.render_widget(Clear, popup_area);
-        f.render_widget(para, para_area);
+        // // Helper to push a section (context or global) optionally filtered
+        // let filter = self.help_search.as_ref().map(|s| s.to_ascii_lowercase());
 
-        // Draw prompt overlay inside the help block, under the title, when active
-        if self.help_prompt_active {
-            // One-line area just under the top border/title; leave 1 col for left border and 2 for scrollbar/right border
-            let prompt_area = Rect::new(
-                popup_area.x + 1,
-                popup_area.y + 1,
-                popup_area.width.saturating_sub(3),
-                1,
-            );
-            let prompt_value = self.help_input.value().to_string();
-            let hint = "  [Enter: search, Esc: clear]";
-            let prompt_text = format!("/{}{}", prompt_value, hint);
-            let prompt_style = Style::default().fg(Color::Black).bg(Color::Cyan);
-            let prompt = Paragraph::new(prompt_text).style(prompt_style);
-            f.render_widget(Clear, prompt_area);
-            f.render_widget(prompt, prompt_area);
-            // Place cursor after '/' + visual cursor within the input
-            let cursor = self.help_input.visual_cursor() as u16;
-            let cx = prompt_area.x + 1 + 1 + cursor;
-            let cy = prompt_area.y;
-            f.set_cursor(cx, cy);
-        }
+        // let push_section = |title: &str,
+        //                     map: std::collections::BTreeMap<String, Vec<String>>,
+        //                     out: &mut Vec<String>,
+        //                     filter: &Option<String>| {
+        //     out.push(format!("== {} ==", title));
+        //     out.push(format!("{:<15} {}", "Keys", "Action"));
+        //     for (action_name, chords) in map {
+        //         let chord_str = chords.join(", ");
+        //         let include = match filter {
+        //             Some(q) => {
+        //                 let an = action_name.to_ascii_lowercase();
+        //                 let cs = chord_str.to_ascii_lowercase();
+        //                 an.contains(q) || cs.contains(q)
+        //             }
+        //             None => true,
+        //         };
+        //         if include {
+        //             out.push(format!("{:<15} {}", chord_str, action_name));
+        //         }
+        //     }
+        //     out.push(String::new());
+        // };
 
-        f.render_stateful_widget(scrollbar, popup_area, &mut sb_state);
+        // if let Some(settings) = &self.settings {
+        //     // Context
+        //     let ctx_map =
+        //         settings.export_keymap_for(settings::DeviceFilter::Keyboard, &self.keymap_context);
+        //     push_section(
+        //         &format!("Context ({})", self.keymap_context),
+        //         ctx_map,
+        //         &mut lines,
+        //         &filter,
+        //     );
+
+        //     // Global (optional)
+        //     if self.show_global && self.keymap_context != "global" {
+        //         let g_map = settings.export_keymap_for(settings::DeviceFilter::Keyboard, "global");
+        //         push_section("Global", g_map, &mut lines, &filter);
+        //     }
+        // } else {
+        //     // Fallback content
+        //     let mut map = std::collections::BTreeMap::new();
+        //     map.insert("Help".to_string(), vec!["f1".to_string()]);
+        //     map.insert("Quit".to_string(), vec!["ctrl+c".to_string()]);
+        //     push_section("Example (no settings)", map, &mut lines, &filter);
+        // }
+
+        // let title_extra = match (&self.help_search, self.show_global) {
+        //     (Some(_), true) => format!(" — {} [global+search]", self.keymap_context),
+        //     (Some(_), false) => format!(" — {} [search]", self.keymap_context),
+        //     (None, true) => format!(" — {} [global]", self.keymap_context),
+        //     (None, false) => format!(" — {}", self.keymap_context),
+        // };
+
+        // // Compute viewport and scroll positioning
+        // let content_len: u16 = lines.len() as u16;
+        // // account for borders inside the block (approx. 2 rows) + 1 reserved line for prompt if active
+        // let reserved: u16 = if self.help_prompt_active { 1 } else { 0 };
+        // let viewport_h: u16 = popup_area.height.saturating_sub(2 + reserved);
+        // let max_pos = content_len.saturating_sub(viewport_h);
+        // let pos = self.help_scroll.min(max_pos);
+
+        // // Reserve one column on the right for the scrollbar and optionally a top row for the prompt
+        // let para_area = Rect::new(
+        //     popup_area.x,
+        //     popup_area.y + reserved,
+        //     popup_area.width.saturating_sub(1),
+        //     popup_area.height.saturating_sub(reserved),
+        // );
+
+        // let mut para = Paragraph::new(lines.join("\n")).scroll((pos, 0)).block(
+        //     Block::default()
+        //         .borders(Borders::ALL)
+        //         .title(format!("Help{}", title_extra)),
+        // );
+        // if self.wrap_on {
+        //     para = para.wrap(Wrap { trim: true });
+        // }
+
+        // // Scrollbar state and widget (vertical, right side)
+        // let mut sb_state = ScrollbarState::new(content_len as usize).position(pos as usize);
+        // let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+        //     .thumb_symbol("█")
+        //     .thumb_style(
+        //         Style::default()
+        //             .fg(Color::Cyan)
+        //             .add_modifier(Modifier::BOLD),
+        //     )
+        //     .track_symbol(Some(" "))
+        //     .track_style(Style::default().fg(Color::DarkGray));
+
+        // f.render_widget(Clear, popup_area);
+        // f.render_widget(para, para_area);
+
+        // // Draw prompt overlay inside the help block, under the title, when active
+        // if self.help_prompt_active {
+        //     // One-line area just under the top border/title; leave 1 col for left border and 2 for scrollbar/right border
+        //     let prompt_area = Rect::new(
+        //         popup_area.x + 1,
+        //         popup_area.y + 1,
+        //         popup_area.width.saturating_sub(3),
+        //         1,
+        //     );
+        //     let prompt_value = self.help_input.value().to_string();
+        //     let hint = "  [Enter: search, Esc: clear]";
+        //     let prompt_text = format!("/{}{}", prompt_value, hint);
+        //     let prompt_style = Style::default().fg(Color::Black).bg(Color::Cyan);
+        //     let prompt = Paragraph::new(prompt_text).style(prompt_style);
+        //     f.render_widget(Clear, prompt_area);
+        //     f.render_widget(prompt, prompt_area);
+        //     // Place cursor after '/' + visual cursor within the input
+        //     let cursor = self.help_input.visual_cursor() as u16;
+        //     let cx = prompt_area.x + 1 + 1 + cursor;
+        //     let cy = prompt_area.y;
+        //     f.set_cursor(cx, cy);
+        // }
+
+        // f.render_stateful_widget(scrollbar, popup_area, &mut sb_state);
         Ok(())
     }
 
