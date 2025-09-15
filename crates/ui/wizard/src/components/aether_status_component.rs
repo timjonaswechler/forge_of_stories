@@ -3,7 +3,6 @@ use crate::{
     components::Component,
 };
 use color_eyre::Result;
-use crossterm::event::KeyEvent;
 use ratatui::{
     Frame,
     layout::{Constraint, Flex, Layout, Rect},
@@ -216,30 +215,21 @@ impl Component for AetherStatusListComponent {
     fn handle_action(&mut self, action: &Action) -> Result<Option<Action>> {
         match action {
             Action::Ui(UiAction::NavigateUp) => {
-                // println!("DEBUG: AetherStatusListComponent handling NavigateUp");
                 self.handle_nav(-1);
                 Ok(None)
             }
             Action::Ui(UiAction::NavigateDown) => {
-                // println!("DEBUG: AetherStatusListComponent handling NavigateDown");
                 self.handle_nav(1);
                 Ok(None)
             }
             Action::Ui(UiAction::ActivateSelected) => {
-                // println!("DEBUG: AetherStatusListComponent handling ActivateSelected");
                 // Open popup for selected item
                 Ok(Some(Action::Ui(UiAction::OpenPopup {
                     id: self.popup_id().to_string(),
                     priority: None,
                 })))
             }
-            _ => {
-                // println!(
-                //     "DEBUG: AetherStatusListComponent ignoring action: {:?}",
-                //     action
-                // );
-                Ok(None)
-            }
+            _ => Ok(None),
         }
     }
 

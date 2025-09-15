@@ -147,14 +147,3 @@ pub fn build_wizard_settings_store() -> color_eyre::Result<SettingsStore> {
 
     Ok(store)
 }
-
-// fn parse_bool(s: &str) -> color_eyre::Result<bool> {
-//     let v = s.trim().to_ascii_lowercase();
-//     match v.as_str() {
-//         "1" | "true" | "yes" | "on" => Ok(true),
-//         "0" | "false" | "no" | "off" => Ok(false),
-//         _ => Err(color_eyre::eyre::eyre!(format!(
-//             "Ungültiger bool-Wert: {s}"
-//         ))),
-//     }
-// }
