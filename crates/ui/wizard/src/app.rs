@@ -657,15 +657,15 @@ impl App {
                     UiMode::Normal => UiMode::Edit,
                     UiMode::Edit => UiMode::Normal,
                 };
-                info!("UI mode changed to {:?}", self.ui_mode);
+                // info!("UI mode changed to {:?}", self.ui_mode);
             }
             UiAction::EnterEditMode => {
                 self.ui_mode = UiMode::Edit;
-                info!("UI mode changed to Edit");
+                // info!("UI mode changed to Edit");
             }
             UiAction::ExitEditMode => {
                 self.ui_mode = UiMode::Normal;
-                info!("UI mode changed to Normal");
+                // info!("UI mode changed to Normal");
             }
             UiAction::OpenPopup { id, priority } => {
                 let is_help = id == "help";
@@ -785,28 +785,6 @@ impl App {
                 let _ = self
                     .action_tx
                     .send(Action::Ui(UiAction::PersistHelpShowGlobal(value)));
-            }
-            UiAction::HelpScrollUp => {
-                self.layer_registry.scroll_help_lines(-1);
-            }
-            UiAction::HelpScrollDown => {
-                self.layer_registry.scroll_help_lines(1);
-            }
-            UiAction::HelpPageUp => {
-                if let Ok(size) = _tui.size() {
-                    let page = (size.height as i16 / 2).max(1);
-                    self.layer_registry.scroll_help_lines(-page);
-                } else {
-                    self.layer_registry.scroll_help_lines(-10);
-                }
-            }
-            UiAction::HelpPageDown => {
-                if let Ok(size) = _tui.size() {
-                    let page = (size.height as i16 / 2).max(1);
-                    self.layer_registry.scroll_help_lines(page);
-                } else {
-                    self.layer_registry.scroll_help_lines(10);
-                }
             }
             UiAction::HelpSearch(query) => {
                 self.layer_registry.set_help_search(Some(query.clone()));
@@ -1176,6 +1154,7 @@ impl App {
                     main_area,
                     layer.kind,
                     layer.id.as_deref(),
+                    Some(&self.active_contexts),
                 ) {
                     let _ = self.action_tx.send(Action::Error(format!(
                         "Failed to render overlay layer: {:?}",
@@ -1198,6 +1177,7 @@ impl App {
                     main_area,
                     layer.kind,
                     layer.id.as_deref(),
+                    Some(&self.active_contexts),
                 ) {
                     let _ = self.action_tx.send(Action::Error(format!(
                         "Failed to render popup layer: {:?}",
@@ -1523,47 +1503,6 @@ impl App {
         }
         Ok(None)
     }
-
-    // Converts a KeyEvent to a chord string (e.g., "ctrl+c", "tab", "esc")
-    // fn key_event_to_chord_string(&self, key: &KeyEvent) -> String {
-    //     use crossterm::event::{KeyCode, KeyModifiers};
-
-    //     let mut mods: Vec<&'static str> = Vec::new();
-    //     if key.modifiers.contains(KeyModifiers::CONTROL) {
-    //         mods.push("ctrl");
-    //     }
-    //     if key.modifiers.contains(KeyModifiers::ALT) {
-    //         mods.push("alt");
-    //     }
-    //     if key.modifiers.contains(KeyModifiers::SHIFT) {
-    //         mods.push("shift");
-    //     }
-
-    //     let key_str = match key.code {
-    //         KeyCode::Char(c) => c.to_ascii_lowercase().to_string(),
-    //         KeyCode::Enter => "enter".into(),
-    //         KeyCode::Esc => "esc".into(),
-    //         KeyCode::Tab => "tab".into(),
-    //         KeyCode::Backspace => "backspace".into(),
-    //         KeyCode::Left => "left".into(),
-    //         KeyCode::Right => "right".into(),
-    //         KeyCode::Up => "up".into(),
-    //         KeyCode::Down => "down".into(),
-    //         KeyCode::Delete => "delete".into(),
-    //         KeyCode::Home => "home".into(),
-    //         KeyCode::End => "end".into(),
-    //         KeyCode::PageUp => "pageup".into(),
-    //         KeyCode::PageDown => "pagedown".into(),
-    //         KeyCode::F(n) => format!("f{}", n),
-    //         _ => return "unknown".to_string(),
-    //     };
-
-    //     if mods.is_empty() {
-    //         key_str
-    //     } else {
-    //         format!("{}+{}", mods.join("+"), key_str)
-    //     }
-    // }
 }
 
 /// Implementation des ActionRegistry-Traits für die Wizard-App
@@ -1631,10 +1570,6 @@ impl ActionRegistry for App {
             // Help Actions
             "HelpToggleGlobal" => Some(Action::Ui(UiAction::HelpToggleGlobal)),
             "HelpToggleWrap" => Some(Action::Ui(UiAction::HelpToggleWrap)),
-            "HelpScrollUp" => Some(Action::Ui(UiAction::HelpScrollUp)),
-            "HelpScrollDown" => Some(Action::Ui(UiAction::HelpScrollDown)),
-            "HelpPageUp" => Some(Action::Ui(UiAction::HelpPageUp)),
-            "HelpPageDown" => Some(Action::Ui(UiAction::HelpPageDown)),
             "HelpSearch" | "BeginHelpSearch" => Some(Action::Ui(UiAction::BeginHelpSearch)),
             "HelpSearchClear" => Some(Action::Ui(UiAction::HelpSearchClear)),
 

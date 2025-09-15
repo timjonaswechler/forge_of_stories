@@ -394,20 +394,12 @@ impl SettingsStore {
         use crate::keymap::{KeymapFile, KeymapState};
 
         let mut combined_bindings = Vec::new();
-        // log::debug!(
-        //     "settings: compile_toml_keymaps_from_layers: scanning {} layers",
-        //     layers.len()
-        // );
 
         // Process layers in order (later layers have higher priority)
         for (idx, layer) in layers.iter().enumerate() {
             let toml_content = match &layer.kind {
                 LayerKind::EmbeddedKeyMapText(s) => {
                     if s.trim().is_empty() {
-                        // log::debug!(
-                        //     "settings: keymap layer {} (embedded) empty/whitespace – skipping",
-                        //     idx
-                        // );
                         continue;
                     }
                     s.clone()
@@ -415,11 +407,6 @@ impl SettingsStore {
                 LayerKind::KeyMapFile(path) => match std::fs::read_to_string(path) {
                     Ok(content) if !content.trim().is_empty() => content,
                     Ok(_) => {
-                        // log::debug!(
-                        //     "settings: keymap layer {} file {} empty – skipping",
-                        //     idx,
-                        //     path.display()
-                        // );
                         continue;
                     }
                     Err(err) => {
@@ -442,12 +429,7 @@ impl SettingsStore {
                     match KeymapState::compile_keymap(&keymap_file) {
                         Ok(mut resolved_bindings) => {
                             let added = resolved_bindings.len();
-                            // log::debug!(
-                            //     "settings: keymap layer {} parsed OK (groups={}, resolved_bindings={})",
-                            //     idx,
-                            //     group_count,
-                            //     added
-                            // );
+
                             combined_bindings.append(&mut resolved_bindings);
                         }
                         Err(e) => {

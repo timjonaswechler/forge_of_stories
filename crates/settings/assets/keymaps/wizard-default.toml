@@ -36,7 +36,7 @@ Help = [
 # =============================================================================
 
 [[bindings]]
-context = "global && normal-mode"
+context = "global && normal-mode && !help-active"
 [bindings.actions]
 # Focus navigation
 FocusNext = [
@@ -105,17 +105,6 @@ CloseAllPopups = [
 [[bindings]]
 context = "popup-visible && help-active"
 [bindings.actions]
-# Navigation
-HelpScrollUp = [
-    { key = "k" },
-    { key = "up" }
-]
-
-HelpScrollDown = [
-    { key = "j" },
-    { key = "down" }
-]
-
 HelpPageUp = [
     { key = "pageup" },
     { key = "ctrl+u" }
@@ -137,8 +126,7 @@ HelpToggleWrap = [
 
 # Search
 BeginHelpSearch = [
-    { key = "/" },
-    { key = "ctrl+f" }
+    { key = "ctrl+f" },
 ]
 
 HelpSearchClear = [
@@ -161,7 +149,7 @@ SaveSettings = [
 # =============================================================================
 
 [[bindings]]
-context = "welcome && aether_status"
+context = "welcome && aether_status && !help-search-active"
 [bindings.actions]
 NavigateUp = [
     { key = "k" },
@@ -176,15 +164,4 @@ NavigateDown = [
 ActivateSelected = [
     { key = "enter" },
     { key = "space" }
-]
-
-# =============================================================================
-# Setup Page
-# =============================================================================
-
-[[bindings]]
-context = "setup"
-[bindings.actions]
-LoadSettings = [
-    { key = "ctrl+o" }
 ]

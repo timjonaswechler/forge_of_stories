@@ -166,14 +166,6 @@ pub enum UiAction {
     // Help pop-up controls
     /// Toggle inclusion of global key bindings in Help.
     HelpToggleGlobal,
-    /// Scroll Help content up by one line.
-    HelpScrollUp,
-    /// Scroll Help content down by one line.
-    HelpScrollDown,
-    /// Scroll Help content up by one page.
-    HelpPageUp,
-    /// Scroll Help content down by one page.
-    HelpPageDown,
     /// Begin interactive input flow for Help search (UI should open an input prompt).
     BeginHelpSearch,
     /// Forward a raw KeyEvent to the help prompt widget.

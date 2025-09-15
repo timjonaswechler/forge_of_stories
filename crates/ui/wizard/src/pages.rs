@@ -6,11 +6,9 @@ use ratatui::{Frame, layout::Rect};
 use tokio::sync::mpsc::UnboundedSender;
 
 mod dashboard;
-mod setup;
 mod welcome;
 
 pub(crate) use dashboard::DashboardPage;
-pub(crate) use setup::SetupPage;
 pub(crate) use welcome::WelcomePage;
 
 /// A top-level screen composed of zero or more components.

@@ -35,10 +35,6 @@ impl WizardActionRegistry {
                 "ShowNotification".to_string(),
                 "DismissNotification".to_string(),
                 "HelpToggleGlobal".to_string(),
-                "HelpScrollUp".to_string(),
-                "HelpScrollDown".to_string(),
-                "HelpPageUp".to_string(),
-                "HelpPageDown".to_string(),
                 "BeginHelpSearch".to_string(),
                 "HelpSearchClear".to_string(),
                 "NextPage".to_string(),
@@ -153,10 +149,6 @@ impl ActionRegistry for WizardActionRegistry {
 
             // UI Actions - Help
             "HelpToggleGlobal" => Some(Action::Ui(UiAction::HelpToggleGlobal)),
-            "HelpScrollUp" => Some(Action::Ui(UiAction::HelpScrollUp)),
-            "HelpScrollDown" => Some(Action::Ui(UiAction::HelpScrollDown)),
-            "HelpPageUp" => Some(Action::Ui(UiAction::HelpPageUp)),
-            "HelpPageDown" => Some(Action::Ui(UiAction::HelpPageDown)),
             "BeginHelpSearch" => Some(Action::Ui(UiAction::BeginHelpSearch)),
             "HelpSearchClear" => Some(Action::Ui(UiAction::HelpSearchClear)),
 

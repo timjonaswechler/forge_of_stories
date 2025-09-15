@@ -65,16 +65,4 @@ impl AppSettingsExt for App {
         reg.updaters.push(update_one::<S>);
         self
     }
-
-    // fn settings_poll_interval(mut self, dur: Duration) -> Self {
-    //     self.edit_schedule(Update, |sched| {
-    //         use bevy::time::common_conditions::on_timer;
-    //         sched.add_systems(
-    //             (reload_store_if_files_changed, poll_all_registered_sections)
-    //                 .chain()
-    //                 .run_if(on_timer(dur)),
-    //         );
-    //     });
-    //     self
-    // }
 }
