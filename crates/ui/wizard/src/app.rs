@@ -41,17 +41,19 @@ use crate::{
     },
     cli::{Cli, Cmd, RunMode},
     components::{Component, StatusBar},
-    pages::{DashboardPage, Page, SetupPage},
+    pages::{DashboardPage, Page},
     tui::{Event, Tui},
 };
-use ::settings::DeviceFilter;
 use app::AppBase;
 pub use app::init;
 use color_eyre::Result;
 use crossterm::event::KeyEvent;
 use keymap_registry::WizardActionRegistry;
-use ratatui::layout::{Rect, Size};
-use serde::{Deserialize, Serialize};
+use ratatui::{
+    layout::{Rect, Size},
+    style::{Color, Style},
+    widgets::{Block, Borders, Clear},
+};
 use settings::ActionRegistry;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::mpsc;
@@ -176,10 +178,7 @@ impl App {
                 ),
             },
         };
-        // println!(
-        //     "{:#?}",
-        //     settings.export_keymap_for(DeviceFilter::Keyboard, "global")
-        // );
+
         // Default rates; in the future read from settings::GeneralCfg
         let tick_rate = settings.get::<settings::Wizard>().unwrap().tick_rate;
         let frame_rate = settings.get::<settings::Wizard>().unwrap().fps;
@@ -502,7 +501,7 @@ impl App {
         {
             self.action_tx.send(action)?;
         } else {
-            println!("DEBUG: No action found for key '{}'", chord);
+            // println!("DEBUG: No action found for key '{}'", chord);
             self.last_tick_key_events.push(key);
         }
         Ok(())
@@ -510,10 +509,6 @@ impl App {
 
     fn handle_actions(&mut self, tui: &mut Tui) -> Result<()> {
         while let Ok(action) = self.action_rx.try_recv() {
-            // if action != Action::Tick && action != Action::Render {
-            //     debug!("{action:?}");
-            // }
-
             // First, try to route component-specific actions to focused component
             if let Some(response_action) = self.route_action_to_focused_component(&action)? {
                 self.action_tx.send(response_action)?;
@@ -1176,10 +1171,12 @@ impl App {
             overlays.sort_by_key(|l| l.priority);
             popups.sort_by_key(|l| l.priority);
             for layer in overlays.into_iter() {
-                if let Err(err) =
-                    self.layer_registry
-                        .render_layer(frame, area, layer.kind, layer.id.as_deref())
-                {
+                if let Err(err) = self.layer_registry.render_layer(
+                    frame,
+                    main_area,
+                    layer.kind,
+                    layer.id.as_deref(),
+                ) {
                     let _ = self.action_tx.send(Action::Error(format!(
                         "Failed to render overlay layer: {:?}",
                         err
@@ -1187,21 +1184,21 @@ impl App {
                 }
             }
             if !popups.is_empty() {
-                use ratatui::{
-                    style::{Color, Style},
-                    widgets::{Block, Borders, Clear},
-                };
                 frame.render_widget(Clear, area);
-                let dim = Block::default()
-                    .borders(Borders::NONE)
-                    .style(Style::default().bg(Color::DarkGray));
+                let dim = Block::default().borders(Borders::NONE).style(
+                    Style::default()
+                        .bg(Color::DarkGray)
+                        .fg(Color::Rgb(200, 200, 200)),
+                );
                 frame.render_widget(dim, area);
             }
             for layer in popups.into_iter() {
-                if let Err(err) =
-                    self.layer_registry
-                        .render_layer(frame, area, layer.kind, layer.id.as_deref())
-                {
+                if let Err(err) = self.layer_registry.render_layer(
+                    frame,
+                    main_area,
+                    layer.kind,
+                    layer.id.as_deref(),
+                ) {
                     let _ = self.action_tx.send(Action::Error(format!(
                         "Failed to render popup layer: {:?}",
                         err
@@ -1209,7 +1206,7 @@ impl App {
                 }
             }
             if notifications_present || !self.toast_notifications.is_empty() {
-                self.render_toasts(frame, area);
+                self.render_toasts(frame, main_area);
             }
             // Global status bar (drawn last so it stays visible above page baseline)
             if let Err(err) = self.status_bar.draw(frame, status_area) {
@@ -1505,18 +1502,8 @@ impl App {
             | Action::Ui(UiAction::NavigateLeft)
             | Action::Ui(UiAction::NavigateRight)
             | Action::Ui(UiAction::ActivateSelected) => {
-                // println!(
-                //     "DEBUG: Routing action {:?} to focused component. Focused index: {:?}, Components count: {}",
-                //     action,
-                //     self.focused_component_index,
-                //     self.components.len()
-                // );
                 if let Some(focused_idx) = self.focused_component_index {
                     if let Some(component) = self.components.get_mut(focused_idx) {
-                        // println!(
-                        //     "DEBUG: Found component at index {}, forwarding action",
-                        //     focused_idx
-                        // );
                         return component.handle_action(action);
                     } else {
                         println!("DEBUG: No component found at focused index {}", focused_idx);
@@ -1537,46 +1524,46 @@ impl App {
         Ok(None)
     }
 
-    /// Converts a KeyEvent to a chord string (e.g., "ctrl+c", "tab", "esc")
-    fn key_event_to_chord_string(&self, key: &KeyEvent) -> String {
-        use crossterm::event::{KeyCode, KeyModifiers};
+    // Converts a KeyEvent to a chord string (e.g., "ctrl+c", "tab", "esc")
+    // fn key_event_to_chord_string(&self, key: &KeyEvent) -> String {
+    //     use crossterm::event::{KeyCode, KeyModifiers};
 
-        let mut mods: Vec<&'static str> = Vec::new();
-        if key.modifiers.contains(KeyModifiers::CONTROL) {
-            mods.push("ctrl");
-        }
-        if key.modifiers.contains(KeyModifiers::ALT) {
-            mods.push("alt");
-        }
-        if key.modifiers.contains(KeyModifiers::SHIFT) {
-            mods.push("shift");
-        }
+    //     let mut mods: Vec<&'static str> = Vec::new();
+    //     if key.modifiers.contains(KeyModifiers::CONTROL) {
+    //         mods.push("ctrl");
+    //     }
+    //     if key.modifiers.contains(KeyModifiers::ALT) {
+    //         mods.push("alt");
+    //     }
+    //     if key.modifiers.contains(KeyModifiers::SHIFT) {
+    //         mods.push("shift");
+    //     }
 
-        let key_str = match key.code {
-            KeyCode::Char(c) => c.to_ascii_lowercase().to_string(),
-            KeyCode::Enter => "enter".into(),
-            KeyCode::Esc => "esc".into(),
-            KeyCode::Tab => "tab".into(),
-            KeyCode::Backspace => "backspace".into(),
-            KeyCode::Left => "left".into(),
-            KeyCode::Right => "right".into(),
-            KeyCode::Up => "up".into(),
-            KeyCode::Down => "down".into(),
-            KeyCode::Delete => "delete".into(),
-            KeyCode::Home => "home".into(),
-            KeyCode::End => "end".into(),
-            KeyCode::PageUp => "pageup".into(),
-            KeyCode::PageDown => "pagedown".into(),
-            KeyCode::F(n) => format!("f{}", n),
-            _ => return "unknown".to_string(),
-        };
+    //     let key_str = match key.code {
+    //         KeyCode::Char(c) => c.to_ascii_lowercase().to_string(),
+    //         KeyCode::Enter => "enter".into(),
+    //         KeyCode::Esc => "esc".into(),
+    //         KeyCode::Tab => "tab".into(),
+    //         KeyCode::Backspace => "backspace".into(),
+    //         KeyCode::Left => "left".into(),
+    //         KeyCode::Right => "right".into(),
+    //         KeyCode::Up => "up".into(),
+    //         KeyCode::Down => "down".into(),
+    //         KeyCode::Delete => "delete".into(),
+    //         KeyCode::Home => "home".into(),
+    //         KeyCode::End => "end".into(),
+    //         KeyCode::PageUp => "pageup".into(),
+    //         KeyCode::PageDown => "pagedown".into(),
+    //         KeyCode::F(n) => format!("f{}", n),
+    //         _ => return "unknown".to_string(),
+    //     };
 
-        if mods.is_empty() {
-            key_str
-        } else {
-            format!("{}+{}", mods.join("+"), key_str)
-        }
-    }
+    //     if mods.is_empty() {
+    //         key_str
+    //     } else {
+    //         format!("{}+{}", mods.join("+"), key_str)
+    //     }
+    // }
 }
 
 /// Implementation des ActionRegistry-Traits für die Wizard-App
