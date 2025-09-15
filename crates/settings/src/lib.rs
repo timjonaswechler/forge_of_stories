@@ -9,7 +9,7 @@ pub(crate) mod store;
 pub use bevy_adapter::*;
 pub use embedded::*;
 pub use keymap::{ActionRegistry, DeviceFilter}; // Also export ActionRegistry
-pub use settings::{Settings, SettingsStore};
+pub use settings::{Settings, SettingsError, SettingsStore};
 
 pub fn parse_bool(s: &str) -> color_eyre::Result<bool> {
     let v = s.trim().to_ascii_lowercase();

@@ -183,12 +183,75 @@ pub struct General;
 impl Settings for General {
     const SECTION: &'static str = "general";
     type Model = GeneralCfg;
+
+    fn validate(model: &Self::Model) -> Result<(), settings::SettingsError> {
+        if model.tick_rate <= 0.0 {
+            return Err(settings::SettingsError::Invalid(
+                "tick_rate must be greater than 0",
+            ));
+        }
+        if model.tick_rate > 1000.0 {
+            return Err(settings::SettingsError::Invalid(
+                "tick_rate too high (> 1000.0)",
+            ));
+        }
+        Ok(())
+    }
 }
 
 pub struct Network;
 impl Settings for Network {
     const SECTION: &'static str = "network";
     type Model = NetworkCfg;
+
+    fn validate(model: &Self::Model) -> Result<(), settings::SettingsError> {
+        // Validate port range
+        if model.udp_port <= 1024 || model.udp_port > 49152 {
+            return Err(settings::SettingsError::Invalid(
+                "udp_port must be between 1024 and 49152",
+            ));
+        }
+
+        // Validate IP address format
+        if !model.ip_address.is_empty() {
+            use std::net::IpAddr;
+            if model.ip_address.parse::<IpAddr>().is_err() && model.ip_address != "0.0.0.0" {
+                return Err(settings::SettingsError::Invalid(
+                    "invalid IP address format",
+                ));
+            }
+        }
+
+        // Validate reasonable value ranges
+        if model.max_concurrent_bidi_streams > 10000 {
+            return Err(settings::SettingsError::Invalid(
+                "max_concurrent_bidi_streams too high (> 10000)",
+            ));
+        }
+
+        if model.mtu > 0 && model.mtu < 256 {
+            return Err(settings::SettingsError::Invalid("mtu too small (< 256)"));
+        }
+
+        if model.mtu > 65535 {
+            return Err(settings::SettingsError::Invalid("mtu too large (> 65535)"));
+        }
+
+        // Validate timeout values
+        if model.max_idle_timeout > 3600 {
+            return Err(settings::SettingsError::Invalid(
+                "max_idle_timeout too high (> 3600 seconds)",
+            ));
+        }
+
+        if model.keep_alive_interval > model.max_idle_timeout / 2 {
+            return Err(settings::SettingsError::Invalid(
+                "keep_alive_interval should be less than half of max_idle_timeout",
+            ));
+        }
+
+        Ok(())
+    }
 }
 
 pub struct Monitoring;
@@ -201,6 +264,87 @@ pub struct Security;
 impl Settings for Security {
     const SECTION: &'static str = "security";
     type Model = SecurityCfg;
+
+    fn validate(model: &Self::Model) -> Result<(), settings::SettingsError> {
+        // Validate cert_path exists if specified and not empty
+        if !model.self_signed && !model.cert_path.is_empty() {
+            let cert_path = std::path::Path::new(&model.cert_path);
+            if !cert_path.exists() {
+                return Err(settings::SettingsError::Invalid(
+                    "certificate file not found",
+                ));
+            }
+            if !cert_path.is_file() {
+                return Err(settings::SettingsError::Invalid(
+                    "certificate path is not a file",
+                ));
+            }
+        }
+
+        // Validate key_path exists if specified and not empty
+        if !model.self_signed && !model.key_path.is_empty() {
+            let key_path = std::path::Path::new(&model.key_path);
+            if !key_path.exists() {
+                return Err(settings::SettingsError::Invalid("key file not found"));
+            }
+            if !key_path.is_file() {
+                return Err(settings::SettingsError::Invalid("key path is not a file"));
+            }
+        }
+
+        // Validate timeout values are reasonable
+        if model.handshake_timeout == 0 {
+            return Err(settings::SettingsError::Invalid(
+                "handshake_timeout cannot be 0",
+            ));
+        }
+
+        if model.handshake_timeout > 300 {
+            return Err(settings::SettingsError::Invalid(
+                "handshake_timeout too high (> 300 seconds)",
+            ));
+        }
+
+        // Validate algorithm is supported
+        if !model.tls_cert_algorithm.is_empty() {
+            match model.tls_cert_algorithm.to_lowercase().as_str() {
+                "rsa" | "ecdsa" | "ed25519" => {}
+                _ => {
+                    return Err(settings::SettingsError::Invalid(
+                        "unsupported tls_cert_algorithm (supported: rsa, ecdsa, ed25519)",
+                    ));
+                }
+            }
+        }
+
+        // Validate log level
+        if !model.log_level.is_empty() {
+            match model.log_level.to_lowercase().as_str() {
+                "error" | "warn" | "info" | "debug" | "trace" => {}
+                _ => {
+                    return Err(settings::SettingsError::Invalid(
+                        "invalid log_level (supported: error, warn, info, debug, trace)",
+                    ));
+                }
+            }
+        }
+
+        // Validate max_frame_bytes
+        if model.max_frame_bytes > 0 && model.max_frame_bytes < 1024 {
+            return Err(settings::SettingsError::Invalid(
+                "max_frame_bytes too small (< 1024)",
+            ));
+        }
+
+        if model.max_frame_bytes > 16_777_216 {
+            // 16MB
+            return Err(settings::SettingsError::Invalid(
+                "max_frame_bytes too large (> 16MB)",
+            ));
+        }
+
+        Ok(())
+    }
 }
 
 pub struct Uds;
@@ -254,7 +398,9 @@ pub enum ServerSettingField {
     UdsPath,
 }
 
-pub fn find_setting() -> bool {
+/// Placeholder: does the settings file exist?
+/// Alias kept for clearer intent at call sites inside UI code.
+pub fn settings_found() -> bool {
     if paths::config_dir().join("aether.toml").exists() {
         true
     } else {
@@ -262,20 +408,19 @@ pub fn find_setting() -> bool {
     }
 }
 
-/// Placeholder: does the settings file exist?
-/// Alias kept for clearer intent at call sites inside UI code.
-pub fn settings_found() -> bool {
-    find_setting()
-}
-
-/// Placeholder: are the settings valid?
-/// Currently returns true if the settings file exists. Replace with real semantic validation:
-/// - Parse TOML
-/// - Validate required sections/fields
-/// - Range / value checks
+/// Validates the settings file by attempting to build and load the SettingsStore
+/// Returns true if the settings file can be parsed and all registered sections are valid
+/// Returns false if:
+/// - TOML syntax errors exist
+/// - Required sections are missing
+/// - Field values are out of valid ranges
+/// - Any other validation errors occur
 pub fn settings_valid() -> bool {
-    // TODO: implement real validation logic
-    settings_found()
+    // Validation now happens automatically via Settings::validate() during store build
+    match build_server_settings_store() {
+        Ok(_store) => true,
+        Err(_e) => false,
+    }
 }
 
 /// Placeholder: was a server certificate (and optionally key) found?
@@ -296,5 +441,122 @@ pub fn uds_found() -> bool {
     #[cfg(not(unix))]
     {
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_settings_valid_with_defaults() {
+        // Should be valid with default embedded settings
+        match build_server_settings_store() {
+            Ok(_) => println!("Settings store built successfully"),
+            Err(e) => {
+                println!("Settings store failed: {:?}", e);
+                panic!("Settings validation failed: {:?}", e);
+            }
+        }
+        assert!(settings_valid());
+    }
+
+    #[test]
+    fn test_general_validation() {
+        use settings::Settings;
+
+        // Valid case
+        let valid = GeneralCfg {
+            tick_rate: 60.0,
+            autostart: true,
+        };
+        assert!(General::validate(&valid).is_ok());
+
+        // Invalid case - negative tick rate
+        let invalid = GeneralCfg {
+            tick_rate: -1.0,
+            autostart: true,
+        };
+        assert!(General::validate(&invalid).is_err());
+
+        // Invalid case - too high tick rate
+        let invalid2 = GeneralCfg {
+            tick_rate: 2000.0,
+            autostart: true,
+        };
+        assert!(General::validate(&invalid2).is_err());
+    }
+
+    #[test]
+    fn test_network_validation() {
+        use settings::Settings;
+
+        // Valid case
+        let valid = NetworkCfg {
+            ip_address: "127.0.0.1".to_string(),
+            udp_port: 8080,
+            max_concurrent_bidi_streams: 100,
+            max_concurrent_uni_streams: 200,
+            max_idle_timeout: 300,
+            keep_alive_interval: 30,
+            client_ip_migration: true,
+            zero_rtt_resumption: false,
+            initial_congestion_window: 32,
+            mtu: 1500,
+            qos_traffic_prioritization: false,
+            nat_traversal: true,
+        };
+        assert!(Network::validate(&valid).is_ok());
+
+        // Invalid case - port 0
+        let mut invalid = valid.clone();
+        invalid.udp_port = 0;
+        assert!(Network::validate(&invalid).is_err());
+
+        // Invalid case - invalid IP
+        let mut invalid2 = valid.clone();
+        invalid2.ip_address = "not.an.ip".to_string();
+        assert!(Network::validate(&invalid2).is_err());
+
+        // Invalid case - MTU too small
+        let mut invalid3 = valid.clone();
+        invalid3.mtu = 100;
+        assert!(Network::validate(&invalid3).is_err());
+    }
+
+    #[test]
+    fn test_security_validation() {
+        use settings::Settings;
+
+        // Valid case - empty paths (optional)
+        let valid = SecurityCfg {
+            cert_path: String::new(),
+            key_path: String::new(),
+            alpn: vec!["h3".to_string()],
+            handshake_timeout: 30,
+            max_frame_bytes: 65536,
+            max_sessions: 1000,
+            self_signed: false,
+            tls_cert_algorithm: "rsa".to_string(),
+            log_level: "info".to_string(),
+            key_rotation_interval: 3600,
+            client_auth: false,
+        };
+        assert!(Security::validate(&valid).is_ok());
+
+        // Invalid case - timeout 0
+        let mut invalid = valid.clone();
+        invalid.handshake_timeout = 0;
+        assert!(Security::validate(&invalid).is_err());
+
+        // Invalid case - unsupported algorithm
+        let mut invalid2 = valid.clone();
+        invalid2.tls_cert_algorithm = "unsupported".to_string();
+        assert!(Security::validate(&invalid2).is_err());
+
+        // Invalid case - invalid log level
+        let mut invalid3 = valid.clone();
+        invalid3.log_level = "invalid".to_string();
+        assert!(Security::validate(&invalid3).is_err());
     }
 }
