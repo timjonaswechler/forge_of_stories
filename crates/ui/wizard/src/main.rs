@@ -1,17 +1,12 @@
 mod action;
 mod app;
 mod cli;
-mod components;
 mod layers;
-mod pages;
 mod tui;
+mod ui;
 
 use clap::Parser;
 use color_eyre::Result;
-
-// Use the external platform crate via absolute path to avoid confusion with the local `app` module.
-
-// Bring our application type into scope with a clear alias.
 use crate::app::App as WizardApp;
 use crate::cli::Cli;
 use tracing_subscriber::EnvFilter;

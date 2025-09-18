@@ -1,11 +1,8 @@
-#![allow(dead_code)] // Remove this once you start using the code
-
 use std::{
     io::{Stdout, stdout},
     ops::{Deref, DerefMut},
     time::Duration,
 };
-
 use color_eyre::Result;
 use crossterm::{
     cursor,

@@ -1,10 +1,9 @@
 use crate::{
     action::{Action, UiAction},
-    components::Component,
+    layers::ActionOutcome,
+    ui::components::{Component, ComponentKey},
 };
-use color_eyre::Result;
 use ratatui::{
-    Frame,
     layout::{Constraint, Flex, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
@@ -37,6 +36,7 @@ impl StatusSnapshot {
 }
 
 pub(crate) struct AetherStatusListComponent {
+    id: Option<ComponentKey>,
     focused: bool,
     selected: usize,
     items: Vec<StatusItemKind>,
@@ -46,6 +46,7 @@ pub(crate) struct AetherStatusListComponent {
 impl AetherStatusListComponent {
     pub(crate) fn new() -> Self {
         Self {
+            id: None,
             focused: false,
             selected: 0,
             items: vec![
@@ -72,16 +73,18 @@ impl AetherStatusListComponent {
         self.selected = next as usize;
     }
 
-    fn popup_id(&self) -> &'static str {
-        match self.items[self.selected] {
-            StatusItemKind::Settings => "settings_popup",
-            StatusItemKind::Certificate => "certificate_popup",
-            StatusItemKind::Uds => "uds_popup",
-        }
-    }
-
     fn draw_lines(&self) -> Vec<Line<'static>> {
         let mut lines = Vec::new();
+        let focus_accent = if self.focused {
+            Color::Cyan
+        } else {
+            Color::DarkGray
+        };
+        let focus_bold = if self.focused {
+            Modifier::BOLD
+        } else {
+            Modifier::empty()
+        };
         for (idx, kind) in self.items.iter().enumerate() {
             match kind {
                 StatusItemKind::Settings => {
@@ -112,12 +115,12 @@ impl AetherStatusListComponent {
                     };
                     let arrow_style = if sel {
                         Style::default()
-                            .fg(Color::Cyan)
-                            .add_modifier(Modifier::BOLD)
+                            .fg(focus_accent)
+                            .add_modifier(focus_bold)
                     } else {
                         Style::default().fg(Color::Gray)
                     };
-                    let text_style = if sel {
+                    let text_style = if sel && self.focused {
                         Style::default().add_modifier(Modifier::BOLD)
                     } else {
                         Style::default()
@@ -146,12 +149,12 @@ impl AetherStatusListComponent {
                     };
                     let arrow_style = if sel {
                         Style::default()
-                            .fg(Color::Cyan)
-                            .add_modifier(Modifier::BOLD)
+                            .fg(focus_accent)
+                            .add_modifier(focus_bold)
                     } else {
                         Style::default().fg(Color::Gray)
                     };
-                    let text_style = if sel {
+                    let text_style = if sel && self.focused {
                         Style::default().add_modifier(Modifier::BOLD)
                     } else {
                         Style::default()
@@ -180,12 +183,12 @@ impl AetherStatusListComponent {
                     };
                     let arrow_style = if sel {
                         Style::default()
-                            .fg(Color::Cyan)
-                            .add_modifier(Modifier::BOLD)
+                            .fg(focus_accent)
+                            .add_modifier(focus_bold)
                     } else {
                         Style::default().fg(Color::Gray)
                     };
-                    let text_style = if sel {
+                    let text_style = if sel && self.focused {
                         Style::default().add_modifier(Modifier::BOLD)
                     } else {
                         Style::default()
@@ -208,45 +211,46 @@ impl AetherStatusListComponent {
 }
 
 impl Component for AetherStatusListComponent {
-    fn set_focused(&mut self, focused: bool) {
-        self.focused = focused;
+    fn name(&self) -> &str {
+        "aether_status"
     }
 
-    fn handle_action(&mut self, action: &Action) -> Result<Option<Action>> {
+    fn id(&self) -> ComponentKey {
+        self.id.expect("Component ID not set")
+    }
+
+    fn set_id(&mut self, id: ComponentKey) {
+        self.id = Some(id);
+    }
+
+    fn on_focus(&mut self, gained: bool) {
+        self.focused = gained;
+    }
+
+    fn handle_action(&mut self, action: &Action) -> ActionOutcome {
         match action {
             Action::Ui(UiAction::NavigateUp) => {
                 self.handle_nav(-1);
-                Ok(None)
+                ActionOutcome::Consumed
             }
             Action::Ui(UiAction::NavigateDown) => {
                 self.handle_nav(1);
-                Ok(None)
+                ActionOutcome::Consumed
             }
-            Action::Ui(UiAction::ActivateSelected) => {
-                // Open popup for selected item
-                Ok(Some(Action::Ui(UiAction::OpenPopup {
-                    id: self.popup_id().to_string(),
-                    priority: None,
-                })))
+            Action::Tick => {
+                self.on_tick();
+                ActionOutcome::Consumed
             }
-            _ => Ok(None),
+            _ => ActionOutcome::NotHandled,
         }
     }
 
-    fn update(&mut self, action: Action) -> Result<Option<Action>> {
-        if let Action::Tick = action {
-            self.on_tick();
-        }
-        Ok(None)
-    }
-
-    fn draw(&mut self, f: &mut Frame<'_>, body: Rect) -> Result<()> {
+    fn render(&self, f: &mut ratatui::Frame, body: Rect) {
         let [area] = Layout::horizontal([Constraint::Length(28)])
             .flex(Flex::Center)
             .areas(body);
         let lines = self.draw_lines();
         let paragraph = Paragraph::new(lines).style(Style::default());
         f.render_widget(paragraph, area);
-        Ok(())
     }
 }
