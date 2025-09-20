@@ -15,6 +15,7 @@ pub enum DashboardSlot {
 }
 
 pub struct DashboardPage {
+    #[allow(dead_code)]
     name: &'static str,
 }
 

@@ -77,11 +77,13 @@ impl Tui {
         self
     }
 
+    #[allow(dead_code)]
     pub fn mouse(mut self, mouse: bool) -> Self {
         self.mouse = mouse;
         self
     }
 
+    #[allow(dead_code)]
     pub fn paste(mut self, paste: bool) -> Self {
         self.paste = paste;
         self
@@ -198,11 +200,6 @@ impl Tui {
         self.exit()?;
         #[cfg(not(windows))]
         signal_hook::low_level::raise(signal_hook::consts::signal::SIGTSTP)?;
-        Ok(())
-    }
-
-    pub fn resume(&mut self) -> Result<()> {
-        self.enter()?;
         Ok(())
     }
 

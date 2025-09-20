@@ -46,6 +46,6 @@ async fn main() -> Result<()> {
 
     // Build and run the Wizard TUI
     let mut app = WizardApp::new(base, cli)?;
-    // app.run().await?;
+    app.run().await?;
     Ok(())
 }

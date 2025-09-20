@@ -173,15 +173,7 @@ impl LayerSystem {
     pub fn focus_component(&mut self, k: ComponentKey) {
         self.active.focus.component = Some(k);
     }
-    pub fn focus_first_in_slot(&mut self, slot_hash: u64) {
-        if let Some(pk) = self.active.page {
-            if let Some(page) = self.pages.get(pk) {
-                if let Some(list) = page.slot_map.get(&slot_hash) {
-                    self.active.focus.component = list.first().copied();
-                }
-            }
-        }
-    }
+
     fn active_surface(&self) -> Option<Surface> {
         self.active
             .popup
@@ -219,28 +211,10 @@ impl LayerSystem {
         self.focus_first_on_surface(s)
     }
 
-    pub fn describe_focus(&self) -> Option<FocusDescriptor<'_>> {
-        let surface = self.active_surface()?;
-        let surface_label = match surface {
-            Surface::Page(k) => self.pages.get(k)?.meta.title.as_str(),
-            Surface::Popup(k) => self.popups.get(k)?.meta.title.as_str(),
-        };
-        let comp_label = self
-            .active
-            .focus
-            .component
-            .and_then(|ck| self.components.items.get(ck))
-            .map(|c| c.name())
-            .unwrap_or("-");
-        Some(FocusDescriptor {
-            surface_label,
-            component_label: comp_label,
-        })
-    }
     pub fn create_page<S: PageSpec>(&mut self, name: &str, spec: S) -> PageKey {
-        let key = self.pages.insert_with_key(|k| Page::empty(k, "page"));
+        let key = self.pages.insert_with_key(|k| Page::empty(k));
         {
-            let mut builder = PageBuilder::new(&mut self.components, key, "page", name);
+            let mut builder = PageBuilder::new(&mut self.components, key, "page");
             spec.build(name, &mut builder);
             let mut page = builder.finish();
             if page.context.is_empty() {

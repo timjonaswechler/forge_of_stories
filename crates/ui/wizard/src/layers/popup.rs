@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Popup system for modal dialogs and overlays
 //!
 //! Popups work similar to Pages but are modal and overlay the current content.

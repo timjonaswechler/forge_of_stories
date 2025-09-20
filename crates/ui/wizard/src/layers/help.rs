@@ -40,10 +40,6 @@ impl HelpView {
         }
     }
 
-    pub fn set_settings(&mut self, settings: Arc<SettingsStore>) {
-        self.settings = settings;
-    }
-
     pub fn set_contexts(&mut self, contexts: &[String]) {
         self.contexts = contexts.iter().cloned().collect();
         if self.table_state.selected().is_none() && !self.contexts.is_empty() {

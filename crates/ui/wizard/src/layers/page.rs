@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 mod dashboard;
 mod welcome;
 pub(crate) use dashboard::DashboardPage;
@@ -26,7 +27,6 @@ pub trait PageSpec {
 
 pub struct Page {
     pub key: PageKey,
-    pub kind_name: &'static str,
     pub components: Vec<ComponentKey>, // Tab-Reihenfolge
     pub slot_map: IndexMap<u64, Vec<ComponentKey>>, // slot-hash → comp-ids
     pub meta: PageMeta,
@@ -37,7 +37,7 @@ pub struct Page {
 pub struct PageBuilder<'a> {
     pub comps: &'a mut ComponentStore,
     pub page_key: PageKey,
-    pub kind_name: &'static str,
+
     pub meta: PageMeta,
     pub layout_any: Option<Box<dyn Fn(Rect) -> SlotsAny + Send + Sync + 'static>>,
     pub slot_map: IndexMap<u64, Vec<ComponentKey>>,
@@ -46,17 +46,12 @@ pub struct PageBuilder<'a> {
 }
 
 impl<'a> PageBuilder<'a> {
-    pub fn new(
-        comps: &'a mut ComponentStore,
-        page_key: PageKey,
-        kind_name: &'static str,
-        title: impl Into<String>,
-    ) -> Self {
+    pub fn new(comps: &'a mut ComponentStore, page_key: PageKey, title: impl Into<String>) -> Self {
         let title_string = title.into();
         Self {
             comps,
             page_key,
-            kind_name,
+
             meta: PageMeta {
                 title: title_string.clone(),
             },
@@ -69,11 +64,6 @@ impl<'a> PageBuilder<'a> {
 
     pub fn title(&mut self, t: impl Into<String>) {
         self.meta.title = t.into();
-    }
-
-    /// Override the context string used for keymap resolution (defaults to title lower-case).
-    pub fn context(&mut self, ctx: impl Into<String>) {
-        self.context = ctx.into();
     }
 
     pub fn component<T: Component + 'static>(&mut self, c: T) -> ComponentKey {
@@ -91,7 +81,6 @@ impl<'a> PageBuilder<'a> {
     pub fn finish(self) -> Page {
         Page {
             key: self.page_key,
-            kind_name: self.kind_name,
             components: self.components,
             slot_map: self.slot_map,
             meta: self.meta,
@@ -115,10 +104,9 @@ fn default_page_layout(_: Rect) -> SlotsAny {
 }
 
 impl Page {
-    pub fn empty(key: PageKey, kind_name: &'static str) -> Self {
+    pub fn empty(key: PageKey) -> Self {
         Self {
             key,
-            kind_name,
             components: Vec::new(),
             slot_map: IndexMap::new(),
             meta: PageMeta {

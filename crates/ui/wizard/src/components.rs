@@ -51,6 +51,9 @@ impl ComponentStore {
             .or_else(|| self.name_index.get(&name.to_ascii_lowercase()))
             .copied()
     }
+    pub fn is_focusable(&self, k: ComponentKey) -> bool {
+        self.items[k].focusable()
+    }
 }
 
 pub trait Component {
