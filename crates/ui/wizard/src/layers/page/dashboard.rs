@@ -1,9 +1,9 @@
 use crate::{
+    components::{AetherStatusListComponent, Info, Logo},
     layers::{
         Slots,
         page::{PageBuilder, PageSpec},
     },
-    ui::components::{AetherStatusListComponent, Info, Logo},
 };
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 

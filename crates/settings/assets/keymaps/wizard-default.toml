@@ -1,167 +1,98 @@
 # Forge of Stories - Wizard Keymap Configuration
-#
-# This file defines keyboard shortcuts for the Wizard application using context-based bindings.
-#
-# Structure:
-# - [[bindings]] groups define when and what actions are available
-# - context = "..." specifies when these bindings apply (e.g., "global", "welcome && !popup-visible")
-# - [bindings.actions] maps action names to key combinations
-# - { key = "ctrl+c", action_data = {...} } for actions needing parameters
 
 [meta]
-version = "1.0"
+version = "1.1"
 devices = ["keyboard"]
 mouse_enabled = false
 
-# =============================================================================
-# Core Application - Always Available
-# =============================================================================
+# ----------------------------------------------------------------------------
+# Global shortcuts
+# ----------------------------------------------------------------------------
 
 [[bindings]]
 context = "global"
 [bindings.actions]
-# Application control
 Quit = [
     { key = "ctrl+c" },
     { key = "ctrl+q" }
 ]
 
-# Help system - F1 or ? to toggle help popup
 Help = [
-    { key = "ctrl+h" },
+    { key = "ctrl+h" }
 ]
 
-# =============================================================================
-# Normal Mode - When NOT in edit mode
-# =============================================================================
-
-[[bindings]]
-context = "global && normal-mode && !help-active"
-[bindings.actions]
-# Focus navigation
 FocusNext = [
-    { key = "tab" },
-    { key = "j" },
-    { key = "down" }
+    { key = "tab" }
 ]
 
 FocusPrev = [
-    { key = "shift+tab" },
-    { key = "k" },
-    { key = "up" }
+    { key = "shift+tab" }
+
 ]
 
-# Page navigation
+EnterEditMode = [
+    { key = "i" }
+]
+# ----------------------------------------------------------------------------
+# Normal mode navigation
+# ----------------------------------------------------------------------------
+
+[[bindings]]
+context = "global && normal-mode && !popup-visible"
+[bindings.actions]
+
 NextPage = [
     { key = "ctrl+right" },
-    { key = "ctrl+pagedown" }
+
 ]
 
 PrevPage = [
     { key = "ctrl+left" },
-    { key = "ctrl+pageup" }
+
 ]
 
-# Enter edit mode
-EnterEditMode = [
-    { key = "enter" },
-    { key = "space" },
-    { key = "i" }
-]
 
-# =============================================================================
-# Edit Mode - When in edit mode
-# =============================================================================
+
+# ----------------------------------------------------------------------------
+# Edit mode exit
+# ----------------------------------------------------------------------------
 
 [[bindings]]
 context = "global && edit-mode"
 [bindings.actions]
-# Exit edit mode
 ExitEditMode = [
     { key = "esc" }
 ]
 
-# =============================================================================
-# Popup Management
-# =============================================================================
+# ----------------------------------------------------------------------------
+# Popup handling
+# ----------------------------------------------------------------------------
 
 [[bindings]]
-context = "popup-visible"
+context = "global && popup-visible"
 [bindings.actions]
-# Close current popup
-CloseTopPopup = [
+PopupClose = [
     { key = "esc" }
 ]
 
-# Close all popups
-CloseAllPopups = [
-    { key = "alt+esc" }
-]
-
-# =============================================================================
-# Help Popup - When help is open
-# =============================================================================
+# ----------------------------------------------------------------------------
+# Aether status component
+# ----------------------------------------------------------------------------
 
 [[bindings]]
-context = "popup-visible && help-active"
+context = "page:welcome && component:aether_status"
 [bindings.actions]
-HelpPageUp = [
-    { key = "pageup" },
-    { key = "ctrl+u" }
-]
-
-HelpPageDown = [
-    { key = "pagedown" },
-    { key = "ctrl+d" }
-]
-
-# Options
-HelpToggleGlobal = [
-    { key = "g" }
-]
-
-HelpToggleWrap = [
-    { key = "w" }
-]
-
-# Search
-BeginHelpSearch = [
-    { key = "ctrl+f" },
-]
-
-HelpSearchClear = [
-    { key = "ctrl+c" }
-]
-
-# =============================================================================
-# Welcome Page - Main entry point
-# =============================================================================
-
-[[bindings]]
-context = "welcome"
-[bindings.actions]
-SaveSettings = [
-    { key = "ctrl+s" }
-]
-
-# =============================================================================
-# AetherStatus Component - When focused
-# =============================================================================
-
-[[bindings]]
-context = "welcome && aether_status && !help-search-active"
-[bindings.actions]
-NavigateUp = [
+ItemPrev = [
     { key = "k" },
     { key = "up" }
 ]
 
-NavigateDown = [
+ItemNext = [
     { key = "j" },
     { key = "down" }
 ]
 
-ActivateSelected = [
+ItemSelect = [
     { key = "enter" },
     { key = "space" }
 ]

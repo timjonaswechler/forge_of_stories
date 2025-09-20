@@ -1,13 +1,13 @@
 use crate::{
     action::Action,
+    components::{Component, ComponentKey},
     layers::ActionOutcome,
-    ui::components::{Component, ComponentKey},
 };
 use ratatui::{
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    layout::{Constraint, Flex, Layout, Rect},
+    style::{Color, Style},
     text::{Line, Span},
-    widgets::{Block, Paragraph, Wrap},
+    widgets::{Block, Paragraph},
 };
 use std::collections::HashMap;
 
@@ -150,12 +150,27 @@ impl Component for Logo {
     }
 
     fn render(&self, f: &mut ratatui::Frame, area: Rect) {
-        let logo_lines: Vec<String> = if self.label == "Wizard" {
-            self.wizard_lines()
+        let (logo_lines, center_area) = if self.label == "Wizard" {
+            (
+                self.wizard_lines(),
+                Layout::horizontal([Constraint::Length(47)])
+                    .flex(Flex::Center)
+                    .areas::<1>(area)[0],
+            )
         } else if self.label == "Forge of Stories" {
-            self.fos_lines()
+            (
+                self.fos_lines(),
+                Layout::horizontal([Constraint::Length(71)])
+                    .flex(Flex::Center)
+                    .areas::<1>(area)[0],
+            )
         } else {
-            self.fos_lines()
+            (
+                self.fos_lines(),
+                Layout::horizontal([Constraint::Length(71)])
+                    .flex(Flex::Center)
+                    .areas::<1>(area)[0],
+            )
         };
         let logo_color: Vec<String> = if self.label == "Wizard" {
             self.wizard_color()
@@ -201,78 +216,6 @@ impl Component for Logo {
         let logo = Paragraph::new(styled_lines)
             .block(Block::default())
             .wrap(ratatui::widgets::Wrap { trim: false });
-        // frame.render_widget(Block::new().style(Style::default().bg(Color::Green)), area);
-        f.render_widget(logo, area);
-    }
-}
-
-/// Small info panel used for quick hints on the welcome/dashboard pages.
-pub(crate) struct Info {
-    id: Option<ComponentKey>,
-    title: String,
-    body: Vec<String>,
-}
-
-impl Info {
-    pub fn new(title: impl Into<String>) -> Self {
-        Self {
-            id: None,
-            title: title.into(),
-            body: Vec::new(),
-        }
-    }
-
-    pub fn add_line(mut self, line: impl Into<String>) -> Self {
-        self.body.push(line.into());
-        self
-    }
-}
-
-impl Component for Info {
-    fn name(&self) -> &str {
-        "info"
-    }
-
-    fn id(&self) -> ComponentKey {
-        self.id.expect("Component ID not set")
-    }
-
-    fn set_id(&mut self, id: ComponentKey) {
-        self.id = Some(id);
-    }
-
-    fn focusable(&self) -> bool {
-        false
-    }
-
-    fn handle_action(&mut self, _action: &Action) -> ActionOutcome {
-        ActionOutcome::NotHandled
-    }
-
-    fn render(&self, f: &mut ratatui::Frame, area: Rect) {
-        let layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(1), Constraint::Min(0)])
-            .split(area);
-
-        let title = Paragraph::new(Line::from(vec![Span::styled(
-            self.title.clone(),
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        )]))
-        .alignment(Alignment::Left);
-
-        f.render_widget(title, layout[0]);
-
-        if !self.body.is_empty() {
-            let lines: Vec<Line> = self
-                .body
-                .iter()
-                .map(|line| Line::from(Span::raw(line.clone())))
-                .collect();
-            let body = Paragraph::new(lines).wrap(Wrap { trim: false });
-            f.render_widget(body, layout[1]);
-        }
+        f.render_widget(logo, center_area);
     }
 }

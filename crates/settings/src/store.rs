@@ -527,7 +527,7 @@ impl SettingsStore {
         let sample: Vec<String> = state
             .resolved_bindings
             .iter()
-            .take(5)
+            .take(20)
             .map(|b| format!("{}@{:?}:{}", b.key_chord, b.device, b.action_name))
             .collect();
         format!(
@@ -593,43 +593,6 @@ impl SettingsStore {
             return out;
         }
 
-        // Helfer: Action-Map eines Kontextes in out mergen (per Gerät last-wins)
-        let mut merge_ctx = |ctx_name: &str| {
-            if let Some(actions) = km.contexts.get(ctx_name) {
-                for (action, device_map) in actions {
-                    if let Some(list) = device_map.get(&want_device) {
-                        // ggf. für Gamepad nach Kind filtern
-                        // Dedupliziere stabil in Einfügereihenfolge nach String-Repräsentation
-                        let mut seen = std::collections::HashSet::new();
-                        let mut chords: Vec<String> = Vec::new();
-                        for s in list
-                            .iter()
-                            .filter(|ch| match &device {
-                                DeviceFilter::GamepadKind(kind) => ch
-                                    .origin_prefix
-                                    .as_deref()
-                                    .map(|p| p == kind || p == "gp" || p == "gamepad")
-                                    .unwrap_or(true),
-                                _ => true,
-                            })
-                            .map(stringify_chord)
-                        {
-                            if seen.insert(s.clone()) {
-                                chords.push(s);
-                            }
-                        }
-
-                        if !chords.is_empty() {
-                            // last-wins: spätere Kontexte überschreiben die Action
-                            out.insert(action.clone(), chords);
-                        }
-                    }
-                }
-            }
-        };
-
-        merge_ctx("global");
-        merge_ctx(context);
         out
     }
 }

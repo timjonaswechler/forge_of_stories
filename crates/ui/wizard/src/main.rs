@@ -1,14 +1,14 @@
 mod action;
 mod app;
 mod cli;
+mod components;
 mod layers;
 mod tui;
-mod ui;
 
-use clap::Parser;
-use color_eyre::Result;
 use crate::app::App as WizardApp;
 use crate::cli::Cli;
+use clap::Parser;
+use color_eyre::Result;
 use tracing_subscriber::EnvFilter;
 
 // A zero-sized type implementing the platform `Application` trait used by `app::init`.
@@ -46,6 +46,6 @@ async fn main() -> Result<()> {
 
     // Build and run the Wizard TUI
     let mut app = WizardApp::new(base, cli)?;
-    app.run().await?;
+    // app.run().await?;
     Ok(())
 }

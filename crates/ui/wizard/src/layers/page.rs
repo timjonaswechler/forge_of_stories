@@ -4,8 +4,8 @@ pub(crate) use dashboard::DashboardPage;
 pub(crate) use welcome::WelcomePage;
 
 use crate::{
+    components::{Component, ComponentKey, ComponentStore},
     layers::{SlotId, Slots, SlotsAny},
-    ui::components::{Component, ComponentKey, ComponentStore},
 };
 use indexmap::IndexMap;
 use ratatui::layout::Rect;
@@ -30,6 +30,7 @@ pub struct Page {
     pub components: Vec<ComponentKey>, // Tab-Reihenfolge
     pub slot_map: IndexMap<u64, Vec<ComponentKey>>, // slot-hash → comp-ids
     pub meta: PageMeta,
+    pub context: String,
     pub layout_any: Box<dyn Fn(Rect) -> SlotsAny + Send + Sync + 'static>, // typ-erased Slots
 }
 
@@ -41,6 +42,7 @@ pub struct PageBuilder<'a> {
     pub layout_any: Option<Box<dyn Fn(Rect) -> SlotsAny + Send + Sync + 'static>>,
     pub slot_map: IndexMap<u64, Vec<ComponentKey>>,
     pub components: Vec<ComponentKey>,
+    pub context: String,
 }
 
 impl<'a> PageBuilder<'a> {
@@ -50,21 +52,28 @@ impl<'a> PageBuilder<'a> {
         kind_name: &'static str,
         title: impl Into<String>,
     ) -> Self {
+        let title_string = title.into();
         Self {
             comps,
             page_key,
             kind_name,
             meta: PageMeta {
-                title: title.into(),
+                title: title_string.clone(),
             },
             layout_any: None,
             slot_map: IndexMap::new(),
             components: Vec::new(),
+            context: title_string.to_ascii_lowercase(),
         }
     }
 
     pub fn title(&mut self, t: impl Into<String>) {
         self.meta.title = t.into();
+    }
+
+    /// Override the context string used for keymap resolution (defaults to title lower-case).
+    pub fn context(&mut self, ctx: impl Into<String>) {
+        self.context = ctx.into();
     }
 
     pub fn component<T: Component + 'static>(&mut self, c: T) -> ComponentKey {
@@ -86,6 +95,7 @@ impl<'a> PageBuilder<'a> {
             components: self.components,
             slot_map: self.slot_map,
             meta: self.meta,
+            context: self.context,
             layout_any: self
                 .layout_any
                 .unwrap_or_else(|| Box::new(default_page_layout)),
@@ -114,6 +124,7 @@ impl Page {
             meta: PageMeta {
                 title: String::new(),
             },
+            context: String::new(),
             layout_any: Box::new(default_page_layout),
         }
     }

@@ -1,561 +1,465 @@
-// //! Help popup that displays keybinding information
-// //!
-// //! Shows a searchable table of available keybindings with context information.
+use color_eyre::Result;
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::{
+    Frame,
+    layout::{Constraint, Layout, Rect},
+    style::{Color, Modifier, Style},
+    symbols,
+    widgets::{Block, BorderType, Borders, Clear, Paragraph, Row, Table, TableState},
+};
+use settings::{DeviceFilter, SettingsStore};
+use std::{collections::HashSet, sync::Arc};
+use tui_input::Input;
 
-// use color_eyre::Result;
-// use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-// use ratatui::{
-//     Frame,
-//     layout::{Constraint, Layout, Rect},
-//     style::{Color, Modifier, Style},
-//     symbols,
-//     widgets::{Block, BorderType, Borders, Clear, Paragraph, Row, Table, TableState},
-// };
-// use std::sync::Arc;
-// use tokio::sync::mpsc::UnboundedSender;
-// use tui_input::Input;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HelpOverlayEvent {
+    Consumed,
+    Close,
+}
 
-// use crate::{
-//     action::{Action, UiAction},
-//     app::settings::SettingsStore,
-//     popup::{Popup, PopupConfig, PopupPosition, PopupSize},
-// };
+pub struct HelpView {
+    settings: Arc<SettingsStore>,
+    contexts: Vec<String>,
+    search_query: Option<String>,
+    search_input: Input,
+    search_active: bool,
+    table_state: TableState,
+    table_len: usize,
+}
 
-// /// Help popup displaying keybinding information
-// #[derive(Clone)]
-// pub struct HelpPopup {
-//     action_tx: Option<UnboundedSender<Action>>,
-//     settings: Option<Arc<SettingsStore>>,
-//     keymap_context: String,
+impl HelpView {
+    pub fn new(settings: Arc<SettingsStore>) -> Self {
+        Self {
+            settings,
+            contexts: Vec::new(),
+            search_query: None,
+            search_input: Input::default(),
+            search_active: false,
+            table_state: TableState::default(),
+            table_len: 0,
+        }
+    }
 
-//     // Search functionality
-//     help_search: Option<String>,
-//     help_input: Input,
-//     help_prompt_active: bool,
+    pub fn set_settings(&mut self, settings: Arc<SettingsStore>) {
+        self.settings = settings;
+    }
 
-//     // Table state
-//     help_table_state: TableState,
-//     help_table_len: usize,
-// }
+    pub fn set_contexts(&mut self, contexts: &[String]) {
+        self.contexts = contexts.iter().cloned().collect();
+        if self.table_state.selected().is_none() && !self.contexts.is_empty() {
+            self.table_state.select(Some(0));
+        }
+    }
 
-// impl Default for HelpPopup {
-//     fn default() -> Self {
-//         Self::new()
-//     }
-// }
+    pub fn handle_key(&mut self, key: KeyEvent) -> Result<HelpOverlayEvent> {
+        if self.search_active {
+            match key.code {
+                KeyCode::Char(c) => {
+                    self.search_input
+                        .handle(tui_input::InputRequest::InsertChar(c));
+                    return Ok(HelpOverlayEvent::Consumed);
+                }
+                KeyCode::Backspace => {
+                    self.search_input
+                        .handle(tui_input::InputRequest::DeletePrevChar);
+                    return Ok(HelpOverlayEvent::Consumed);
+                }
+                KeyCode::Delete => {
+                    self.search_input
+                        .handle(tui_input::InputRequest::DeleteNextChar);
+                    return Ok(HelpOverlayEvent::Consumed);
+                }
+                KeyCode::Left => {
+                    self.search_input
+                        .handle(tui_input::InputRequest::GoToPrevChar);
+                    return Ok(HelpOverlayEvent::Consumed);
+                }
+                KeyCode::Right => {
+                    self.search_input
+                        .handle(tui_input::InputRequest::GoToNextChar);
+                    return Ok(HelpOverlayEvent::Consumed);
+                }
+                KeyCode::Home => {
+                    self.search_input.handle(tui_input::InputRequest::GoToStart);
+                    return Ok(HelpOverlayEvent::Consumed);
+                }
+                KeyCode::End => {
+                    self.search_input.handle(tui_input::InputRequest::GoToEnd);
+                    return Ok(HelpOverlayEvent::Consumed);
+                }
+                KeyCode::Enter => {
+                    self.apply_search_buffer();
+                    return Ok(HelpOverlayEvent::Consumed);
+                }
+                KeyCode::Esc => {
+                    self.search_active = false;
+                    return Ok(HelpOverlayEvent::Consumed);
+                }
+                _ => {}
+            }
+            return Ok(HelpOverlayEvent::Consumed);
+        }
 
-// impl HelpPopup {
-//     pub fn new() -> Self {
-//         Self {
-//             action_tx: None,
-//             settings: None,
-//             keymap_context: "global".to_string(),
-//             help_search: None,
-//             help_input: Input::default(),
-//             help_prompt_active: false,
-//             help_table_state: TableState::default(),
-//             help_table_len: 0,
-//         }
-//     }
+        match (key.code, key.modifiers) {
+            (KeyCode::Esc, _) => Ok(HelpOverlayEvent::Close),
+            (KeyCode::Char('h'), KeyModifiers::CONTROL) => Ok(HelpOverlayEvent::Close),
+            (KeyCode::Char('f'), KeyModifiers::CONTROL) | (KeyCode::Char('/'), _) => {
+                self.toggle_search_mode();
+                Ok(HelpOverlayEvent::Consumed)
+            }
+            (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
+                self.clear_search();
+                Ok(HelpOverlayEvent::Consumed)
+            }
+            (KeyCode::Up, _) => {
+                self.navigate_table(TableNavigation::Up);
+                Ok(HelpOverlayEvent::Consumed)
+            }
+            (KeyCode::Down, _) => {
+                self.navigate_table(TableNavigation::Down);
+                Ok(HelpOverlayEvent::Consumed)
+            }
+            (KeyCode::PageUp, _) => {
+                self.navigate_table(TableNavigation::PageUp);
+                Ok(HelpOverlayEvent::Consumed)
+            }
+            (KeyCode::PageDown, _) => {
+                self.navigate_table(TableNavigation::PageDown);
+                Ok(HelpOverlayEvent::Consumed)
+            }
+            (KeyCode::Home, _) => {
+                self.navigate_table(TableNavigation::Home);
+                Ok(HelpOverlayEvent::Consumed)
+            }
+            (KeyCode::End, _) => {
+                self.navigate_table(TableNavigation::End);
+                Ok(HelpOverlayEvent::Consumed)
+            }
+            _ => Ok(HelpOverlayEvent::Consumed),
+        }
+    }
 
-//     /// Set the settings store for this help popup
-//     pub fn set_settings(&mut self, settings: Arc<SettingsStore>) {
-//         self.settings = Some(settings);
-//     }
+    pub fn snapshot(&mut self) -> HelpRenderSnapshot {
+        let rows = self.build_table_data();
+        self.table_len = rows.len();
 
-//     /// Set the current keymap context
-//     pub fn set_keymap_context(&mut self, context: String) {
-//         self.keymap_context = context;
-//     }
+        if let Some(selected) = self.table_state.selected() {
+            if selected >= self.table_len && self.table_len > 0 {
+                self.table_state.select(Some(0));
+            }
+        } else if self.table_len > 0 {
+            self.table_state.select(Some(0));
+        }
 
-//     /// Toggle search mode
-//     fn toggle_search(&mut self) -> Result<Option<Action>> {
-//         if self.help_prompt_active {
-//             // Exit search mode and apply filter
-//             self.help_prompt_active = false;
-//             let input_value = self.help_input.value().trim();
-//             if input_value.is_empty() {
-//                 self.help_search = None;
-//             } else {
-//                 self.help_search = Some(input_value.to_string());
-//             }
-//             // Reset selection when search changes
-//             self.help_table_state.select(Some(0));
-//         } else {
-//             // Enter search mode
-//             self.help_prompt_active = true;
-//             if let Some(current) = &self.help_search {
-//                 self.help_input = Input::new(current.clone());
-//             } else {
-//                 self.help_input = Input::default();
-//             }
-//         }
-//         Ok(None)
-//     }
+        HelpRenderSnapshot {
+            search_active: self.search_active,
+            search_buffer: self.search_input.value().to_string(),
+            search_query: self.search_query.clone(),
+            cursor_offset: if self.search_active {
+                Some(self.search_input.visual_cursor() as u16)
+            } else {
+                None
+            },
+            rows,
+            selected: self.table_state.selected(),
+        }
+    }
 
-//     /// Clear the current search
-//     fn clear_search(&mut self) -> Result<Option<Action>> {
-//         self.help_search = None;
-//         self.help_input = Input::default();
-//         self.help_prompt_active = false;
-//         self.help_table_state.select(Some(0));
-//         Ok(None)
-//     }
+    fn toggle_search_mode(&mut self) {
+        if self.search_active {
+            self.apply_search_buffer();
+        } else {
+            self.search_active = true;
+            if let Some(current) = &self.search_query {
+                self.search_input = Input::new(current.clone());
+            } else {
+                self.search_input = Input::default();
+            }
+        }
+    }
 
-//     /// Navigate the help table
-//     fn navigate_table(&mut self, direction: TableNavigation) -> Result<Option<Action>> {
-//         if self.help_table_len == 0 {
-//             return Ok(None);
-//         }
+    fn apply_search_buffer(&mut self) {
+        let value = self.search_input.value().trim();
+        if value.is_empty() {
+            self.search_query = None;
+        } else {
+            self.search_query = Some(value.to_string());
+        }
+        self.search_active = false;
+        self.table_state.select(Some(0));
+    }
 
-//         let new_index = match direction {
-//             TableNavigation::Up => {
-//                 match self.help_table_state.selected() {
-//                     Some(i) if i > 0 => Some(i - 1),
-//                     Some(_) => Some(self.help_table_len - 1), // Wrap to bottom
-//                     None => Some(0),
-//                 }
-//             }
-//             TableNavigation::Down => {
-//                 match self.help_table_state.selected() {
-//                     Some(i) if i + 1 < self.help_table_len => Some(i + 1),
-//                     Some(_) => Some(0), // Wrap to top
-//                     None => Some(0),
-//                 }
-//             }
-//             TableNavigation::PageUp => match self.help_table_state.selected() {
-//                 Some(i) => Some(i.saturating_sub(10)),
-//                 None => Some(0),
-//             },
-//             TableNavigation::PageDown => match self.help_table_state.selected() {
-//                 Some(i) => Some((i + 10).min(self.help_table_len - 1)),
-//                 None => Some(0),
-//             },
-//             TableNavigation::Home => Some(0),
-//             TableNavigation::End => Some(self.help_table_len.saturating_sub(1)),
-//         };
+    fn clear_search(&mut self) {
+        self.search_query = None;
+        self.search_active = false;
+        self.search_input = Input::default();
+        self.table_state.select(Some(0));
+    }
 
-//         if let Some(index) = new_index {
-//             self.help_table_state.select(Some(index));
-//         }
+    fn navigate_table(&mut self, direction: TableNavigation) {
+        if self.table_len == 0 {
+            return;
+        }
 
-//         Ok(None)
-//     }
+        let current = self.table_state.selected().unwrap_or(0);
+        let next = match direction {
+            TableNavigation::Up => {
+                if current == 0 {
+                    self.table_len - 1
+                } else {
+                    current - 1
+                }
+            }
+            TableNavigation::Down => (current + 1) % self.table_len,
+            TableNavigation::PageUp => current.saturating_sub(10),
+            TableNavigation::PageDown => (current + 10).min(self.table_len.saturating_sub(1)),
+            TableNavigation::Home => 0,
+            TableNavigation::End => self.table_len.saturating_sub(1),
+        };
+        self.table_state.select(Some(next));
+    }
 
-//     /// Build the keymap table data from settings
-//     fn build_keymap_table_data(
-//         &self,
-//         active_contexts: &[String],
-//     ) -> Vec<(String, String, String, String)> {
-//         use settings::DeviceFilter;
+    fn build_table_data(&self) -> Vec<TableRow> {
+        let mut rows = Vec::new();
+        let filter = self.search_query.as_ref().map(|s| s.to_ascii_lowercase());
+        let mut seen = HashSet::new();
 
-//         let mut table_data = Vec::new();
-//         let filter = self.help_search.as_ref().map(|s| s.to_ascii_lowercase());
+        for context in &self.contexts {
+            let exported = self
+                .settings
+                .export_keymap_for(DeviceFilter::Keyboard, context);
+            for (action_name, chords) in exported {
+                let key = (action_name.clone(), context.clone());
+                if !seen.insert(key) {
+                    continue;
+                }
 
-//         if let Some(settings) = &self.settings {
-//             let mut seen_actions = std::collections::HashSet::new();
+                let keys = chords.join(", ");
+                let details = describe_action(&action_name);
 
-//             // Iterate through ALL active contexts
-//             for context_name in active_contexts {
-//                 let ctx_map = settings.export_keymap_for(DeviceFilter::Keyboard, context_name);
+                let include = match &filter {
+                    Some(query) => {
+                        let a = action_name.to_ascii_lowercase();
+                        let k = keys.to_ascii_lowercase();
+                        let c = context.to_ascii_lowercase();
+                        let d = details.to_ascii_lowercase();
+                        a.contains(query)
+                            || k.contains(query)
+                            || c.contains(query)
+                            || d.contains(query)
+                    }
+                    None => true,
+                };
 
-//                 // Add context-specific bindings
-//                 for (action_name, chords) in ctx_map.iter() {
-//                     let keys_str = chords.join(", ");
+                if include {
+                    rows.push(TableRow {
+                        action: action_name,
+                        keys,
+                        context: context.clone(),
+                        details,
+                    });
+                }
+            }
+        }
 
-//                     // Generate a simple detail description
-//                     let details = match action_name.as_str() {
-//                         "Help" => "Show/hide this help dialog".to_string(),
-//                         "Quit" => "Exit the application".to_string(),
-//                         "FocusNext" | "NextField" => "Move focus to next element".to_string(),
-//                         "FocusPrev" | "PrevField" => "Move focus to previous element".to_string(),
-//                         "NavigateUp" => "Navigate up".to_string(),
-//                         "NavigateDown" => "Navigate down".to_string(),
-//                         "NavigateLeft" => "Navigate left".to_string(),
-//                         "NavigateRight" => "Navigate right".to_string(),
-//                         "ActivateSelected" => "Activate selected item".to_string(),
-//                         "ToggleEditMode" | "ModeCycle" => "Toggle edit mode".to_string(),
-//                         "NextPage" => "Go to next page".to_string(),
-//                         "PrevPage" | "PreviousPage" => "Go to previous page".to_string(),
-//                         _ => format!("Execute {}", action_name.replace("_", " ").to_lowercase()),
-//                     };
+        if rows.is_empty() {
+            rows.push(TableRow {
+                action: "Help".into(),
+                keys: "ctrl+h".into(),
+                context: "global".into(),
+                details: "Show this help dialog".into(),
+            });
+        }
 
-//                     // Apply search filter
-//                     let include = match &filter {
-//                         Some(query) => {
-//                             let action_lower = action_name.to_ascii_lowercase();
-//                             let keys_lower = keys_str.to_ascii_lowercase();
-//                             let context_lower = context_name.to_ascii_lowercase();
-//                             let details_lower = details.to_ascii_lowercase();
+        rows.sort_by(|a, b| match a.context.cmp(&b.context) {
+            std::cmp::Ordering::Equal => a.action.cmp(&b.action),
+            other => other,
+        });
 
-//                             action_lower.contains(query)
-//                                 || keys_lower.contains(query)
-//                                 || context_lower.contains(query)
-//                                 || details_lower.contains(query)
-//                         }
-//                         None => true,
-//                     };
+        rows
+    }
+}
 
-//                     if include {
-//                         // Use combination of action + context to avoid duplicates
-//                         let key_id = (action_name.clone(), context_name.clone());
-//                         if seen_actions.insert(key_id) {
-//                             table_data.push((
-//                                 action_name.clone(),
-//                                 keys_str,
-//                                 context_name.clone(),
-//                                 details,
-//                             ));
-//                         }
-//                     }
-//                 }
-//             }
-//         } else {
-//             // Fallback content when no settings available
-//             let fallback_data = vec![
-//                 (
-//                     "Help".to_string(),
-//                     "ctrl+h".to_string(),
-//                     "global".to_string(),
-//                     "Show this help dialog".to_string(),
-//                 ),
-//                 (
-//                     "Quit".to_string(),
-//                     "ctrl+c".to_string(),
-//                     "global".to_string(),
-//                     "Exit the application".to_string(),
-//                 ),
-//             ];
+pub struct HelpRenderSnapshot {
+    search_active: bool,
+    search_buffer: String,
+    search_query: Option<String>,
+    cursor_offset: Option<u16>,
+    rows: Vec<TableRow>,
+    selected: Option<usize>,
+}
 
-//             for (action, keys, context, details) in fallback_data {
-//                 let include = match &filter {
-//                     Some(query) => {
-//                         let action_lower = action.to_ascii_lowercase();
-//                         let keys_lower = keys.to_ascii_lowercase();
-//                         let context_lower = context.to_ascii_lowercase();
-//                         let details_lower = details.to_ascii_lowercase();
+impl HelpRenderSnapshot {
+    pub fn render(&self, frame: &mut Frame, area: Rect, context: Vec<String>) {
+        frame.render_widget(Clear, area);
 
-//                         action_lower.contains(query)
-//                             || keys_lower.contains(query)
-//                             || context_lower.contains(query)
-//                             || details_lower.contains(query)
-//                     }
-//                     None => true,
-//                 };
+        let [search_area, table_area] =
+            Layout::vertical([Constraint::Length(4), Constraint::Fill(1)]).areas(area);
 
-//                 if include {
-//                     table_data.push((action, keys, context, details));
-//                 }
-//             }
-//         }
+        let search_block = Block::new()
+            .border_type(BorderType::Rounded)
+            .borders(Borders::TOP | Borders::LEFT | Borders::RIGHT)
+            .title("─ Search ");
+        frame.render_widget(search_block, search_area);
 
-//         // Sort by context first, then by action name for better organization
-//         table_data.sort_by(|a, b| match a.2.cmp(&b.2) {
-//             std::cmp::Ordering::Equal => a.0.cmp(&b.0),
-//             other => other,
-//         });
+        if self.search_active {
+            let input_area = Rect::new(
+                search_area.x + 2,
+                search_area.y + 2,
+                search_area.width.saturating_sub(4),
+                1,
+            );
+            let prompt = Paragraph::new(self.search_buffer.clone());
+            frame.render_widget(prompt, input_area);
 
-//         table_data
-//     }
-// }
+            if let Some(cursor) = self.cursor_offset {
+                frame.set_cursor_position((input_area.x + cursor, input_area.y));
+            }
+        } else {
+            let input_area = Rect::new(
+                search_area.x + 2,
+                search_area.y + 2,
+                search_area.width.saturating_sub(4),
+                1,
+            );
+            let text = match &self.search_query {
+                Some(query) => format!("Filter: {} [Ctrl+C to clear]", query),
+                // None => "Press Ctrl+F or / to search keybindings".to_string(),
+                None => format!("{:?}", context),
+            };
+            let widget = Paragraph::new(text).style(Style::default().fg(Color::Gray));
+            frame.render_widget(widget, input_area);
+        }
 
-// /// Navigation directions for the help table
-// enum TableNavigation {
-//     Up,
-//     Down,
-//     PageUp,
-//     PageDown,
-//     Home,
-//     End,
-// }
+        let palette = symbols::border::Set {
+            top_left: symbols::line::NORMAL.vertical_right,
+            top_right: symbols::line::NORMAL.vertical_left,
+            bottom_left: symbols::line::ROUNDED.bottom_left,
+            bottom_right: symbols::line::ROUNDED.bottom_right,
+            ..symbols::border::PLAIN
+        };
 
-// impl Popup for HelpPopup {
-//     fn as_any(&self) -> &dyn std::any::Any {
-//         self
-//     }
+        let max_action = self
+            .rows
+            .iter()
+            .map(|row| row.action.len())
+            .max()
+            .unwrap_or(10)
+            .max(6)
+            + 2;
+        let max_keys = self
+            .rows
+            .iter()
+            .map(|row| row.keys.len())
+            .max()
+            .unwrap_or(10)
+            .max(4)
+            + 2;
+        let max_context = self
+            .rows
+            .iter()
+            .map(|row| row.context.len())
+            .max()
+            .unwrap_or(10)
+            .max(7)
+            + 2;
 
-//     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-//         self
-//     }
-//     fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
-//         self.action_tx = Some(tx);
-//         Ok(())
-//     }
+        let header = Row::new(vec!["", "Action", "Keys", "Context", "Details"])
+            .style(
+                Style::default()
+                    .fg(Color::Blue)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .height(1);
 
-//     fn init(&mut self) -> Result<()> {
-//         // Initialize table selection
-//         self.help_table_state.select(Some(0));
-//         Ok(())
-//     }
+        let rows: Vec<Row> = self
+            .rows
+            .iter()
+            .enumerate()
+            .map(|(index, row)| {
+                let mut style = if index % 2 == 0 {
+                    Style::default().bg(Color::Rgb(40, 40, 60))
+                } else {
+                    Style::default().bg(Color::Rgb(30, 30, 40))
+                };
+                if Some(index) == self.selected {
+                    style = Style::default()
+                        .bg(Color::Blue)
+                        .fg(Color::Black)
+                        .add_modifier(Modifier::BOLD);
+                }
+                let marker = if Some(index) == self.selected {
+                    "►"
+                } else {
+                    " "
+                };
+                Row::new(vec![
+                    marker.to_string(),
+                    row.action.clone(),
+                    row.keys.clone(),
+                    row.context.clone(),
+                    row.details.clone(),
+                ])
+                .style(style)
+                .height(1)
+            })
+            .collect();
 
-//     fn keymap_context(&self) -> &'static str {
-//         "help"
-//     }
+        let table_block = Block::new()
+            .borders(Borders::ALL)
+            .border_set(palette)
+            .title("─ Key Bindings ");
 
-//     fn id(&self) -> &'static str {
-//         "help"
-//     }
+        let table = Table::new(
+            rows,
+            [
+                Constraint::Length(3),
+                Constraint::Length(max_action as u16),
+                Constraint::Length(max_keys as u16),
+                Constraint::Length(max_context as u16),
+                Constraint::Fill(1),
+            ],
+        )
+        .header(header)
+        .block(table_block);
 
-//     fn config(&self) -> PopupConfig {
-//         PopupConfig {
-//             size: PopupSize::Percentage {
-//                 width: 85,
-//                 height: 85,
-//             },
-//             position: PopupPosition::Center,
-//             modal: true,
-//             closable: true,
-//             resizable: false,
-//         }
-//     }
+        frame.render_widget(table, table_area);
+    }
+}
 
-//     fn handle_key_events(&mut self, key: KeyEvent) -> Result<Option<Action>> {
-//         // Handle different key events based on current mode
-//         if self.help_prompt_active {
-//             // Search mode - handle input
-//             match key.code {
-//                 KeyCode::Char(c) => {
-//                     self.help_input
-//                         .handle(tui_input::InputRequest::InsertChar(c));
-//                 }
-//                 KeyCode::Backspace => {
-//                     self.help_input
-//                         .handle(tui_input::InputRequest::DeletePrevChar);
-//                 }
-//                 KeyCode::Delete => {
-//                     self.help_input
-//                         .handle(tui_input::InputRequest::DeleteNextChar);
-//                 }
-//                 KeyCode::Left => {
-//                     self.help_input
-//                         .handle(tui_input::InputRequest::GoToPrevChar);
-//                 }
-//                 KeyCode::Right => {
-//                     self.help_input
-//                         .handle(tui_input::InputRequest::GoToNextChar);
-//                 }
-//                 KeyCode::Home => {
-//                     self.help_input.handle(tui_input::InputRequest::GoToStart);
-//                 }
-//                 KeyCode::End => {
-//                     self.help_input.handle(tui_input::InputRequest::GoToEnd);
-//                 }
-//                 KeyCode::Enter => {
-//                     return self.toggle_search();
-//                 }
-//                 KeyCode::Esc => {
-//                     self.help_prompt_active = false;
-//                     return Ok(None);
-//                 }
-//                 _ => {}
-//             }
-//         } else {
-//             // Normal mode - handle navigation and commands
-//             match (key.code, key.modifiers) {
-//                 (KeyCode::Esc, _) => {
-//                     return Ok(Some(Action::Ui(UiAction::ClosePopup {
-//                         id: "help".to_string(),
-//                     })));
-//                 }
-//                 (KeyCode::Char('f'), KeyModifiers::CONTROL) => {
-//                     return self.toggle_search();
-//                 }
-//                 (KeyCode::Char('/'), _) => {
-//                     return self.toggle_search();
-//                 }
-//                 (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
-//                     return self.clear_search();
-//                 }
-//                 (KeyCode::Up, _) => {
-//                     return self.navigate_table(TableNavigation::Up);
-//                 }
-//                 (KeyCode::Down, _) => {
-//                     return self.navigate_table(TableNavigation::Down);
-//                 }
-//                 (KeyCode::PageUp, _) => {
-//                     return self.navigate_table(TableNavigation::PageUp);
-//                 }
-//                 (KeyCode::PageDown, _) => {
-//                     return self.navigate_table(TableNavigation::PageDown);
-//                 }
-//                 (KeyCode::Home, _) => {
-//                     return self.navigate_table(TableNavigation::Home);
-//                 }
-//                 (KeyCode::End, _) => {
-//                     return self.navigate_table(TableNavigation::End);
-//                 }
-//                 _ => {}
-//             }
-//         }
+struct TableRow {
+    action: String,
+    keys: String,
+    context: String,
+    details: String,
+}
 
-//         Ok(None)
-//     }
+#[derive(Clone, Copy)]
+enum TableNavigation {
+    Up,
+    Down,
+    PageUp,
+    PageDown,
+    Home,
+    End,
+}
 
-//     fn update(&mut self, action: Action) -> Result<Option<Action>> {
-//         match action {
-//             Action::Ui(UiAction::ComponentCommand { command, data: _ }) => match command.as_str() {
-//                 "toggle_search" => return self.toggle_search(),
-//                 "clear_search" => return self.clear_search(),
-//                 _ => {}
-//             },
-//             _ => {}
-//         }
-//         Ok(None)
-//     }
-
-//     fn draw(&mut self, f: &mut Frame, area: Rect) -> Result<()> {
-//         // Clear the area first for modal effect
-//         f.render_widget(Clear, area);
-
-//         let collapsed_border_set = symbols::border::Set {
-//             top_left: symbols::line::NORMAL.vertical_right,
-//             top_right: symbols::line::NORMAL.vertical_left,
-//             bottom_left: symbols::line::ROUNDED.bottom_left,
-//             bottom_right: symbols::line::ROUNDED.bottom_right,
-//             ..symbols::border::PLAIN
-//         };
-
-//         // Layout: search area at top, table at bottom
-//         let [search_area, key_table_area] =
-//             Layout::vertical([Constraint::Length(4), Constraint::Fill(1)]).areas(area);
-
-//         // Render search input area
-//         let search_block = Block::new()
-//             .border_type(BorderType::Rounded)
-//             .borders(Borders::TOP | Borders::LEFT | Borders::RIGHT)
-//             .title("─ Search ");
-//         f.render_widget(search_block, search_area);
-
-//         // Render search input or status
-//         if self.help_prompt_active {
-//             let input_area = Rect::new(
-//                 search_area.x + 2,
-//                 search_area.y + 2,
-//                 search_area.width.saturating_sub(4),
-//                 1,
-//             );
-//             let prompt_value = self.help_input.value();
-//             let prompt_text = format!("{}", prompt_value);
-//             let prompt = Paragraph::new(prompt_text);
-//             f.render_widget(prompt, input_area);
-
-//             // Place cursor
-//             let cursor = self.help_input.visual_cursor() as u16;
-//             let cx = input_area.x + cursor;
-//             let cy = input_area.y;
-//             f.set_cursor_position((cx, cy));
-//         } else {
-//             // Show current search query or placeholder
-//             let input_area = Rect::new(
-//                 search_area.x + 2,
-//                 search_area.y + 2,
-//                 search_area.width.saturating_sub(4),
-//                 1,
-//             );
-//             let search_text = match &self.help_search {
-//                 Some(query) => format!("Filter: {} [Press Ctrl+F to search]", query),
-//                 None => "Press Ctrl+F to search keybindings".to_string(),
-//             };
-//             let search_style = Style::default().fg(Color::Gray);
-//             let search_para = Paragraph::new(search_text).style(search_style);
-//             f.render_widget(search_para, input_area);
-//         }
-
-//         // Build table data - use current context for now
-//         let contexts = vec![self.keymap_context.clone()];
-//         let table_data = self.build_keymap_table_data(&contexts);
-
-//         // Update stored table length for navigation
-//         self.help_table_len = table_data.len();
-
-//         // Ensure selection is within bounds
-//         if let Some(selected) = self.help_table_state.selected() {
-//             if selected >= table_data.len() && !table_data.is_empty() {
-//                 self.help_table_state.select(Some(0));
-//             }
-//         } else if !table_data.is_empty() {
-//             self.help_table_state.select(Some(0));
-//         }
-
-//         let table_block = Block::new()
-//             .borders(Borders::ALL)
-//             .border_set(collapsed_border_set)
-//             .title("─ Key Bindings ");
-
-//         // Calculate dynamic column widths based on content
-//         let max_action_len = table_data
-//             .iter()
-//             .map(|(a, _, _, _)| a.len())
-//             .max()
-//             .unwrap_or(10)
-//             .max(6)
-//             + 2;
-//         let max_keys_len = table_data
-//             .iter()
-//             .map(|(_, k, _, _)| k.len())
-//             .max()
-//             .unwrap_or(10)
-//             .max(4)
-//             + 2;
-//         let max_context_len = table_data
-//             .iter()
-//             .map(|(_, _, c, _)| c.len())
-//             .max()
-//             .unwrap_or(10)
-//             .max(7)
-//             + 2;
-
-//         let header = Row::new(vec!["", "Action", "Keys", "Context", "Details"])
-//             .style(
-//                 Style::default()
-//                     .fg(Color::Blue)
-//                     .add_modifier(Modifier::BOLD),
-//             )
-//             .height(1);
-
-//         let rows: Vec<Row> = table_data
-//             .into_iter()
-//             .enumerate()
-//             .map(|(i, (action, keys, context, details))| {
-//                 let style = if i % 2 == 0 {
-//                     Style::default().bg(Color::Rgb(40, 40, 60))
-//                 } else {
-//                     Style::default().bg(Color::Rgb(30, 30, 40))
-//                 };
-
-//                 // Add visual marker for selected row
-//                 let marker = if self.help_table_state.selected() == Some(i) {
-//                     "►"
-//                 } else {
-//                     " "
-//                 };
-
-//                 Row::new(vec![marker.to_string(), action, keys, context, details])
-//                     .style(style)
-//                     .height(1)
-//             })
-//             .collect();
-
-//         let table = Table::new(
-//             rows,
-//             [
-//                 Constraint::Length(3),
-//                 Constraint::Length(max_action_len as u16),
-//                 Constraint::Length(max_keys_len as u16),
-//                 Constraint::Length(max_context_len as u16),
-//                 Constraint::Fill(1),
-//             ],
-//         )
-//         .header(header)
-//         .block(table_block)
-//         .row_highlight_style(
-//             Style::default()
-//                 .bg(Color::Blue)
-//                 .add_modifier(Modifier::BOLD),
-//         );
-
-//         f.render_stateful_widget(table, key_table_area, &mut self.help_table_state);
-
-//         Ok(())
-//     }
-// }
+fn describe_action(name: &str) -> String {
+    match name {
+        "Help" => "Show/hide this help dialog".into(),
+        "Quit" => "Exit the application".into(),
+        "FocusNext" | "NextField" => "Move focus to next element".into(),
+        "FocusPrev" | "PrevField" | "PreviousField" => "Move focus to previous element".into(),
+        "NavigateUp" => "Navigate up".into(),
+        "NavigateDown" => "Navigate down".into(),
+        "NavigateLeft" => "Navigate left".into(),
+        "NavigateRight" => "Navigate right".into(),
+        "ActivateSelected" => "Activate selected item".into(),
+        "ToggleEditMode" | "ModeCycle" => "Toggle edit mode".into(),
+        "EnterEditMode" | "ModeInsert" => "Enter edit mode".into(),
+        "ExitEditMode" | "ModeNormal" => "Return to normal mode".into(),
+        "PageNext" | "NextPage" => "Go to next page".into(),
+        "PagePrev" | "PrevPage" | "PreviousPage" => "Go to previous page".into(),
+        other => format!("Execute {}", other.replace('_', " ").to_lowercase()),
+    }
+}

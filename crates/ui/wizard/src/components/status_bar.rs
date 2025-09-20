@@ -5,8 +5,8 @@ use ratatui::{
 
 use crate::{
     action::{Action, UiAction, UiMode},
+    components::{Component, ComponentKey},
     layers::ActionOutcome,
-    ui::components::{Component, ComponentKey},
 };
 
 /// StatusBar component
@@ -27,9 +27,8 @@ use crate::{
 pub struct StatusBar {
     id: Option<ComponentKey>,
     mode: UiMode,
-    focused_component: Option<ComponentKey>,
-    notif_count: usize,
-    help_visible: bool,
+    focus_surface: Option<String>,
+    focus_component: Option<String>,
 }
 
 impl StatusBar {
@@ -39,9 +38,8 @@ impl StatusBar {
         Self {
             id: None,
             mode: UiMode::Normal,
-            focused_component: None,
-            notif_count: 0,
-            help_visible: false,
+            focus_surface: None,
+            focus_component: None,
         }
     }
 
@@ -50,8 +48,21 @@ impl StatusBar {
             UiMode::Normal => "Normal",
             UiMode::Edit => "Edit",
         };
-        let mode = Span::raw(format!("Mode: {}", mode_str));
-        Line::from(vec![mode])
+        let surface = self.focus_surface.as_deref().unwrap_or("-");
+        let component = self.focus_component.as_deref().unwrap_or("-");
+
+        Line::from(vec![
+            Span::raw(format!("Mode: {}", mode_str)),
+            Span::raw(" | Surface: "),
+            Span::raw(surface.to_string()),
+            Span::raw(" | Component: "),
+            Span::raw(component.to_string()),
+        ])
+    }
+
+    pub fn set_focus_debug(&mut self, surface: Option<String>, component: Option<String>) {
+        self.focus_surface = surface;
+        self.focus_component = component;
     }
 }
 
@@ -97,37 +108,5 @@ impl Component for StatusBar {
     fn render(&self, f: &mut ratatui::Frame, area: ratatui::layout::Rect) {
         let left = Paragraph::new(self.left_text());
         f.render_widget(left, area);
-    }
-}
-
-// Helpers
-
-fn prettify_chord(s: String) -> String {
-    // Make it look nicer: ctrl+p -> Ctrl+P, f1 -> F1, esc -> Esc
-    let mut out = String::new();
-    for (i, part) in s.split('+').enumerate() {
-        if i > 0 {
-            out.push('+');
-        }
-        out.push_str(&capitalize_key(part));
-    }
-    out
-}
-
-fn capitalize_key(k: &str) -> String {
-    let lower = k.to_ascii_lowercase();
-    match lower.as_str() {
-        "ctrl" => "Ctrl".to_string(),
-        "alt" => "Alt".to_string(),
-        "shift" => "Shift".to_string(),
-        "meta" => "Meta".to_string(),
-        "esc" => "Esc".to_string(),
-        "enter" => "Enter".to_string(),
-        "tab" => "Tab".to_string(),
-        s if s.starts_with('f') && s[1..].chars().all(|c| c.is_ascii_digit()) => {
-            s.to_ascii_uppercase()
-        }
-        s if s.len() == 1 => s.to_ascii_uppercase(),
-        _ => k.to_string(),
     }
 }

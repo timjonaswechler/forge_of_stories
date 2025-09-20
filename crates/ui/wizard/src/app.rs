@@ -33,12 +33,13 @@ pub(crate) mod settings;
 use crate::{
     action::{Action, UiAction, UiMode},
     cli::{Cli, Cmd, RunMode},
+    components::{Component, ComponentKey, StatusBar},
     layers::{
         self, ActionOutcome, LayerAction, LayerSystem,
+        help::{HelpOverlayEvent, HelpView},
         page::{DashboardPage, WelcomePage},
     },
     tui::{Event, Tui},
-    ui::components::{Component, ComponentKey, StatusBar},
 };
 use app::AppBase;
 pub use app::init;
@@ -47,10 +48,9 @@ use crossterm::event::KeyEvent;
 use crossterm::event::{KeyCode, KeyModifiers};
 use keymap_registry::WizardActionRegistry;
 use ratatui::layout::Rect;
-use settings::ActionRegistry;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use tracing::{debug, warn};
+use tracing::warn;
 
 /// Main Wizard application.
 pub struct App {
@@ -68,6 +68,8 @@ pub struct App {
     frame_rate: f64,
     action_tx: mpsc::UnboundedSender<Action>,
     action_rx: mpsc::UnboundedReceiver<Action>,
+    help_view: HelpView,
+    active_contexts: Vec<String>,
 }
 
 impl App {
@@ -76,11 +78,15 @@ impl App {
 
         // Settings stores (wizard + aether). We can split/merge later if needed.
         let settings = Arc::new(settings::build_wizard_settings_store()?);
+        tracing::info!("{:?}", settings.debug_keymap_state_summary());
+
         let aether_settings = Arc::new(settings::build_wizard_settings_store()?);
 
         // Default rates; in the future read from settings::GeneralCfg
         let tick_rate = settings.get::<settings::Wizard>().unwrap().tick_rate;
         let frame_rate = settings.get::<settings::Wizard>().unwrap().fps;
+
+        let help_view = HelpView::new(settings.clone());
 
         let mut layers = LayerSystem::new();
         match cli.cmd {
@@ -111,9 +117,12 @@ impl App {
             frame_rate,
             action_tx,
             action_rx,
+            help_view,
+            active_contexts: Vec::new(),
         };
 
         app.sync_focus_change(None);
+        app.refresh_active_contexts();
         Ok(app)
     }
 
@@ -159,6 +168,16 @@ impl App {
     }
 
     fn handle_key_event(&mut self, key: KeyEvent) -> Result<()> {
+        if self.layers.help_visible() {
+            match self.help_view.handle_key(key)? {
+                HelpOverlayEvent::Consumed => {}
+                HelpOverlayEvent::Close => {
+                    self.action_tx.send(Action::Help)?;
+                }
+            }
+            return Ok(());
+        }
+
         let mut mods: Vec<&'static str> = Vec::new();
         if key.modifiers.contains(KeyModifiers::CONTROL) {
             mods.push("ctrl");
@@ -183,12 +202,20 @@ impl App {
                 return Ok(());
             }
         };
-        let _chord = if mods.is_empty() {
+        let chord = if mods.is_empty() {
             key_str
         } else {
             format!("{}+{}", mods.join("+"), key_str)
         };
 
+        self.refresh_active_contexts();
+        if let Some(action) = self.settings.resolve_action_for_key(
+            &chord,
+            &self.active_contexts,
+            &self.action_registry,
+        ) {
+            self.action_tx.send(action)?;
+        }
         Ok(())
     }
 
@@ -221,7 +248,8 @@ impl App {
                 warn!("UI error: {msg}");
             }
             Action::Help => {
-                self.apply_layer_action(LayerAction::ToggleHelp);
+                self.layers.toggle_help();
+                self.refresh_active_contexts();
                 self.render(tui)?;
             }
             Action::Ui(ui) => {
@@ -234,13 +262,43 @@ impl App {
     }
 
     fn handle_ui_action(&mut self, ui: UiAction) -> Result<()> {
-        match ui {
+        match ui.clone() {
             UiAction::FocusNext => {
                 self.apply_layer_action(LayerAction::FocusNext);
                 return Ok(());
             }
             UiAction::FocusPrev => {
                 self.apply_layer_action(LayerAction::FocusPrev);
+                return Ok(());
+            }
+            UiAction::FocusComponent { id } => {
+                if let Some(component) = self.layers.lookup_component(&id) {
+                    self.apply_layer_action(LayerAction::FocusComponent(component));
+                }
+                return Ok(());
+            }
+            UiAction::PageNext => {
+                self.apply_layer_action(LayerAction::ActivateNextPage);
+                return Ok(());
+            }
+            UiAction::PagePrev => {
+                self.apply_layer_action(LayerAction::ActivatePreviousPage);
+                return Ok(());
+            }
+            UiAction::PageSet { id } => {
+                if let Some(page) = self.layers.lookup_page(&id) {
+                    self.apply_layer_action(LayerAction::ActivatePage(page));
+                }
+                return Ok(());
+            }
+            UiAction::PopupOpen { id } => {
+                if let Some(popup) = self.layers.lookup_popup(&id) {
+                    self.apply_layer_action(LayerAction::ShowPopup(popup));
+                }
+                return Ok(());
+            }
+            UiAction::PopupClose => {
+                self.apply_layer_action(LayerAction::ClosePopup);
                 return Ok(());
             }
             _ => {}
@@ -254,12 +312,15 @@ impl App {
                     UiMode::Normal => UiMode::Edit,
                     UiMode::Edit => UiMode::Normal,
                 };
+                self.refresh_active_contexts();
             }
             UiAction::EnterEditMode => {
                 self.ui_mode = UiMode::Edit;
+                self.refresh_active_contexts();
             }
             UiAction::ExitEditMode => {
                 self.ui_mode = UiMode::Normal;
+                self.refresh_active_contexts();
             }
             _ => {}
         }
@@ -324,6 +385,7 @@ impl App {
             .map(layers::Surface::Popup)
             .or_else(|| self.layers.active.page.map(layers::Surface::Page));
         self.sync_focus_change(previous);
+        self.refresh_active_contexts();
     }
 
     fn focus_component(&mut self, key: ComponentKey) {
@@ -336,25 +398,72 @@ impl App {
             .map(layers::Surface::Popup)
             .or_else(|| self.layers.active.page.map(layers::Surface::Page));
         self.sync_focus_change(previous);
+        self.refresh_active_contexts();
+    }
+
+    fn refresh_active_contexts(&mut self) {
+        let mut contexts = Vec::new();
+        Self::push_context(&mut contexts, "global");
+
+        match self.ui_mode {
+            UiMode::Normal => Self::push_context(&mut contexts, "normal-mode"),
+            UiMode::Edit => Self::push_context(&mut contexts, "edit-mode"),
+        }
+
+        if let Some(page_key) = self.layers.active.page {
+            if let Some(ctx) = self.layers.page_context(page_key) {
+                // Self::push_context(&mut contexts, ctx);
+                Self::push_context(&mut contexts, format!("page:{ctx}"));
+            }
+        }
+
+        if self.layers.active.popup.is_some() {
+            Self::push_context(&mut contexts, "popup-visible");
+        }
+
+        if let Some(component_key) = self.layers.active.focus.component {
+            if let Some(name) = self.layers.component_name(component_key) {
+                // Self::push_context(&mut contexts, name);
+                Self::push_context(&mut contexts, format!("component:{name}"));
+            }
+        }
+
+        self.active_contexts = contexts;
+        self.help_view.set_contexts(&self.active_contexts);
+    }
+
+    fn push_context(contexts: &mut Vec<String>, ctx: impl Into<String>) {
+        let value = ctx.into();
+        if !contexts
+            .iter()
+            .any(|existing| existing.eq_ignore_ascii_case(&value))
+        {
+            contexts.push(value);
+        }
     }
 
     fn sync_focus_change(&mut self, previous: Option<ComponentKey>) {
         let current = self.layers.active.focus.component;
-        if current == previous {
-            return;
-        }
+        if current != previous {
+            if let Some(prev) = previous {
+                if let Some(component) = self.layers.components.items.get_mut(prev) {
+                    component.on_focus(false);
+                }
+            }
 
-        if let Some(prev) = previous {
-            if let Some(component) = self.layers.components.items.get_mut(prev) {
-                component.on_focus(false);
+            if let Some(cur) = current {
+                if let Some(component) = self.layers.components.items.get_mut(cur) {
+                    component.on_focus(true);
+                }
             }
         }
 
-        if let Some(cur) = current {
-            if let Some(component) = self.layers.components.items.get_mut(cur) {
-                component.on_focus(true);
-            }
-        }
+        self.update_status_focus();
+    }
+
+    fn update_status_focus(&mut self) {
+        let (surface, component) = self.layers.focus_labels();
+        self.status_bar.set_focus_debug(surface, component);
     }
 
     fn handle_resize(&mut self, tui: &mut Tui, w: u16, h: u16) -> Result<()> {
@@ -365,6 +474,11 @@ impl App {
 
     fn render(&mut self, tui: &mut Tui) -> Result<()> {
         let plan = self.layers.render_plan();
+        let help_snapshot = if plan.help_visible {
+            Some(self.help_view.snapshot())
+        } else {
+            None
+        };
         tui.draw(|frame| {
             let area = frame.area();
             let status_h: u16 = 1;
@@ -388,6 +502,11 @@ impl App {
 
             if let Some(popup) = plan.popup {
                 self.render_popup(frame, main_area, popup);
+            }
+
+            if let Some(snapshot) = help_snapshot.as_ref() {
+                let overlay = layers::help_box(main_area);
+                snapshot.render(frame, overlay, self.active_contexts.clone());
             }
 
             self.status_bar.render(frame, status_area);
@@ -440,83 +559,5 @@ impl App {
                 None
             }
         })
-    }
-
-    fn now_unix_ms(&self) -> u64 {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64
-    }
-}
-
-/// Implementation des ActionRegistry-Traits für die Wizard-App
-impl ActionRegistry for App {
-    type Action = Action;
-
-    fn resolve_action(
-        &self,
-        action_name: &str,
-        _action_data: Option<&toml::Value>,
-    ) -> Option<Self::Action> {
-        debug!("ActionRegistry: Resolving action '{}'", action_name);
-        match action_name {
-            // Core actions
-            "Quit" => Some(Action::Quit),
-            "Help" => Some(Action::Help),
-            "Tick" => Some(Action::Tick),
-            "Render" => Some(Action::Render),
-            "ClearScreen" => Some(Action::ClearScreen),
-            "Suspend" => Some(Action::Suspend),
-            "Resume" => Some(Action::Resume),
-
-            // UI focus & navigation
-            "FocusNext" | "NextField" => Some(Action::Ui(UiAction::FocusNext)),
-            "FocusPrev" | "PrevField" | "PreviousField" => Some(Action::Ui(UiAction::FocusPrev)),
-            "NavigateUp" => Some(Action::Ui(UiAction::NavigateUp)),
-            "NavigateDown" => Some(Action::Ui(UiAction::NavigateDown)),
-            "NavigateLeft" => Some(Action::Ui(UiAction::NavigateLeft)),
-            "NavigateRight" => Some(Action::Ui(UiAction::NavigateRight)),
-            "ActivateSelected" => Some(Action::Ui(UiAction::ActivateSelected)),
-
-            // Edit mode
-            "ToggleEditMode" | "ModeCycle" => Some(Action::Ui(UiAction::ToggleEditMode)),
-            "EnterEditMode" | "ModeInsert" => Some(Action::Ui(UiAction::EnterEditMode)),
-            "ExitEditMode" | "ModeNormal" => Some(Action::Ui(UiAction::ExitEditMode)),
-
-            _ => None,
-        }
-    }
-
-    fn get_action_names(&self) -> Vec<String> {
-        vec![
-            // Core
-            "Quit".into(),
-            "Help".into(),
-            "Tick".into(),
-            "Render".into(),
-            "ClearScreen".into(),
-            "Suspend".into(),
-            "Resume".into(),
-            // UI Navigation
-            "FocusNext".into(),
-            "NextField".into(),
-            "FocusPrev".into(),
-            "PrevField".into(),
-            "PreviousField".into(),
-            // Component Navigation
-            "NavigateUp".into(),
-            "NavigateDown".into(),
-            "NavigateLeft".into(),
-            "NavigateRight".into(),
-            "ActivateSelected".into(),
-            // UI Mode
-            "ToggleEditMode".into(),
-            "ModeCycle".into(),
-            "EnterEditMode".into(),
-            "ModeInsert".into(),
-            "ExitEditMode".into(),
-            "ModeNormal".into(),
-        ]
     }
 }

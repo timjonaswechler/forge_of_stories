@@ -1,7 +1,7 @@
 use crate::{
     action::{Action, UiAction},
+    components::{Component, ComponentKey},
     layers::ActionOutcome,
-    ui::components::{Component, ComponentKey},
 };
 use ratatui::{
     layout::{Constraint, Flex, Layout, Rect},
@@ -15,6 +15,16 @@ enum StatusItemKind {
     Settings,
     Certificate,
     Uds,
+}
+
+impl StatusItemKind {
+    fn id(&self) -> &'static str {
+        match self {
+            StatusItemKind::Settings => "settings",
+            StatusItemKind::Certificate => "certificate",
+            StatusItemKind::Uds => "uds",
+        }
+    }
 }
 
 struct StatusSnapshot {
@@ -73,6 +83,23 @@ impl AetherStatusListComponent {
         self.selected = next as usize;
     }
 
+    fn select_item_by_id(&mut self, id: &str) {
+        if let Some(pos) = self
+            .items
+            .iter()
+            .position(|kind| kind.id().eq_ignore_ascii_case(id))
+        {
+            self.selected = pos;
+        }
+    }
+
+    fn activate_selected(&mut self) {
+        // Placeholder for future domain-specific activation hooks.
+        // TODO: OpenPopup
+        //
+        self.items[self.selected].id();
+    }
+
     fn draw_lines(&self) -> Vec<Line<'static>> {
         let mut lines = Vec::new();
         let focus_accent = if self.focused {
@@ -114,9 +141,7 @@ impl AetherStatusListComponent {
                         ]
                     };
                     let arrow_style = if sel {
-                        Style::default()
-                            .fg(focus_accent)
-                            .add_modifier(focus_bold)
+                        Style::default().fg(focus_accent).add_modifier(focus_bold)
                     } else {
                         Style::default().fg(Color::Gray)
                     };
@@ -148,9 +173,7 @@ impl AetherStatusListComponent {
                         ]
                     };
                     let arrow_style = if sel {
-                        Style::default()
-                            .fg(focus_accent)
-                            .add_modifier(focus_bold)
+                        Style::default().fg(focus_accent).add_modifier(focus_bold)
                     } else {
                         Style::default().fg(Color::Gray)
                     };
@@ -182,9 +205,7 @@ impl AetherStatusListComponent {
                         ]
                     };
                     let arrow_style = if sel {
-                        Style::default()
-                            .fg(focus_accent)
-                            .add_modifier(focus_bold)
+                        Style::default().fg(focus_accent).add_modifier(focus_bold)
                     } else {
                         Style::default().fg(Color::Gray)
                     };
@@ -229,12 +250,20 @@ impl Component for AetherStatusListComponent {
 
     fn handle_action(&mut self, action: &Action) -> ActionOutcome {
         match action {
-            Action::Ui(UiAction::NavigateUp) => {
+            Action::Ui(UiAction::ItemPrev) => {
                 self.handle_nav(-1);
                 ActionOutcome::Consumed
             }
-            Action::Ui(UiAction::NavigateDown) => {
+            Action::Ui(UiAction::ItemNext) => {
                 self.handle_nav(1);
+                ActionOutcome::Consumed
+            }
+            Action::Ui(UiAction::ItemSelect) => {
+                self.activate_selected();
+                ActionOutcome::Consumed
+            }
+            Action::Ui(UiAction::ItemSet { id }) => {
+                self.select_item_by_id(id);
                 ActionOutcome::Consumed
             }
             Action::Tick => {

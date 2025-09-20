@@ -3,11 +3,10 @@ pub(crate) mod notify;
 pub(crate) mod page;
 pub(crate) mod popup;
 
-use crate::ui::components::{Component, ComponentKey, ComponentStore};
-use indexmap::IndexMap;
+use crate::components::{Component, ComponentKey, ComponentStore};
 use notify::{Notification, NotificationKey, NotificationKind};
-use page::{Page, PageBuilder, PageKey, PageMeta, PageSpec};
-use popup::{Popup, PopupBuilder, PopupKey, PopupMeta, PopupSpec};
+use page::{Page, PageBuilder, PageKey, PageSpec};
+use popup::{Popup, PopupBuilder, PopupKey, PopupSpec};
 use ratatui::layout::Rect;
 use slotmap::SlotMap;
 use std::collections::HashMap;
@@ -18,14 +17,17 @@ pub struct LayerSystem {
     pub notifications: SlotMap<NotificationKey, Notification>,
     pub components: ComponentStore,
     pub active: ActiveLayers,
+    page_order: Vec<PageKey>,
+    page_lookup: HashMap<String, PageKey>,
+    popup_lookup: HashMap<String, PopupKey>,
 }
 
 pub struct ActiveLayers {
     pub page: Option<PageKey>,   // genau 1 erwartet (Option für Startup)
     pub popup: Option<PopupKey>, // 0..1
-    pub show_help: bool,         // Help als Flag
     pub notification_order: Vec<NotificationKey>, // Anzeige-Reihenfolge
     pub focus: FocusPath,        // immer konsistent zu page/popup
+    pub help_visible: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -43,15 +45,20 @@ pub struct FocusPath {
 pub struct RenderPlan<'a> {
     pub page: Option<&'a Page>,
     pub popup: Option<&'a Popup>,
-    pub help: bool,
     pub notifications: Vec<&'a Notification>,
+    pub help_visible: bool,
 }
+
 pub struct FocusDescriptor<'a> {
     pub surface_label: &'a str, // z.B. "Page: Dashboard" oder "Popup: Confirm"
     pub component_label: &'a str, // z.B. "Button: Save"
 }
 
 impl LayerSystem {
+    fn normalize_id(id: &str) -> String {
+        id.trim().to_ascii_lowercase()
+    }
+
     pub fn new() -> Self {
         Self {
             pages: SlotMap::with_key(),
@@ -61,33 +68,31 @@ impl LayerSystem {
             active: ActiveLayers {
                 page: None,
                 popup: None,
-                show_help: false,
                 notification_order: Vec::new(),
                 focus: FocusPath {
                     surface: None,
                     component: None,
                 },
+                help_visible: false,
             },
+            page_order: Vec::new(),
+            page_lookup: HashMap::new(),
+            popup_lookup: HashMap::new(),
         }
-    }
-
-    pub fn register_page(&mut self, page: Page) -> PageKey {
-        self.pages.insert(page)
-    }
-    pub fn register_popup(&mut self, popup: Popup) -> PopupKey {
-        self.popups.insert(popup)
     }
 
     pub fn activate_page(&mut self, page: PageKey) {
         self.active.page = Some(page);
         // Fokus auf Page-First-Focusable:
         self.focus_first_on_surface(Surface::Page(page));
+        self.active.focus.surface = Some(Surface::Page(page));
         // Popup bleibt unberührt (falls offen)
     }
 
     pub fn show_popup(&mut self, popup: PopupKey) {
         self.active.popup = Some(popup);
         self.focus_first_on_surface(Surface::Popup(popup));
+        self.active.focus.surface = Some(Surface::Popup(popup));
     }
 
     pub fn close_popup(&mut self) {
@@ -95,6 +100,7 @@ impl LayerSystem {
         // Fokus zurück zur Page
         if let Some(p) = self.active.page {
             self.focus_restore_or_first(Surface::Page(p));
+            self.active.focus.surface = Some(Surface::Page(p));
         } else {
             self.active.focus = FocusPath {
                 surface: None,
@@ -137,36 +143,32 @@ impl LayerSystem {
         RenderPlan {
             page: self.active.page.and_then(|k| self.pages.get(k)),
             popup: self.active.popup.and_then(|k| self.popups.get(k)),
-            help: self.active.show_help,
             notifications: self
                 .active
                 .notification_order
                 .iter()
                 .filter_map(|k| self.notifications.get(*k))
                 .collect(),
+            help_visible: self.active.help_visible,
         }
     }
 
     pub fn focus_next(&mut self) {
-        let surface = if self.active.popup.is_some() {
-            Surface::Popup(self.active.popup.unwrap())
-        } else {
-            Surface::Page(self.active.page.unwrap())
-        };
-
-        let list: Vec<ComponentKey> = self.components_of(surface).to_vec();
-        self.cycle_focus(&list, 1);
+        if let Some(surface) = self.active_surface() {
+            if let Some(list) = self.components_of(surface) {
+                let list: Vec<ComponentKey> = list.to_vec();
+                self.cycle_focus(&list, 1);
+            }
+        }
     }
 
     pub fn focus_prev(&mut self) {
-        let surface = if self.active.popup.is_some() {
-            Surface::Popup(self.active.popup.unwrap())
-        } else {
-            Surface::Page(self.active.page.unwrap())
-        };
-
-        let list: Vec<ComponentKey> = self.components_of(surface).to_vec();
-        self.cycle_focus(&list, -1);
+        if let Some(surface) = self.active_surface() {
+            if let Some(list) = self.components_of(surface) {
+                let list: Vec<ComponentKey> = list.to_vec();
+                self.cycle_focus(&list, -1);
+            }
+        }
     }
     pub fn focus_component(&mut self, k: ComponentKey) {
         self.active.focus.component = Some(k);
@@ -180,10 +182,17 @@ impl LayerSystem {
             }
         }
     }
-    fn components_of(&self, s: Surface) -> &[ComponentKey] {
+    fn active_surface(&self) -> Option<Surface> {
+        self.active
+            .popup
+            .map(Surface::Popup)
+            .or_else(|| self.active.page.map(Surface::Page))
+    }
+
+    fn components_of(&self, s: Surface) -> Option<&[ComponentKey]> {
         match s {
-            Surface::Page(k) => &self.pages.get(k).unwrap().components,
-            Surface::Popup(k) => &self.popups.get(k).unwrap().components,
+            Surface::Page(k) => self.pages.get(k).map(|p| p.components.as_slice()),
+            Surface::Popup(k) => self.popups.get(k).map(|p| p.components.as_slice()),
         }
     }
 
@@ -202,8 +211,7 @@ impl LayerSystem {
     }
 
     fn focus_first_on_surface(&mut self, s: Surface) {
-        let list = self.components_of(s);
-        self.active.focus.component = list.first().copied();
+        self.active.focus.component = self.components_of(s).and_then(|list| list.first().copied());
     }
 
     fn focus_restore_or_first(&mut self, s: Surface) {
@@ -212,20 +220,10 @@ impl LayerSystem {
     }
 
     pub fn describe_focus(&self) -> Option<FocusDescriptor<'_>> {
-        let surface = if self.active.popup.is_some() {
-            Surface::Popup(self.active.popup.unwrap())
-        } else {
-            Surface::Page(self.active.page.unwrap())
-        };
-        let (surface_label, comps) = match surface {
-            Surface::Page(k) => {
-                let p = self.pages.get(k)?;
-                (p.meta.title.as_str(), &p.components[..])
-            }
-            Surface::Popup(k) => {
-                let p = self.popups.get(k)?;
-                (p.meta.title.as_str(), &p.components[..])
-            }
+        let surface = self.active_surface()?;
+        let surface_label = match surface {
+            Surface::Page(k) => self.pages.get(k)?.meta.title.as_str(),
+            Surface::Popup(k) => self.popups.get(k)?.meta.title.as_str(),
         };
         let comp_label = self
             .active
@@ -240,29 +238,136 @@ impl LayerSystem {
         })
     }
     pub fn create_page<S: PageSpec>(&mut self, name: &str, spec: S) -> PageKey {
-        let key = self
-            .pages
-            .insert_with_key(|k| Page::empty(k, "page"));
+        let key = self.pages.insert_with_key(|k| Page::empty(k, "page"));
         {
             let mut builder = PageBuilder::new(&mut self.components, key, "page", name);
             spec.build(name, &mut builder);
-            let page = builder.finish();
+            let mut page = builder.finish();
+            if page.context.is_empty() {
+                page.context = name.to_ascii_lowercase();
+            }
+            page.context = Self::normalize_id(&page.context);
+            self.page_lookup.insert(page.context.clone(), key);
+            self.page_lookup.insert(Self::normalize_id(name), key);
+            self.page_order.push(key);
             self.pages[key] = page;
         }
         key
     }
 
     pub fn create_popup<S: PopupSpec>(&mut self, name: &str, spec: S) -> PopupKey {
-        let key = self
-            .popups
-            .insert_with_key(|k| Popup::empty(k, "popup"));
+        let key = self.popups.insert_with_key(|k| Popup::empty(k, "popup"));
         {
             let mut builder = PopupBuilder::new(&mut self.components, key, "popup", name);
             spec.build(name, &mut builder);
-            let popup = builder.finish();
+            let mut popup = builder.finish();
+            if popup.meta.title.is_empty() {
+                popup.meta.title = name.to_string();
+            }
+            let ident = Self::normalize_id(&popup.meta.title);
+            self.popup_lookup.insert(ident, key);
+            self.popup_lookup.insert(Self::normalize_id(name), key);
             self.popups[key] = popup;
         }
         key
+    }
+
+    pub fn lookup_page(&self, id: &str) -> Option<PageKey> {
+        self.page_lookup
+            .get(&Self::normalize_id(id))
+            .copied()
+            .or_else(|| self.page_lookup.get(id).copied())
+    }
+
+    pub fn lookup_popup(&self, id: &str) -> Option<PopupKey> {
+        self.popup_lookup
+            .get(&Self::normalize_id(id))
+            .copied()
+            .or_else(|| self.popup_lookup.get(id).copied())
+    }
+
+    pub fn lookup_component(&self, id: &str) -> Option<ComponentKey> {
+        self.components.find_by_name(id)
+    }
+
+    pub fn toggle_help(&mut self) {
+        self.active.help_visible = !self.active.help_visible;
+    }
+
+    pub fn help_visible(&self) -> bool {
+        self.active.help_visible
+    }
+
+    pub fn activate_next_page(&mut self) -> Option<PageKey> {
+        let next_key = match self.active.page {
+            Some(current) => {
+                if self.page_order.is_empty() {
+                    None
+                } else {
+                    let idx = self
+                        .page_order
+                        .iter()
+                        .position(|&k| k == current)
+                        .unwrap_or(0);
+                    let next = (idx + 1) % self.page_order.len();
+                    Some(self.page_order[next])
+                }
+            }
+            None => self.page_order.first().copied(),
+        };
+        if let Some(key) = next_key {
+            self.activate_page(key);
+            return Some(key);
+        }
+        None
+    }
+
+    pub fn activate_previous_page(&mut self) -> Option<PageKey> {
+        let prev_key = match self.active.page {
+            Some(current) => {
+                if self.page_order.is_empty() {
+                    None
+                } else {
+                    let idx = self
+                        .page_order
+                        .iter()
+                        .position(|&k| k == current)
+                        .unwrap_or(0);
+                    let next = (idx + self.page_order.len() - 1) % self.page_order.len();
+                    Some(self.page_order[next])
+                }
+            }
+            None => self.page_order.last().copied(),
+        };
+        if let Some(key) = prev_key {
+            self.activate_page(key);
+            return Some(key);
+        }
+        None
+    }
+
+    pub fn page_context(&self, key: PageKey) -> Option<&str> {
+        self.pages.get(key).map(|p| p.context.as_str())
+    }
+
+    pub fn component_name(&self, key: ComponentKey) -> Option<&str> {
+        self.components.items.get(key).map(|c| c.name())
+    }
+
+    pub fn focus_labels(&self) -> (Option<String>, Option<String>) {
+        let surface = self.active.focus.surface.and_then(|surface| match surface {
+            Surface::Page(k) => self.pages.get(k).map(|p| p.meta.title.clone()),
+            Surface::Popup(k) => self.popups.get(k).map(|p| p.meta.title.clone()),
+        });
+
+        let component = self
+            .active
+            .focus
+            .component
+            .and_then(|key| self.components.items.get(key))
+            .map(|component| component.name().to_string());
+
+        (surface, component)
     }
 }
 
@@ -276,9 +381,9 @@ fn slot_key<K: SlotId>(k: K) -> u64 {
     // robuste Hash-Konversion (z. B. durch ahash), hier vereinfachend:
     // Safety: K: Copy; cast via mem::transmute wenn es kleine Enums sind.
     // Besser: eigener Hasher auf Bytes von K.
-    use std::hash::{Hash, Hasher};
+    use std::hash::Hasher;
     let mut h = ahash::AHasher::default();
-    k.hash(&mut h);
+    std::hash::Hash::hash(&k, &mut h);
     h.finish()
 }
 
@@ -290,6 +395,7 @@ impl SlotsAny {
         }
         Self { map }
     }
+    #[allow(dead_code)]
     pub fn rect<K: SlotId>(&self, k: K) -> Option<Rect> {
         self.map.get(&slot_key(k)).copied()
     }
@@ -308,6 +414,7 @@ impl<K: SlotId> Slots<K> {
         self.map.insert(k, r);
         self
     }
+    #[allow(dead_code)]
     pub fn rect(&self, k: K) -> Option<Rect> {
         self.map.get(&k).copied()
     }
@@ -317,29 +424,39 @@ impl<K: SlotId> Slots<K> {
 }
 
 pub enum LayerAction {
-    OpenPage(PageKey), // optional: per Factory
-    ShowPopup(PopupKey),
-    ClosePopup,
     FocusNext,
     FocusPrev,
-    ToggleHelp,
+    FocusComponent(ComponentKey),
+    ActivatePage(PageKey),
+    ActivateNextPage,
+    ActivatePreviousPage,
+    ShowPopup(PopupKey),
+    ClosePopup,
 }
 pub enum ActionOutcome {
     Consumed,
     NotHandled,
+    #[allow(dead_code)]
     RequestFocus(ComponentKey),
+    #[allow(dead_code)]
     Emit(/* domain events */),
 }
 
 impl LayerSystem {
     pub fn apply(&mut self, a: LayerAction) {
         match a {
-            LayerAction::OpenPage(k) => self.activate_page(k),
-            LayerAction::ShowPopup(k) => self.show_popup(k),
-            LayerAction::ClosePopup => self.close_popup(),
             LayerAction::FocusNext => self.focus_next(),
             LayerAction::FocusPrev => self.focus_prev(),
-            LayerAction::ToggleHelp => self.active.show_help = !self.active.show_help,
+            LayerAction::FocusComponent(key) => self.focus_component(key),
+            LayerAction::ActivatePage(key) => self.activate_page(key),
+            LayerAction::ActivateNextPage => {
+                let _ = self.activate_next_page();
+            }
+            LayerAction::ActivatePreviousPage => {
+                let _ = self.activate_previous_page();
+            }
+            LayerAction::ShowPopup(k) => self.show_popup(k),
+            LayerAction::ClosePopup => self.close_popup(),
         }
     }
 }
@@ -357,4 +474,17 @@ pub fn centered_box(area: Rect, w: u16, h: u16) -> Rect {
 
 pub fn default_popup_layout(area: Rect) -> Rect {
     centered_box(area, area.width.saturating_mul(60) / 100, 12) // 60% Breite, 12 Zeilen
+}
+
+pub fn help_box(area: Rect) -> Rect {
+    let w = area.width.saturating_mul(80) / 100;
+    let h = area.height.saturating_mul(80) / 100;
+    let x = area.x + (area.width.saturating_sub(w)) / 2;
+    let y = area.height.saturating_sub(h);
+    Rect {
+        x,
+        y,
+        width: w.min(area.width),
+        height: h.min(area.height),
+    }
 }

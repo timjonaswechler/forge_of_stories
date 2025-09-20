@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub(crate) use settings::{ActionRegistry, Settings, SettingsStore};
+pub(crate) use settings::{Settings, SettingsStore};
 
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct MetaCfg {
