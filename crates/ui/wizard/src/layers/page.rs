@@ -31,6 +31,7 @@ pub struct Page {
     pub slot_map: IndexMap<u64, Vec<ComponentKey>>, // slot-hash → comp-ids
     pub meta: PageMeta,
     pub context: String,
+    pub tags: Vec<String>,
     pub layout_any: Box<dyn Fn(Rect) -> SlotsAny + Send + Sync + 'static>, // typ-erased Slots
 }
 
@@ -43,6 +44,7 @@ pub struct PageBuilder<'a> {
     pub slot_map: IndexMap<u64, Vec<ComponentKey>>,
     pub components: Vec<ComponentKey>,
     pub context: String,
+    pub tags: Vec<String>,
 }
 
 impl<'a> PageBuilder<'a> {
@@ -59,11 +61,16 @@ impl<'a> PageBuilder<'a> {
             slot_map: IndexMap::new(),
             components: Vec::new(),
             context: title_string.to_ascii_lowercase(),
+            tags: Vec::new(),
         }
     }
 
     pub fn title(&mut self, t: impl Into<String>) {
         self.meta.title = t.into();
+    }
+
+    pub fn add_tag(&mut self, t: impl Into<String>) {
+        self.tags.push(t.into());
     }
 
     pub fn component<T: Component + 'static>(&mut self, c: T) -> ComponentKey {
@@ -85,6 +92,7 @@ impl<'a> PageBuilder<'a> {
             slot_map: self.slot_map,
             meta: self.meta,
             context: self.context,
+            tags: self.tags,
             layout_any: self
                 .layout_any
                 .unwrap_or_else(|| Box::new(default_page_layout)),
@@ -113,6 +121,7 @@ impl Page {
                 title: String::new(),
             },
             context: String::new(),
+            tags: Vec::new(),
             layout_any: Box::new(default_page_layout),
         }
     }

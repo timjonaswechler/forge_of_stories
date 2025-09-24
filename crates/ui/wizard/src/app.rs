@@ -89,6 +89,24 @@ impl App {
         let help_view = HelpView::new(settings.clone());
 
         let mut layers = LayerSystem::new();
+        // Register Certificate popup (self-signed generation on focus)
+        {
+            #[allow(unused_imports)]
+            use crate::layers::popup::certificate::register_certificate_popup;
+            let _cert_popup = register_certificate_popup(&mut layers);
+        }
+        // Show a one-time hint about the popup key binding
+        {
+            let ttl = settings
+                .get::<settings::Wizard>()
+                .map(|w| w.notification_lifetime_ms)
+                .unwrap_or(4000);
+            let _ = layers.notify(
+                crate::layers::notify::NotificationKind::Info,
+                "Tip: bind a key to open the Certificate popup → PopupOpen { popup = 'certificate' } (Esc closes).",
+                ttl,
+            );
+        }
         match cli.cmd {
             Cmd::Run { mode } => match mode {
                 RunMode::Setup => {
@@ -189,6 +207,7 @@ impl App {
             mods.push("shift");
         }
         let key_str = match key.code {
+            KeyCode::Char(' ') => "space".into(),
             KeyCode::Char(c) => c.to_ascii_lowercase().to_string(),
             KeyCode::Enter => "enter".into(),
             KeyCode::Esc => "esc".into(),
@@ -372,6 +391,19 @@ impl App {
                 true
             }
             ActionOutcome::Emit() => true,
+            ActionOutcome::ShowPopupById(id) => {
+                if let Some(popup) = self.layers.lookup_popup(&id) {
+                    self.apply_layer_action(LayerAction::ShowPopup(popup));
+                    true
+                } else {
+                    false
+                }
+            }
+            ActionOutcome::RefreshStatus => {
+                // Trigger immediate refresh of status components
+                self.broadcast_action_to_components(&Action::Tick);
+                true
+            }
         }
     }
 
@@ -402,44 +434,17 @@ impl App {
     }
 
     fn refresh_active_contexts(&mut self) {
-        let mut contexts = Vec::new();
-        Self::push_context(&mut contexts, "global");
-
-        match self.ui_mode {
-            UiMode::Normal => Self::push_context(&mut contexts, "normal-mode"),
-            UiMode::Edit => Self::push_context(&mut contexts, "edit-mode"),
-        }
-
-        if let Some(page_key) = self.layers.active.page {
-            if let Some(ctx) = self.layers.page_context(page_key) {
-                // Self::push_context(&mut contexts, ctx);
-                Self::push_context(&mut contexts, format!("page:{ctx}"));
-            }
-        }
-
-        if self.layers.active.popup.is_some() {
-            Self::push_context(&mut contexts, "popup-visible");
-        }
-
-        if let Some(component_key) = self.layers.active.focus.component {
-            if let Some(name) = self.layers.component_name(component_key) {
-                // Self::push_context(&mut contexts, name);
-                Self::push_context(&mut contexts, format!("component:{name}"));
-            }
-        }
+        // Build a single source-of-truth fact set from LayerSystem
+        let mode_atom = match self.ui_mode {
+            UiMode::Normal => "normal-mode",
+            UiMode::Edit => "edit-mode",
+        };
+        let facts = self.layers.build_context_facts(&["global", mode_atom]);
+        // HelpView still takes a list of strings; pass atoms as contexts
+        let contexts: Vec<String> = facts.atoms.iter().cloned().collect();
 
         self.active_contexts = contexts;
         self.help_view.set_contexts(&self.active_contexts);
-    }
-
-    fn push_context(contexts: &mut Vec<String>, ctx: impl Into<String>) {
-        let value = ctx.into();
-        if !contexts
-            .iter()
-            .any(|existing| existing.eq_ignore_ascii_case(&value))
-        {
-            contexts.push(value);
-        }
     }
 
     fn sync_focus_change(&mut self, previous: Option<ComponentKey>) {

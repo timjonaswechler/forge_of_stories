@@ -11,6 +11,7 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 pub enum DashboardSlot {
     WizardLogo,
     AetherStatus,
+    ActionsHint,
     WelcomeMessage,
 }
 
@@ -35,6 +36,14 @@ impl PageSpec for DashboardPage {
         let status = b.component(AetherStatusListComponent::new());
         b.place_in_slot(status, DashboardSlot::AetherStatus);
 
+        let actions = b.component(
+            Info::new("Actions")
+                .add_line("Bind a key to: PopupOpen { popup = 'certificate' }")
+                .add_line("Then press it to open the Certificate popup (self-signed generation).")
+                .add_line("Esc closes popups. Ctrl+H shows help."),
+        );
+        b.place_in_slot(actions, DashboardSlot::ActionsHint);
+
         let welcome = b.component(
             Info::new("Welcome!")
                 .add_line("Use arrow keys to navigate.")
@@ -58,5 +67,6 @@ fn dashboard_layout(area: Rect) -> Slots<DashboardSlot> {
     Slots::empty()
         .with(DashboardSlot::WizardLogo, vertical[0])
         .with(DashboardSlot::AetherStatus, vertical[1])
+        .with(DashboardSlot::ActionsHint, vertical[2])
         .with(DashboardSlot::WelcomeMessage, vertical[3])
 }

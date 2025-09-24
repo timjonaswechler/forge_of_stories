@@ -48,6 +48,9 @@ impl Component for Info {
     fn focusable(&self) -> bool {
         false
     }
+    fn kind(&self) -> &'static str {
+        "info"
+    }
 
     fn handle_action(&mut self, _action: &Action) -> ActionOutcome {
         ActionOutcome::NotHandled

@@ -34,7 +34,6 @@ pub fn build_wizard_settings_store() -> color_eyre::Result<SettingsStore> {
         .with_embedded_setting_asset("settings/wizard-default.toml")
         .with_settings_file_optional(paths::config_dir().join("wizard.toml"))
         .with_embedded_keymap_asset("keymaps/wizard-default.toml");
-    // .with_keymap_file_optional(paths::config_dir().join("wizard-keymap.toml"));
 
     let store = builder.build()?;
     store.register::<Meta>()?;

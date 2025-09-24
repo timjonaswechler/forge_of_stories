@@ -8,6 +8,7 @@ use notify::{Notification, NotificationKey, NotificationKind};
 use page::{Page, PageBuilder, PageKey, PageSpec};
 use popup::{Popup, PopupBuilder, PopupKey, PopupSpec};
 use ratatui::layout::Rect;
+use settings::ContextFacts;
 use slotmap::SlotMap;
 use std::collections::HashMap;
 
@@ -214,7 +215,7 @@ impl LayerSystem {
     pub fn create_page<S: PageSpec>(&mut self, name: &str, spec: S) -> PageKey {
         let key = self.pages.insert_with_key(|k| Page::empty(k));
         {
-            let mut builder = PageBuilder::new(&mut self.components, key, "page");
+            let mut builder = PageBuilder::new(&mut self.components, key, name);
             spec.build(name, &mut builder);
             let mut page = builder.finish();
             if page.context.is_empty() {
@@ -343,6 +344,75 @@ impl LayerSystem {
 
         (surface, component)
     }
+
+    /// Build a canonical, lowercased set of context atoms from the current LayerSystem state,
+    /// plus any additional atoms provided by the caller (e.g., "global", "normal-mode"/"edit-mode").
+    /// Examples:
+    /// - page:<id>, <id> (compat)
+    /// - popup-visible, popup:<id>
+    /// - component:<name>, <name> (compat)
+    pub fn build_context_atoms(&self, extra_atoms: &[&str]) -> std::collections::BTreeSet<String> {
+        let mut atoms = std::collections::BTreeSet::new();
+
+        // 0) external atoms (e.g., ui mode, global)
+        for a in extra_atoms {
+            atoms.insert(Self::normalize_id(a));
+        }
+
+        // 1) page context
+        if let Some(page_key) = self.active.page {
+            if let Some(ctx) = self.page_context(page_key) {
+                let id = Self::normalize_id(ctx);
+                atoms.insert(id.clone()); // compat: bare page id
+                atoms.insert(format!("page:{id}"));
+
+                if let Some(page) = self.pages.get(page_key) {
+                    for tag in &page.tags {
+                        let t = Self::normalize_id(tag);
+                        atoms.insert(format!("page-tag:{t}"));
+                    }
+                }
+            }
+        }
+
+        // 2) popup state
+        if let Some(popup_key) = self.active.popup {
+            atoms.insert("popup-visible".into());
+            if let Some(title) = self.popups.get(popup_key).map(|p| p.meta.title.as_str()) {
+                let id = Self::normalize_id(title);
+                atoms.insert(format!("popup:{id}"));
+            }
+        }
+
+        // 3) focused component
+        if let Some(component_key) = self.active.focus.component {
+            if let Some(comp) = self.components.items.get(component_key) {
+                let name = comp.name().to_string();
+                let id = Self::normalize_id(&name);
+                atoms.insert(id.clone()); // compat: bare component name
+                atoms.insert(format!("component:{id}"));
+
+                // Component kind (e.g., "input", "button")
+                let kind = Self::normalize_id(comp.kind());
+                atoms.insert(format!("component-kind:{kind}"));
+
+                // Component tags
+                for tag in comp.tags() {
+                    let t = Self::normalize_id(tag);
+                    atoms.insert(format!("component-tag:{t}"));
+                }
+            }
+        }
+
+        atoms
+    }
+
+    /// Convenience: wrap the atoms into a Settings ContextFacts payload for evaluation.
+    pub fn build_context_facts(&self, extra_atoms: &[&str]) -> ContextFacts {
+        ContextFacts {
+            atoms: self.build_context_atoms(extra_atoms),
+        }
+    }
 }
 
 pub trait SlotId: Eq + std::hash::Hash + Copy + 'static {}
@@ -414,6 +484,10 @@ pub enum ActionOutcome {
     RequestFocus(ComponentKey),
     #[allow(dead_code)]
     Emit(/* domain events */),
+    /// Ask App to open a popup by its normalized id (e.g., "certificate").
+    ShowPopupById(String),
+    /// Trigger immediate refresh of status components.
+    RefreshStatus,
 }
 
 impl LayerSystem {

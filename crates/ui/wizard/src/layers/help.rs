@@ -7,8 +7,8 @@ use ratatui::{
     symbols,
     widgets::{Block, BorderType, Borders, Clear, Paragraph, Row, Table, TableState},
 };
-use settings::{DeviceFilter, SettingsStore};
-use std::{collections::HashSet, sync::Arc};
+use settings::{ContextFacts, DeviceFilter, SettingsStore};
+use std::sync::Arc;
 use tui_input::Input;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -218,43 +218,45 @@ impl HelpView {
     fn build_table_data(&self) -> Vec<TableRow> {
         let mut rows = Vec::new();
         let filter = self.search_query.as_ref().map(|s| s.to_ascii_lowercase());
-        let mut seen = HashSet::new();
 
-        for context in &self.contexts {
-            let exported = self
-                .settings
-                .export_keymap_for(DeviceFilter::Keyboard, context);
-            for (action_name, chords) in exported {
-                let key = (action_name.clone(), context.clone());
-                if !seen.insert(key) {
-                    continue;
+        // Build ContextFacts from the LayerSystem-provided contexts
+        let atoms = self
+            .contexts
+            .iter()
+            .cloned()
+            .map(|s| s.to_ascii_lowercase())
+            .collect::<std::collections::BTreeSet<_>>();
+        let facts = ContextFacts { atoms };
+
+        // Ask settings for the effective keybindings NOW (context-aware, deduped by priority)
+        let exported = self
+            .settings
+            .export_effective_keybindings(DeviceFilter::Keyboard, &facts);
+
+        for br in exported {
+            let action_name = br.action;
+            let keys = br.key;
+            let context_expr = br.context_expr;
+            let details = describe_action(&action_name);
+
+            let include = match &filter {
+                Some(query) => {
+                    let a = action_name.to_ascii_lowercase();
+                    let k = keys.to_ascii_lowercase();
+                    let c = context_expr.to_ascii_lowercase();
+                    let d = details.to_ascii_lowercase();
+                    a.contains(query) || k.contains(query) || c.contains(query) || d.contains(query)
                 }
+                None => true,
+            };
 
-                let keys = chords.join(", ");
-                let details = describe_action(&action_name);
-
-                let include = match &filter {
-                    Some(query) => {
-                        let a = action_name.to_ascii_lowercase();
-                        let k = keys.to_ascii_lowercase();
-                        let c = context.to_ascii_lowercase();
-                        let d = details.to_ascii_lowercase();
-                        a.contains(query)
-                            || k.contains(query)
-                            || c.contains(query)
-                            || d.contains(query)
-                    }
-                    None => true,
-                };
-
-                if include {
-                    rows.push(TableRow {
-                        action: action_name,
-                        keys,
-                        context: context.clone(),
-                        details,
-                    });
-                }
+            if include {
+                rows.push(TableRow {
+                    action: action_name,
+                    keys,
+                    context: context_expr,
+                    details,
+                });
             }
         }
 

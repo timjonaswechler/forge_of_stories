@@ -82,6 +82,12 @@ impl Component for StatusBar {
     fn focusable(&self) -> bool {
         false
     }
+    fn kind(&self) -> &'static str {
+        "status"
+    }
+    fn tags(&self) -> &'static [&'static str] {
+        &["status_bar"]
+    }
 
     fn handle_action(&mut self, action: &Action) -> ActionOutcome {
         match action {

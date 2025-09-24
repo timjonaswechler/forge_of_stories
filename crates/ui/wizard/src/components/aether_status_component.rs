@@ -14,7 +14,6 @@ use ratatui::{
 enum StatusItemKind {
     Settings,
     Certificate,
-    Uds,
 }
 
 impl StatusItemKind {
@@ -22,7 +21,6 @@ impl StatusItemKind {
         match self {
             StatusItemKind::Settings => "settings",
             StatusItemKind::Certificate => "certificate",
-            StatusItemKind::Uds => "uds",
         }
     }
 }
@@ -31,7 +29,6 @@ struct StatusSnapshot {
     settings_found: bool,
     settings_valid: bool,
     cert_found: bool,
-    uds_found: bool,
 }
 
 impl StatusSnapshot {
@@ -40,7 +37,6 @@ impl StatusSnapshot {
             settings_found: aether_config::settings_found(),
             settings_valid: aether_config::settings_valid(),
             cert_found: aether_config::certificate_found(),
-            uds_found: aether_config::uds_found(),
         }
     }
 }
@@ -59,11 +55,7 @@ impl AetherStatusListComponent {
             id: None,
             focused: false,
             selected: 0,
-            items: vec![
-                StatusItemKind::Settings,
-                StatusItemKind::Certificate,
-                StatusItemKind::Uds,
-            ],
+            items: vec![StatusItemKind::Settings, StatusItemKind::Certificate],
             snapshot: StatusSnapshot::probe(),
         }
     }
@@ -94,10 +86,18 @@ impl AetherStatusListComponent {
     }
 
     fn activate_selected(&mut self) {
-        // Placeholder for future domain-specific activation hooks.
-        // TODO: OpenPopup
-        //
-        self.items[self.selected].id();
+        let id = self.items[self.selected].id();
+        match id {
+            "certificate" => {
+                if !self.snapshot.cert_found {
+                    ActionOutcome::ShowPopupById("certificate".to_string());
+                }
+            }
+            "settings" => {
+                ActionOutcome::ShowPopupById("settings".to_string());
+            }
+            _ => {}
+        }
     }
 
     fn draw_lines(&self) -> Vec<Line<'static>> {
@@ -188,39 +188,6 @@ impl AetherStatusListComponent {
                     line_spans.push(Span::styled(" Certificate ", text_style));
                     lines.push(Line::from(line_spans));
                 }
-                StatusItemKind::Uds => {
-                    let sel = idx == self.selected;
-                    let found = self.snapshot.uds_found;
-                    let marker: Vec<Span> = if found {
-                        vec![
-                            " [  ".into(),
-                            Span::styled("ok", Style::default().fg(Color::Green)),
-                            "  ] ".into(),
-                        ]
-                    } else {
-                        vec![
-                            " [ ".into(),
-                            Span::styled("    ", Style::default().fg(Color::Gray)),
-                            " ] ".into(),
-                        ]
-                    };
-                    let arrow_style = if sel {
-                        Style::default().fg(focus_accent).add_modifier(focus_bold)
-                    } else {
-                        Style::default().fg(Color::Gray)
-                    };
-                    let text_style = if sel && self.focused {
-                        Style::default().add_modifier(Modifier::BOLD)
-                    } else {
-                        Style::default()
-                    };
-
-                    let mut line_spans =
-                        vec![Span::styled(if sel { "> " } else { "  " }, arrow_style)];
-                    line_spans.extend(marker);
-                    line_spans.push(Span::styled(" UDS Socket  ", text_style));
-                    lines.push(Line::from(line_spans));
-                }
             }
             // Blank spacer line after each group except last (for readability)
             if idx != self.items.len() - 1 {
@@ -246,6 +213,14 @@ impl Component for AetherStatusListComponent {
 
     fn on_focus(&mut self, gained: bool) {
         self.focused = gained;
+    }
+
+    fn kind(&self) -> &'static str {
+        "list"
+    }
+
+    fn tags(&self) -> &'static [&'static str] {
+        &["aether_status"]
     }
 
     fn handle_action(&mut self, action: &Action) -> ActionOutcome {

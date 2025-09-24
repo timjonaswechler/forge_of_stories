@@ -145,6 +145,10 @@ impl Component for Logo {
         false
     }
 
+    fn kind(&self) -> &'static str {
+        "display"
+    }
+
     fn handle_action(&mut self, _action: &Action) -> ActionOutcome {
         ActionOutcome::NotHandled
     }

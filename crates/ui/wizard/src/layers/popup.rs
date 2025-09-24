@@ -3,6 +3,7 @@
 //!
 //! Popups work similar to Pages but are modal and overlay the current content.
 //! They support flexible sizing and positioning.
+pub mod certificate;
 
 use crate::layers::{Component, ComponentKey, ComponentStore, SlotId, Slots, SlotsAny};
 use indexmap::IndexMap;

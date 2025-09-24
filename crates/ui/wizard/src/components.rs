@@ -63,6 +63,14 @@ pub trait Component {
     fn focusable(&self) -> bool {
         true
     }
+    /// Semantic kind of the component (e.g., "input", "button", "list"); defaults to "component".
+    fn kind(&self) -> &'static str {
+        "component"
+    }
+    /// Optional static tags for context facts (e.g., &["aether_status"]); defaults to empty.
+    fn tags(&self) -> &'static [&'static str] {
+        &[]
+    }
     fn on_focus(&mut self, _gained: bool) {}
     fn handle_action(&mut self, action: &Action) -> ActionOutcome;
     fn render(&self, f: &mut ratatui::Frame, area: ratatui::layout::Rect);
