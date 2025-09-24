@@ -1,6 +1,6 @@
 [package]
 name = "settings"
-version = "0.1.0"
+version = "0.2.0"
 edition.workspace = true
 
 
@@ -9,19 +9,18 @@ path = "src/lib.rs"
 # doctest = false # Enable if you want to skip doctests initially.
 
 [dependencies]
-anyhow.workspace = true
+bevy = {version = "0.16.1", default-features = false, optional= true }
 bitflags.workspace = true
-color-eyre.workspace = true
 log.workspace = true
 futures.workspace = true
 paths.workspace = true
 rust-embed.workspace = true
+ron = "0.11.0"
 serde.workspace = true
-tree-sitter = "0.25.8"
-toml.workspace = true
-toml_edit.workspace = true
-thiserror = "1.0.38"
-bevy = {version = "0.16.1", default-features = false, optional= true }
+thiserror.workspace = true
+config = { version = "0.14", features = ["ron"] }
+
+
 [dev-dependencies]
 
 

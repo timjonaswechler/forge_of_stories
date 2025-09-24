@@ -10,3 +10,7 @@ path = "src/app.rs"
 [dependencies]
 settings.workspace = true
 paths.workspace = true
+tracing.workspace = true
+tracing-appender.workspace = true
+tracing-error.workspace = true
+tracing-subscriber.workspace = true

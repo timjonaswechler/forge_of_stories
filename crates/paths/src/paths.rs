@@ -22,42 +22,6 @@ const ENV_CONFIG_DIR: &str = "FORGE_OF_STORIES_CONFIG_DIR";
 const ENV_DATA_DIR_ALT: &str = "FOS_DATA_DIR";
 const ENV_CONFIG_DIR_ALT: &str = "FOS_CONFIG_DIR";
 
-/// Sets a custom directory for configuration data, overriding the default config directory.
-/// This function must be called before any other path operations that depend on the config directory.
-/// The directory's path will be canonicaliForge_of_Stories to an absolute path by a blocking FS operation.
-/// The directory will be created if it doesn't exist.
-///
-/// # Arguments
-///
-/// * `dir` - The path to use as the custom config directory.
-///
-/// # Returns
-///
-/// A reference to the static `PathBuf` containing the custom config directory path.
-///
-/// # Panics
-///
-/// Panics if:
-/// * Called after the config directory has been initialiForge_of_Stories (e.g., via `config_dir`)
-/// * The directory's path cannot be canonicaliForge_of_Stories to an absolute path
-/// * The directory cannot be created
-pub fn set_custom_config_dir(dir: &str) -> &'static PathBuf {
-    if CURRENT_DATA_DIR.get().is_some() || CURRENT_CONFIG_DIR.get().is_some() {
-        panic!("set_custom_config_dir called after data_dir or config_dir was initialized");
-    }
-    CUSTOM_CONFIG_DIR.get_or_init(|| {
-        let mut path = PathBuf::from(dir);
-        if path.is_relative() {
-            let abs_path = path.canonicalize().expect(
-                "failed to canonicalize custom config directory's path to an absolute path",
-            );
-            path = PathBuf::from(SanitizedPath::from(abs_path))
-        }
-        std::fs::create_dir_all(&path).expect("failed to create custom config directory");
-        path
-    })
-}
-
 /// Returns the path to the configuration directory used by Forge_of_Stories.
 /// Automatically creates the directory if it doesn't exist.
 pub fn config_dir() -> &'static PathBuf {
@@ -189,15 +153,11 @@ pub fn logs_dir() -> &'static PathBuf {
     path
 }
 /// Returns the path to the `<id>.log` file.
-pub fn log_file(id: &str) -> &'static PathBuf {
+pub fn log_file(id: &str, time_stamp: &str) -> &'static PathBuf {
     static LOG_FILE: OnceLock<PathBuf> = OnceLock::new();
-    LOG_FILE.get_or_init(|| logs_dir().join(format!("{}.log", id)))
+    LOG_FILE.get_or_init(|| logs_dir().join(format!("{}.{}.log", id, time_stamp)))
 }
-/// Returns the path to the `<id>.log.old` file.
-pub fn old_log_file(id: &str) -> &'static PathBuf {
-    static OLD_LOG_FILE: OnceLock<PathBuf> = OnceLock::new();
-    OLD_LOG_FILE.get_or_init(|| logs_dir().join(format!("{}.log.old", id)))
-}
+
 /// Returns the path to the extensions directory.
 /// Automatically creates the directory if it doesn't exist.
 ///
@@ -415,12 +375,6 @@ pub struct PathMatcher {
     sources: Vec<String>,
     glob: GlobSet,
 }
-
-// impl std::fmt::Display for PathMatcher {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         self.sources.fmt(f)
-//     }
-// }
 
 impl PartialEq for PathMatcher {
     fn eq(&self, other: &Self) -> bool {

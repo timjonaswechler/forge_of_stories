@@ -53,6 +53,9 @@ PrevPage = [
 
 
 
+
+
+
 # ----------------------------------------------------------------------------
 # Edit mode exit
 # ----------------------------------------------------------------------------
@@ -80,7 +83,7 @@ PopupClose = [
 # ----------------------------------------------------------------------------
 
 [[bindings]]
-context = "page:welcome && component:aether_status"
+context = "component:aether_status"
 [bindings.actions]
 ItemPrev = [
     { key = "k" },

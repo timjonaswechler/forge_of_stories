@@ -130,7 +130,7 @@ pub fn apply_server_setting(
     Ok(())
 }
 use settings::{Settings, SettingsStore};
-use std::sync::Arc;
+use std::{sync::Arc, thread::panicking};
 
 // 1) Typisierte Modelle
 #[derive(Clone, Default, Serialize, Deserialize)]
@@ -427,7 +427,7 @@ pub fn settings_valid() -> bool {
 /// For now we just check for a single PEM file in the config directory.
 /// Adjust path / strategy once certificate management is implemented.
 pub fn certificate_found() -> bool {
-    paths::config_dir().join("server_cert.pem").exists()
+    paths::config_dir().join("cert.pem").exists() && paths::config_dir().join("key.pem").exists()
 }
 
 /// Placeholder: does a (planned) Unix Domain Socket file exist?

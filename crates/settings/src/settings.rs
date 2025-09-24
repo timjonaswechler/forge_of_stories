@@ -1,28 +1,35 @@
 pub use crate::store::*;
-use serde::{Serialize, de::DeserializeOwned};
-use toml::Value;
+use serde::{Deserialize, Serialize};
 
 #[derive(thiserror::Error, Debug)]
 pub enum SettingsError {
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
-    #[error("toml de: {0}")]
-    TomlDe(#[from] toml::de::Error),
-    #[error("toml ser: {0}")]
-    TomlSer(#[from] toml::ser::Error),
+    #[error("ron: {0}")]
+    Ron(#[from] ron::Error),
     #[error("invalid config: {0}")]
     Invalid(&'static str),
     #[error("not registered")]
     NotRegistered,
 }
 
-pub trait Settings: Send + Sync + 'static {
+// Der Settings-Trait, um Standardwerte bereitzustellen.
+pub trait Settings: Default + Serialize + for<'de> Deserialize<'de> {
+    /// Section identifier used in the RON delta file.
     const SECTION: &'static str;
-    type Model: DeserializeOwned + Serialize + Clone + Default;
-    fn migrate(v: Value) -> Result<Value, SettingsError> {
-        Ok(v)
-    }
-    fn validate(_m: &Self::Model) -> Result<(), SettingsError> {
-        Ok(())
+
+    /// Backwards-compatible helper; existing code calling `T::name()` still works.
+    #[inline]
+    fn name() -> &'static str {
+        Self::SECTION
     }
 }
+
+// Example:
+// #[derive(Clone, Serialize, Deserialize, Default)]
+// struct Network {
+//     port: u16,
+// }
+// impl Settings for Network {
+//     const SECTION: &'static str = "network";
+// }
