@@ -1,5 +1,8 @@
+use chrono::{DateTime, Local};
 use std::path::PathBuf;
-use tracing_subscriber::{filter::LevelFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{
+    Layer, filter::LevelFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt,
+};
 
 pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
@@ -34,10 +37,12 @@ pub fn init<A: Application>() -> Result<AppBase, A::Error> {
     let logs_dir = paths::logs_dir().join(app_id);
 
     let current_local: DateTime<Local> = Local::now();
-    let custom_format = current_local.format("%Y-%m-%dT%H:%M:%S");
+    let custom_format = current_local.format("%Y-%m-%dT%H:%M:%S").to_string();
 
-    let file_appender =
-        tracing_appender::rolling::never(logs_dir, paths::log_file(app_id, custom_format));
+    let file_appender = tracing_appender::rolling::never(
+        &logs_dir,
+        paths::log_file(app_id, custom_format.as_str()),
+    );
     let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
 
     #[cfg(debug_assertions)]

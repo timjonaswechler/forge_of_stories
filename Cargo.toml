@@ -44,6 +44,7 @@ anyhow = { version = "1.0.80" }
 axum = { version = "0.8.4", features = ["json", "ws"] }
 bincode = { version = "2.0.1", features = ["serde"] }
 bitflags = { version = "2.9.3", features = ["serde"] }
+chrono = "0.4.42"
 clap = { version = "4.5.43", features = ["derive"] }
 color-eyre = "0.6"
 crossterm = "0.29.0"
