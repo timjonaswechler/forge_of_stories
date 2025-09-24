@@ -398,11 +398,12 @@ impl SettingsStore {
 
             for section in section_names {
                 // If section not in defaults -> remove entirely
-                let default_map = if let Some(m) = defaults_snapshot.get(section.as_str()) {
-                    m
-                } else {
-                    deltas.remove(&section);
-                    continue;
+                let default_map = match defaults_snapshot.get(section.as_str()) {
+                    Some(m) => m,
+                    None => {
+                        deltas.remove(&section);
+                        continue;
+                    }
                 };
 
                 // If delta value is not a map just keep (cannot reconcile structure) unless defaults is map
@@ -412,12 +413,15 @@ impl SettingsStore {
                 };
 
                 // Only prune maps recursively
-                if let RonValue::Map(ref mut delta_map) = delta_val {
-                    let changed = Self::prune_map_recursive(default_map, delta_map);
-                    // After recursion: remove empty
-                    if changed && delta_map.is_empty() {
-                        deltas.remove(&section);
+                match delta_val {
+                    RonValue::Map(delta_map) => {
+                        let changed = Self::prune_map_recursive(default_map, delta_map);
+                        // After recursion: remove empty
+                        if changed && delta_map.is_empty() {
+                            deltas.remove(&section);
+                        }
                     }
+                    _ => {}
                 }
             }
         }
