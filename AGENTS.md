@@ -39,7 +39,7 @@ crates
    └─ wizard                 # CLI TUI (ratatui)
       └─ src/{components/popups/form/certificate,core,domain,pages,services,ui/{keymap,render}}
 ```
-
+[settings](/crate/settings/README.md)
 **Wizard CLI (initial command surface):**
 
 ```
