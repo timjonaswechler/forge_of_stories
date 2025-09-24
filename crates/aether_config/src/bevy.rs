@@ -17,16 +17,12 @@ impl AppAetherSettingsExt for App {
         self = self
             .register_settings_section::<crate::General>()
             .register_settings_section::<crate::Network>()
-            .register_settings_section::<crate::Security>()
-            .register_settings_section::<crate::Monitoring>()
-            .register_settings_section::<crate::Uds>();
+            .register_settings_section::<crate::Security>();
         self
     }
 }
 
 // Bequeme Type-Aliase für Resources in Bevy:
-pub type GeneralRes = SettingsArc<crate::GeneralCfg>;
-pub type NetworkRes = SettingsArc<crate::NetworkCfg>;
-pub type SecurityRes = SettingsArc<crate::SecurityCfg>;
-pub type MonitoringRes = SettingsArc<crate::MonitoringCfg>;
-pub type UdsRes = SettingsArc<crate::UdsCfg>;
+pub type GeneralRes = SettingsArc<crate::General>;
+pub type NetworkRes = SettingsArc<crate::Network>;
+pub type SecurityRes = SettingsArc<crate::Security>;

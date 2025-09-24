@@ -30,7 +30,7 @@ A focused, type-safe Settings system for Forge of Stories (and reusable elsewher
 
 ## 1. Quick Start (manual struct definition)
 
-```/dev/null/quickstart.rs#L1-80
+```rust
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
 use settings::{Settings, SettingsStore, SettingsError};
@@ -78,7 +78,7 @@ Define your settings structs manually (derive `Serialize`, `Deserialize`, `Clone
 
 If you already have struct definitions: use `define_settings!` to auto-derive `Default` + `Settings`.
 
-```/dev/null/macro_usage.rs#L1-60
+```rust
 use serde::{Serialize, Deserialize};
 use settings::{define_settings, SettingsStore};
 
