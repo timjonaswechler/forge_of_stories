@@ -7,9 +7,3 @@ edition = "2024"
 path = "src/lib.rs"
 
 [dependencies]
-serde = { workspace = true }
-anyhow = { workspace = true }
-quinn = { workspace = true }
-tokio = { workspace = true }
-bincode = "1"
-settings = { workspace = true }

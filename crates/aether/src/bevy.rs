@@ -3,6 +3,7 @@ pub mod settings_bridge;
 use crate::bevy::settings_bridge::AetherSettingsPlugin;
 use bevy::prelude::*;
 use std::time::Duration;
+use tracing;
 
 // 1) Labels für unsere Pipeline
 #[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
@@ -51,7 +52,7 @@ pub(crate) fn heartbeat_fixed(
     let real_delta_s = real_delta.as_secs_f64();
     let real_delta_ms = real_delta_s * 1000.0;
 
-    info!(
+    tracing::debug!(
         "fixed_tick={} target=({:.3} ms|{:.3} s) real=({:.3} ms|{:.3} s)",
         stats.ticks + 1,
         target_ms,

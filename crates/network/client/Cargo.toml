@@ -1,6 +1,6 @@
 [package]
 name = "client"
-version.workspace = true
+version = "0.1.0"
 edition.workspace = true
 
 [lib]
@@ -8,19 +8,4 @@ path = "src/lib.rs"
 
 
 [dependencies]
-network_shared = { workspace = true }
-settings = { workspace = true }
-
-
-# --- Assets ---
-serde = { workspace = true }
-color-eyre = { workspace = true }
-
-
-# --- Certificate ---
-rustls = { workspace = true }
-rcgen = { workspace = true }
-
-# --- Server ---
-quinn = { workspace = true }
-tokio = { workspace = true }
+network_shared.workspace = true

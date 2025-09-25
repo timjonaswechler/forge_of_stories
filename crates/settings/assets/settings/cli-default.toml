@@ -1,6 +1,0 @@
-
-[wizard]
-tick_rate = 4
-fps = 60
-autostart = false
-max_login_tries = 5

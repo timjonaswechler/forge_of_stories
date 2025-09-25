@@ -1,5 +1,5 @@
 use chrono::{DateTime, Local};
-use std::path::PathBuf;
+use std::{fs, path::PathBuf};
 use tracing_subscriber::{
     Layer, filter::LevelFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt,
 };
@@ -11,6 +11,8 @@ pub struct AppBase {
     pub config_dir: PathBuf,
     pub data_dir: PathBuf,
     pub logs_dir: PathBuf,
+    /// Guard to keep the non-blocking tracing worker alive (flushes log lines).
+    pub log_guard: tracing_appender::non_blocking::WorkerGuard,
 }
 
 impl AppBase {
@@ -39,11 +41,16 @@ pub fn init<A: Application>() -> Result<AppBase, A::Error> {
     let current_local: DateTime<Local> = Local::now();
     let custom_format = current_local.format("%Y-%m-%dT%H:%M:%S").to_string();
 
+    // Ensure directory structure exists
+    fs::create_dir_all(&config_dir).ok();
+    fs::create_dir_all(&data_dir).ok();
+    fs::create_dir_all(&logs_dir).ok();
+
     let file_appender = tracing_appender::rolling::never(
         &logs_dir,
         paths::log_file(app_id, custom_format.as_str()),
     );
-    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
     #[cfg(debug_assertions)]
     let level = LevelFilter::DEBUG; // Debug-Build zeigt DEBUG+INFO+...
@@ -51,12 +58,17 @@ pub fn init<A: Application>() -> Result<AppBase, A::Error> {
     #[cfg(not(debug_assertions))]
     let level = LevelFilter::WARN; // Release-Build zeigt WARN+ERROR
 
+    // Separate layer: file (non-blocking) + console (stdout)
+    let file_layer = fmt::Layer::default()
+        .with_target(false)
+        .with_writer(non_blocking)
+        .with_filter(level);
+
+    let console_layer = fmt::Layer::default().with_target(false).with_filter(level);
+
     tracing_subscriber::registry()
-        .with(
-            fmt::Layer::default()
-                .with_writer(non_blocking)
-                .with_filter(level),
-        )
+        .with(file_layer)
+        .with(console_layer)
         .init();
 
     A::init_platform()?;
@@ -66,5 +78,6 @@ pub fn init<A: Application>() -> Result<AppBase, A::Error> {
         config_dir,
         data_dir,
         logs_dir,
+        log_guard: guard,
     })
 }

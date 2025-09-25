@@ -19,3 +19,4 @@ bevy = { version = "0.16.1", default-features = false, features = [
     "bevy_log",
     "serialize",
 ] }
+tracing = { workspace = true }

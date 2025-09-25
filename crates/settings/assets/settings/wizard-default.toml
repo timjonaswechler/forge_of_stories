@@ -1,8 +1,0 @@
-[meta]
-version = "0.2.0"
-
-[wizard]
-tick_rate = 4
-fps = 60
-notification_lifetime_ms = 4000
-notification_max = 3

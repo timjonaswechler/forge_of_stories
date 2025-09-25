@@ -116,6 +116,7 @@ impl SettingsStoreBuilder {
 
         let delta_map: HashMap<String, RonValue> = if file_path.exists() {
             let content = fs::read_to_string(&file_path)?;
+
             if content.trim().is_empty() {
                 HashMap::new()
             } else {
@@ -160,20 +161,21 @@ impl SettingsStore {
         &self.file_path
     }
 
+    /// Check if a section is already registered.
+    pub fn is_registered<T>(&self) -> bool
+    where
+        T: Settings,
+    {
+        let section = T::name();
+        self.values.read().unwrap().contains_key(section)
+    }
+
     /// Install / replace logger at runtime.
     pub fn set_logger<F>(&self, f: F)
     where
         F: Fn(&str) + Send + Sync + 'static,
     {
         *self.logger.write().unwrap() = Some(Arc::new(f));
-    }
-
-    fn log(&self, msg: &str) {
-        if let Some(cb) = self.logger.read().unwrap().as_ref() {
-            cb(msg);
-        } else {
-            eprintln!("{msg}");
-        }
     }
 
     /// Register a section type (loads defaults and applies existing delta if present).

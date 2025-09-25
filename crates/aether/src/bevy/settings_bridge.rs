@@ -1,7 +1,8 @@
-use aether_config::bevy::GeneralRes;
+use aether_config::General;
 use bevy::prelude::*;
+use settings::SettingsArc;
 
-fn apply_tickrate_initial(general: Res<GeneralRes>, mut time_fixed: ResMut<Time<Fixed>>) {
+fn apply_tickrate_initial(general: Res<SettingsArc<General>>, mut time_fixed: ResMut<Time<Fixed>>) {
     let hz = general.tick_rate;
     time_fixed.set_timestep_hz(hz);
     info!("Initial FixedUpdate tick rate set from settings: {} Hz", hz);

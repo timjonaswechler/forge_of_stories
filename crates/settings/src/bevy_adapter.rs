@@ -14,8 +14,8 @@ pub struct SettingsStoreRef(pub Arc<crate::SettingsStore>);
 pub struct SettingsArc<T: Send + Sync + 'static>(pub Arc<T>);
 
 #[derive(Resource, Default)]
-struct SettingsRegistry {
-    updaters: Vec<fn(&Arc<crate::SettingsStore>, &mut World)>,
+pub struct SettingsRegistry {
+    pub updaters: Vec<fn(&Arc<crate::SettingsStore>, &mut World)>,
 }
 
 pub trait AppSettingsExt {
@@ -23,7 +23,6 @@ pub trait AppSettingsExt {
     fn register_settings_section<S>(self) -> Self
     where
         S: crate::Settings + Send + Sync + 'static + Clone;
-    // fn settings_poll_interval(self, dur: Duration) -> Self;
 }
 
 impl AppSettingsExt for App {
@@ -41,12 +40,34 @@ impl AppSettingsExt for App {
         S: crate::Settings + Send + Sync + 'static + Clone,
     {
         let store = self.world().resource::<SettingsStoreRef>().0.clone();
-        // 1) typed section im Store registrieren
-        store.register::<S>().expect("register settings section");
-        // 2) initial seed als Bevy-Resource
-        let arc = store.get::<S>().expect("get after register");
+
+        // If the resource already exists we are done (idempotent call)
+        if self.world().contains_resource::<SettingsArc<S>>() {
+            return self;
+        }
+
+        // Ensure the section is registered in the store (it may already be,
+        // e.g. because the store was pre-built with the section).
+        if !store.is_registered::<S>() {
+            store.register::<S>().expect("register settings section");
+        }
+
+        // Fetch current value and insert as Bevy resource (always insert even if pre‑registered).
+        // If deserialization fails (e.g. corrupt / mismatching delta), fall back to defaults so the
+        // app can continue running instead of panicking.
+        let arc = match store.get::<S>() {
+            Ok(arc) => arc,
+            Err(e) => {
+                eprintln!(
+                    "[settings] failed to load section '{}': {e}. Falling back to defaults.",
+                    S::name()
+                );
+                std::sync::Arc::new(S::default())
+            }
+        };
         self.world_mut().insert_resource(SettingsArc::<S>(arc));
-        // 3) Updater hinterlegen
+
+        // Register the updater
         fn update_one<S>(store: &Arc<crate::SettingsStore>, world: &mut World)
         where
             S: crate::Settings + Send + Sync + 'static + Clone,
@@ -58,8 +79,10 @@ impl AppSettingsExt for App {
                 }
             }
         }
+
         let mut reg = self.world_mut().resource_mut::<SettingsRegistry>();
         reg.updaters.push(update_one::<S>);
+
         self
     }
 }
@@ -75,7 +98,7 @@ pub fn settings_reload_system(world: &mut World) {
         // Re-run all updaters (clone list to avoid borrow conflicts).
         let reg = world.resource::<SettingsRegistry>();
         let updaters: Vec<_> = reg.updaters.iter().copied().collect();
-        drop(reg);
+        let _ = reg;
         for updater in updaters {
             updater(&store_arc, world);
         }

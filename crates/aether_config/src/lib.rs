@@ -23,6 +23,7 @@
 #[cfg(feature = "bevy")]
 pub mod bevy;
 
+use bevy::{Resource, ecs};
 use serde::{Deserialize, Serialize};
 use settings::{Settings, SettingsError, SettingsStore};
 
@@ -30,7 +31,7 @@ use settings::{Settings, SettingsError, SettingsStore};
 /* Section Models                                                            */
 /* ------------------------------------------------------------------------- */
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, Resource)]
 pub struct General {
     pub tick_rate: f64,
     pub autostart: bool,
@@ -48,7 +49,7 @@ impl Settings for General {
     const SECTION: &'static str = "general";
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, Resource)]
 pub struct Network {
     pub ip_address: String,
     pub udp_port: u16,
@@ -88,7 +89,7 @@ impl Settings for Network {
     const SECTION: &'static str = "network";
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, Resource)]
 pub struct Security {
     pub cert_path: String,
     pub key_path: String,
@@ -124,48 +125,18 @@ impl Settings for Security {
     const SECTION: &'static str = "security";
 }
 
-pub fn build_server_settings_store() -> Result<SettingsStore, SettingsError> {
+/// Build the server settings store inside an explicit application config directory:
+/// <config_root>/aether.ron  (RON format; preferred new location).
+pub fn build_server_settings_store<P: Into<std::path::PathBuf>>(
+    config_root: P,
+) -> Result<SettingsStore, SettingsError> {
+    let root: std::path::PathBuf = config_root.into();
+    let file_path = root.join("settings.json");
     let store = SettingsStore::builder()
-        .with_settings_file(paths::config_dir().join("aether.toml"))
+        .with_settings_file(file_path)
         .build()?;
     store.register::<General>()?;
     store.register::<Network>()?;
     store.register::<Security>()?;
     Ok(store)
-}
-
-/// Validates the settings file by attempting to build and load the SettingsStore
-/// Returns true if the settings file can be parsed and all registered sections are valid
-/// Returns false if:
-/// - TOML syntax errors exist
-/// - Required sections are missing
-/// - Field values are out of valid ranges
-/// - Any other validation errors occur
-pub fn settings_valid() -> bool {
-    // Validation now happens automatically via Settings::validate() during store build
-    match build_server_settings_store() {
-        Ok(_store) => true,
-        Err(_e) => false,
-    }
-}
-
-/// Placeholder: was a server certificate (and optionally key) found?
-/// For now we just check for a single PEM file in the config directory.
-/// Adjust path / strategy once certificate management is implemented.
-pub fn certificate_found() -> bool {
-    paths::config_dir().join("cert.pem").exists() && paths::config_dir().join("key.pem").exists()
-}
-
-/// Placeholder: does a (planned) Unix Domain Socket file exist?
-/// On non-unix platforms this always returns false.
-pub fn uds_found() -> bool {
-    #[cfg(unix)]
-    {
-        // TODO: replace with actual runtime dir / socket discovery logic.
-        paths::config_dir().join("aether.sock").exists()
-    }
-    #[cfg(not(unix))]
-    {
-        false
-    }
 }
