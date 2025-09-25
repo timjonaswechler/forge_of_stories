@@ -1,11 +1,14 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 use crate::{
     Settings, SettingsError,
-    json_utils::{parse_json_with_comments, to_pretty_json},
+    json_utils::{
+        parse_json_with_comments, replace_value_in_json_text, to_pretty_json,
+        update_value_in_json_text,
+    },
 };
 
 use serde::{Serialize, de::DeserializeOwned};
@@ -375,10 +378,93 @@ impl SettingsStore {
             }
         }
 
-        let json_string = to_pretty_json(&clean, 4, 0);
+        drop(deltas_guard);
+
+        self.write_deltas_document(&clean)
+    }
+
+    fn write_deltas_document(
+        &self,
+        clean: &JsonMap<String, JsonValue>,
+    ) -> Result<(), SettingsError> {
+        const TAB_SIZE: usize = 4;
+
+        let mut text = if self.file_path.exists() {
+            fs::read_to_string(&self.file_path)?
+        } else {
+            "{}".to_string()
+        };
+
+        if text.trim().is_empty() {
+            text = "{}".to_string();
+        }
+
+        let parsed: JsonValue =
+            parse_json_with_comments(&text).unwrap_or_else(|_| JsonValue::Object(JsonMap::new()));
+        let parsed_obj = parsed.as_object();
+
+        let mut key_set: BTreeSet<String> = BTreeSet::new();
+        if let Some(obj) = parsed_obj {
+            key_set.extend(obj.keys().cloned());
+        }
+        key_set.extend(clean.keys().cloned());
+
+        let mut edits = Vec::new();
+        let mut rewritten = parsed_obj.is_none();
+        let mut buffer = text;
+
+        for section_name in key_set {
+            let section_str: &str = section_name.as_str();
+            let new_value = clean.get(section_str);
+            let old_value = parsed_obj.and_then(|obj| obj.get(section_str));
+
+            match (old_value, new_value) {
+                (Some(old), Some(new_val)) => {
+                    if rewritten {
+                        continue;
+                    }
+                    let mut key_path = vec![section_str];
+                    update_value_in_json_text(
+                        &mut buffer,
+                        &mut key_path,
+                        TAB_SIZE,
+                        old,
+                        new_val,
+                        &mut edits,
+                    );
+                }
+                (Some(_), None) => {
+                    if rewritten {
+                        continue;
+                    }
+                    let key_path = vec![section_str];
+                    let (range, replacement) = replace_value_in_json_text(
+                        buffer.as_str(),
+                        &key_path,
+                        TAB_SIZE,
+                        None,
+                        None,
+                    );
+                    buffer.replace_range(range.clone(), &replacement);
+                }
+                (None, Some(_)) => {
+                    rewritten = true;
+                    break;
+                }
+                (None, None) => {}
+            }
+        }
+
+        if rewritten {
+            buffer = if clean.is_empty() {
+                "{}".to_string()
+            } else {
+                to_pretty_json(clean, TAB_SIZE, 0)
+            };
+        }
 
         let tmp = self.file_path.with_extension("tmp");
-        fs::write(&tmp, json_string)?;
+        fs::write(&tmp, buffer)?;
         fs::rename(&tmp, &self.file_path)?;
         Ok(())
     }

@@ -15,7 +15,7 @@ pub enum SettingsError {
 
 // Der Settings-Trait, um Standardwerte bereitzustellen.
 pub trait Settings: Default + Serialize + for<'de> Deserialize<'de> {
-    /// Section identifier used in the RON delta file.
+    /// Section identifier used in the JSON delta file.
     const SECTION: &'static str;
 
     /// Backwards-compatible helper; existing code calling `T::name()` still works.

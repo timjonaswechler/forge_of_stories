@@ -237,7 +237,7 @@ To pick up external edits call `store.reload()` at suitable points in your appli
 | Variant                  | Meaning |
 |--------------------------|---------|
 | `Io(std::io::Error)`     | File system issues (read/write/rename) |
-| `Ron(ron::Error)`        | Serialization / Deserialization failure |
+| `Json(serde_json::Error)`| Serialization / Deserialization failure |
 | `Invalid(&'static str)`  | Logic / invariant violation (internal) |
 | `NotRegistered`          | Access to unregistered section |
 | `Path { path, msg }`     | Contextual parse / conversion error with file path |
@@ -351,7 +351,7 @@ Performance: O(size_of_delta); safe to run occasionally (e.g. on a maintenance c
 
 
 * Internally: `RwLock` around maps (defaults, deltas, merged values).
-* `get` performs (serialize → parse) roundtrip from cached `ron::Value`. For high-frequency reads you can cache `Arc<T>` elsewhere.
+* `get` performs (serialize → parse) roundtrip from cached `serde_json::Value`. For high-frequency reads you can cache `Arc<T>` elsewhere.
 * `update`:
   1. Deserialize current (`O(size_of_struct)`).
   2. Mutate closure.
@@ -363,8 +363,8 @@ Performance: O(size_of_delta); safe to run occasionally (e.g. on a maintenance c
 
 ## 9. FAQ
 
-**Q: Why RON instead of TOML/JSON/YAML?**
-RON integrates with `serde`, supports richer data (enums) cleanly, and keeps diffs compact.
+**Q: Why JSON (with comments) instead of RON?**
+Using JSON keeps interoperability high while `serde_json_lenient` still lets us round-trip comments and trailing commas, preserving the readable, delta-style files we want.
 
 **Q: Can I store enums / options?**
 Yes; they serialize through `serde` and will diff like any other value.
