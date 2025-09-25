@@ -3,28 +3,31 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
-use crate::{Settings, SettingsError};
+use crate::{
+    Settings, SettingsError,
+    json_utils::{parse_json_with_comments, to_pretty_json},
+};
 
-use ron::value::{Map as RonMap, Value as RonValue};
 use serde::{Serialize, de::DeserializeOwned};
+use serde_json::{Map as JsonMap, Value as JsonValue};
 
-/// Convert any serializable struct to `ron::Value`.
-fn to_ron_value<T: Serialize>(value: &T) -> Result<RonValue, SettingsError> {
-    let s = ron::to_string(value).map_err(SettingsError::Ron)?;
-    let v: RonValue =
-        ron::from_str(&s).map_err(|_| SettingsError::Invalid("parse ron value (internal)"))?;
-    Ok(v)
+/// Convert any serializable struct to `serde_json::Value`.
+fn to_json_value<T: Serialize>(value: &T) -> Result<JsonValue, SettingsError> {
+    serde_json::to_value(value).map_err(SettingsError::Json)
 }
 
-/// Merge default + delta recursively (maps only).
-fn merge_maps(default: &RonMap, delta: &RonMap) -> RonMap {
+/// Merge default + delta recursively (objects only).
+fn merge_maps(
+    default: &JsonMap<String, JsonValue>,
+    delta: &JsonMap<String, JsonValue>,
+) -> JsonMap<String, JsonValue> {
     let mut merged = default.clone();
     for (k, v_delta) in delta.iter() {
         if let Some(v_def) = merged.get(k) {
             match (v_def, v_delta) {
-                (RonValue::Map(def_m), RonValue::Map(delta_m)) => {
+                (JsonValue::Object(def_m), JsonValue::Object(delta_m)) => {
                     let rec = merge_maps(def_m, delta_m);
-                    merged.insert(k.clone(), RonValue::Map(rec));
+                    merged.insert(k.clone(), JsonValue::Object(rec));
                 }
                 _ => {
                     merged.insert(k.clone(), v_delta.clone());
@@ -38,14 +41,14 @@ fn merge_maps(default: &RonMap, delta: &RonMap) -> RonMap {
 }
 
 /// Compute recursive diff (new vs default). Returns None if identical.
-fn diff_value(new_v: &RonValue, default_v: &RonValue) -> Option<RonValue> {
+fn diff_value(new_v: &JsonValue, default_v: &JsonValue) -> Option<JsonValue> {
     match (new_v, default_v) {
-        (RonValue::Map(new_m), RonValue::Map(def_m)) => {
+        (JsonValue::Object(new_m), JsonValue::Object(def_m)) => {
             let diff_m = diff_map(new_m, def_m);
             if diff_m.is_empty() {
                 None
             } else {
-                Some(RonValue::Map(diff_m))
+                Some(JsonValue::Object(diff_m))
             }
         }
         _ => {
@@ -58,8 +61,11 @@ fn diff_value(new_v: &RonValue, default_v: &RonValue) -> Option<RonValue> {
     }
 }
 
-fn diff_map(new_m: &RonMap, def_m: &RonMap) -> RonMap {
-    let mut out = RonMap::new();
+fn diff_map(
+    new_m: &JsonMap<String, JsonValue>,
+    def_m: &JsonMap<String, JsonValue>,
+) -> JsonMap<String, JsonValue> {
+    let mut out = JsonMap::new();
     for (k, new_v) in new_m.iter() {
         match def_m.get(k) {
             Some(def_v) => {
@@ -114,17 +120,17 @@ impl SettingsStoreBuilder {
             }
         }
 
-        let delta_map: HashMap<String, RonValue> = if file_path.exists() {
+        let delta_map: JsonMap<String, JsonValue> = if file_path.exists() {
             let content = fs::read_to_string(&file_path)?;
 
             if content.trim().is_empty() {
-                HashMap::new()
+                JsonMap::new()
             } else {
-                ron::from_str(&content)
+                parse_json_with_comments(&content)
                     .map_err(|_| SettingsError::Invalid("parse settings file"))?
             }
         } else {
-            HashMap::new()
+            JsonMap::new()
         };
 
         Ok(SettingsStore {
@@ -146,9 +152,9 @@ impl SettingsStoreBuilder {
 
 pub struct SettingsStore {
     file_path: PathBuf,
-    deltas: RwLock<HashMap<String, RonValue>>, // section -> delta value (usually Map)
-    defaults: RwLock<HashMap<&'static str, RonMap>>, // section -> full default map
-    values: RwLock<HashMap<&'static str, RonValue>>, // section -> full effective merged value
+    deltas: RwLock<JsonMap<String, JsonValue>>, // section -> delta value (usually object)
+    defaults: RwLock<HashMap<&'static str, JsonMap<String, JsonValue>>>, // section -> full default map
+    values: RwLock<HashMap<&'static str, JsonValue>>, // section -> full effective merged value
     logger: RwLock<Option<Arc<dyn Fn(&str) + Send + Sync>>>, // optional logging hook
 }
 
@@ -191,11 +197,10 @@ impl SettingsStore {
             }
         }
 
-        // Serialize defaults to ron::Value::Map
-        let default_val = to_ron_value(&T::default())
-            .map_err(|_| SettingsError::Invalid("serialize default failed"))?;
+        // Serialize defaults to serde_json::Value::Object
+        let default_val = to_json_value(&T::default())?;
         let default_map = match default_val {
-            RonValue::Map(m) => m,
+            JsonValue::Object(m) => m,
             _ => return Err(SettingsError::Invalid("default must serialize to map")),
         };
 
@@ -204,15 +209,20 @@ impl SettingsStore {
             let deltas = self.deltas.read().unwrap();
             if let Some(delta) = deltas.get(section) {
                 match delta {
-                    RonValue::Map(delta_m) => RonValue::Map(merge_maps(&default_map, delta_m)),
+                    JsonValue::Object(delta_m) => {
+                        JsonValue::Object(merge_maps(&default_map, delta_m))
+                    }
                     other => other.clone(), // unexpected but take it
                 }
             } else {
-                RonValue::Map(default_map.clone())
+                JsonValue::Object(default_map.clone())
             }
         };
 
-        self.defaults.write().unwrap().insert(section, default_map);
+        self.defaults
+            .write()
+            .unwrap()
+            .insert(section, default_map.clone());
         self.values.write().unwrap().insert(section, merged_value);
 
         Ok(())
@@ -226,10 +236,7 @@ impl SettingsStore {
         let section = T::name();
         let values = self.values.read().unwrap();
         let value = values.get(section).ok_or(SettingsError::NotRegistered)?;
-        let ron_str =
-            ron::to_string(value).map_err(|_| SettingsError::Invalid("serialize section view"))?;
-        let inst: T =
-            ron::from_str(&ron_str).map_err(|_| SettingsError::Invalid("deserialize section"))?;
+        let inst: T = serde_json::from_value(value.clone()).map_err(SettingsError::Json)?;
         Ok(Arc::new(inst))
     }
 
@@ -243,10 +250,7 @@ impl SettingsStore {
         let Some(value) = values.get(section) else {
             return Ok(None);
         };
-        let ron_str =
-            ron::to_string(value).map_err(|_| SettingsError::Invalid("serialize section view"))?;
-        let inst: T =
-            ron::from_str(&ron_str).map_err(|_| SettingsError::Invalid("deserialize section"))?;
+        let inst: T = serde_json::from_value(value.clone()).map_err(SettingsError::Json)?;
         Ok(Some(Arc::new(inst)))
     }
 
@@ -262,9 +266,7 @@ impl SettingsStore {
         let current_value: T = {
             let values = self.values.read().unwrap();
             let raw = values.get(section).ok_or(SettingsError::NotRegistered)?;
-            let s = ron::to_string(raw)
-                .map_err(|_| SettingsError::Invalid("serialize current section"))?;
-            ron::from_str(&s).map_err(|_| SettingsError::Invalid("deserialize current section"))?
+            serde_json::from_value(raw.clone()).map_err(SettingsError::Json)?
         };
 
         // Mutate
@@ -272,10 +274,9 @@ impl SettingsStore {
         mutator(&mut new_instance);
 
         // Serialize new
-        let new_val =
-            to_ron_value(&new_instance).map_err(|_| SettingsError::Invalid("serialize updated"))?;
+        let new_val = to_json_value(&new_instance)?;
         let new_map = match new_val {
-            RonValue::Map(m) => m,
+            JsonValue::Object(m) => m,
             _ => return Err(SettingsError::Invalid("updated must serialize to map")),
         };
 
@@ -292,7 +293,7 @@ impl SettingsStore {
         self.values
             .write()
             .unwrap()
-            .insert(section, RonValue::Map(new_map));
+            .insert(section, JsonValue::Object(new_map.clone()));
 
         // Update deltas
         {
@@ -300,7 +301,7 @@ impl SettingsStore {
             if diff_root.is_empty() {
                 deltas.remove(section);
             } else {
-                deltas.insert(section.to_string(), RonValue::Map(diff_root));
+                deltas.insert(section.to_string(), JsonValue::Object(diff_root));
             }
         }
 
@@ -316,10 +317,10 @@ impl SettingsStore {
             String::new()
         };
 
-        let new_deltas: HashMap<String, RonValue> = if content.trim().is_empty() {
-            HashMap::new()
+        let new_deltas: JsonMap<String, JsonValue> = if content.trim().is_empty() {
+            JsonMap::new()
         } else {
-            ron::from_str(&content)
+            parse_json_with_comments(&content)
                 .map_err(|_| SettingsError::Invalid("reload parse settings file"))?
         };
 
@@ -330,7 +331,10 @@ impl SettingsStore {
         }
 
         // Re-merge for all registered sections
-        let (sections, defaults_snapshot): (Vec<&'static str>, HashMap<&'static str, RonMap>) = {
+        let (sections, defaults_snapshot): (
+            Vec<&'static str>,
+            HashMap<&'static str, JsonMap<String, JsonValue>>,
+        ) = {
             let defs = self.defaults.read().unwrap();
             (defs.keys().cloned().collect(), defs.clone())
         };
@@ -342,11 +346,13 @@ impl SettingsStore {
             if let Some(default_map) = defaults_snapshot.get(section) {
                 let merged = if let Some(delta_val) = deltas_guard.get(section) {
                     match delta_val {
-                        RonValue::Map(delta_m) => RonValue::Map(merge_maps(default_map, delta_m)),
+                        JsonValue::Object(delta_m) => {
+                            JsonValue::Object(merge_maps(default_map, delta_m))
+                        }
                         other => other.clone(),
                     }
                 } else {
-                    RonValue::Map(default_map.clone())
+                    JsonValue::Object(default_map.clone())
                 };
                 values_guard.insert(section, merged);
             }
@@ -358,22 +364,21 @@ impl SettingsStore {
     fn persist_deltas(&self) -> Result<(), SettingsError> {
         let deltas_guard = self.deltas.read().unwrap();
 
-        // Keep only non-empty map deltas
-        let mut clean: HashMap<String, RonValue> = HashMap::new();
+        // Keep only non-empty object deltas
+        let mut clean = JsonMap::new();
         for (k, v) in deltas_guard.iter() {
             match v {
-                RonValue::Map(m) if m.is_empty() => {}
+                JsonValue::Object(m) if m.is_empty() => {}
                 _ => {
                     clean.insert(k.clone(), v.clone());
                 }
             }
         }
 
-        let pretty = ron::ser::PrettyConfig::default();
-        let ron_string = ron::ser::to_string_pretty(&clean, pretty).map_err(SettingsError::Ron)?;
+        let json_string = to_pretty_json(&clean, 4, 0);
 
         let tmp = self.file_path.with_extension("tmp");
-        fs::write(&tmp, ron_string)?;
+        fs::write(&tmp, json_string)?;
         fs::rename(&tmp, &self.file_path)?;
         Ok(())
     }
@@ -386,7 +391,7 @@ impl SettingsStore {
     /// Returns Ok after persisting (even if nothing changed).
     pub fn prune_stale(&self) -> Result<(), SettingsError> {
         // Snapshot defaults
-        let defaults_snapshot: HashMap<&'static str, RonMap> = {
+        let defaults_snapshot: HashMap<&'static str, JsonMap<String, JsonValue>> = {
             let defs = self.defaults.read().unwrap();
             defs.clone()
         };
@@ -414,16 +419,11 @@ impl SettingsStore {
                     None => continue,
                 };
 
-                // Only prune maps recursively
-                match delta_val {
-                    RonValue::Map(delta_map) => {
-                        let changed = Self::prune_map_recursive(default_map, delta_map);
-                        // After recursion: remove empty
-                        if changed && delta_map.is_empty() {
-                            deltas.remove(&section);
-                        }
+                if let JsonValue::Object(delta_map) = delta_val {
+                    let changed = Self::prune_map_recursive(default_map, delta_map);
+                    if changed && delta_map.is_empty() {
+                        deltas.remove(&section);
                     }
-                    _ => {}
                 }
             }
         }
@@ -434,16 +434,20 @@ impl SettingsStore {
 
     /// Recursively prune keys in `candidate` that do not exist in `default_ref`.
     /// Returns true if any modification was made.
-    fn prune_map_recursive(default_ref: &RonMap, candidate: &mut RonMap) -> bool {
-        let mut to_remove: Vec<ron::Value> = Vec::new();
+    fn prune_map_recursive(
+        default_ref: &JsonMap<String, JsonValue>,
+        candidate: &mut JsonMap<String, JsonValue>,
+    ) -> bool {
+        let mut to_remove: Vec<String> = Vec::new();
         let mut changed = false;
 
         for (k, v) in candidate.iter_mut() {
-            if default_ref.get(k).is_none() {
+            if !default_ref.contains_key(k) {
                 to_remove.push(k.clone());
                 continue;
             }
-            if let (Some(RonValue::Map(def_sub)), RonValue::Map(cand_sub)) = (default_ref.get(k), v)
+            if let (Some(JsonValue::Object(def_sub)), JsonValue::Object(cand_sub)) =
+                (default_ref.get(k), v)
             {
                 if Self::prune_map_recursive(def_sub, cand_sub) {
                     changed = true;

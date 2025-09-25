@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 pub enum SettingsError {
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
-    #[error("ron: {0}")]
-    Ron(#[from] ron::Error),
+    #[error("json: {0}")]
+    Json(#[from] serde_json::Error),
     #[error("invalid config: {0}")]
     Invalid(&'static str),
     #[error("not registered")]

@@ -4,7 +4,7 @@ A focused, type-safe Settings system for Forge of Stories (and reusable elsewher
 
 * Strongly-typed sections (`Settings` trait, `const SECTION`)
 * In‑memory merged view = `defaults < user_deltas`
-* Persistent file stores ONLY the delta vs defaults (RON)
+* Persistent file stores ONLY the delta vs defaults (JSON)
 * Recursive (nested struct) diffing
 * Optional filesystem watcher (hot‑reload)
 * Optional Bevy integration (resources auto-updated)
@@ -52,7 +52,7 @@ impl Settings for Network {
 fn main() -> Result<(), SettingsError> {
     // 1) Store aufbauen – Datei enthält nur Abweichungen
     let store = SettingsStore::builder()
-        .with_settings_file(paths::config_dir().join("settings.ron"))
+        .with_settings_file(paths::config_dir().join("settings.json"))
         .build()?;
 
     // 2) Section registrieren (lädt Default + wendet Delta an)
@@ -103,7 +103,7 @@ define_settings! {
 
 fn main() {
     let store = SettingsStore::builder()
-        .with_settings_file(paths::config_dir().join("settings.ron"))
+        .with_settings_file(paths::config_dir().join("settings.json"))
         .build()
         .unwrap();
 
@@ -112,9 +112,9 @@ fn main() {
 }
 ```
 
-Resulting delta file (`settings.ron`) after the update:
+Resulting delta file (`settings.json`) after the update:
 
-```/dev/null/settings.ron#L1-12
+```/dev/null/settings.json#L1-12
 {
     "network": {
         "port": 7777,
@@ -126,7 +126,7 @@ Note:
 * Unchanged nested defaults (e.g. `limits.enabled`, `limits.level`) are omitted.
 * A nested change would create nested diffs, e.g.:
 
-```/dev/null/settings_nested_delta.ron#L1-18
+```/dev/null/settings_nested_delta.json#L1-18
 {
     "network": {
         "limits": {
@@ -215,7 +215,7 @@ use std::sync::Arc;
 use settings::start_settings_watcher;
 
 let store = Arc::new(SettingsStore::builder()
-    .with_settings_file(paths::config_dir().join("settings.ron"))
+    .with_settings_file(paths::config_dir().join("settings.json"))
     .build()?);
 
 store.register::<Network>()?;
@@ -243,7 +243,7 @@ To pick up external edits call `store.reload()` at suitable points in your appli
 | `Path { path, msg }`     | Contextual parse / conversion error with file path |
 
 Examples:
-* Corrupt file → `Path { path: ".../settings.ron", msg: "parse settings file" }`
+* Corrupt file → `Path { path: ".../settings.json", msg: "parse settings file" }`
 * Attempt double register → `Invalid("section already registered")`
 * Get before register → `NotRegistered`
 
@@ -273,7 +273,7 @@ impl Settings for Gameplay { const SECTION: &'static str = "gameplay"; }
 
 fn main() -> Result<(), SettingsError> {
     let store = SettingsStore::builder()
-        .with_settings_file(paths::config_dir().join("settings.ron"))
+        .with_settings_file(paths::config_dir().join("settings.json"))
         .build()?;
     store.register::<Gameplay>()?;
 
@@ -313,7 +313,7 @@ impl Settings for Demo { const SECTION: &'static str = "demo"; }
 
 fn main() -> Result<(), SettingsError> {
     let store = SettingsStore::builder()
-        .with_settings_file(std::env::temp_dir().join("demo_settings.ron"))
+        .with_settings_file(std::env::temp_dir().join("demo_settings.json"))
         .with_logger(|msg| println!("[settings] {msg}"))   // <— custom logger
         .build()?;
 
@@ -406,7 +406,7 @@ impl settings::Settings for Audio { const SECTION: &'static str = "audio"; }
 
 // Build store
 let store = settings::SettingsStore::builder()
-    .with_settings_file(paths::config_dir().join("settings.ron"))
+    .with_settings_file(paths::config_dir().join("settings.json"))
     .build()?;
 
 // Register

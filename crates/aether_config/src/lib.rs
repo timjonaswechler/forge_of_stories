@@ -126,7 +126,7 @@ impl Settings for Security {
 }
 
 /// Build the server settings store inside an explicit application config directory:
-/// <config_root>/aether.ron  (RON format; preferred new location).
+/// <config_root>/settings.json  (RON format; preferred new location).
 pub fn build_server_settings_store<P: Into<std::path::PathBuf>>(
     config_root: P,
 ) -> Result<SettingsStore, SettingsError> {
