@@ -23,7 +23,8 @@
 #[cfg(feature = "bevy")]
 pub mod bevy;
 
-use bevy::{Resource, ecs};
+use bevy::Resource;
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use settings::{Settings, SettingsError, SettingsStore};
 
@@ -63,7 +64,7 @@ pub struct Network {
     pub mtu: u32,
     pub qos_traffic_prioritization: bool,
     pub nat_traversal: bool,
-    pub uds_file: String,
+    pub uds_path: String,
 }
 
 impl Default for Network {
@@ -81,12 +82,48 @@ impl Default for Network {
             mtu: 1500,
             qos_traffic_prioritization: false,
             nat_traversal: true,
-            uds_file: "aether.sock".into(),
+            uds_path: "aether.sock".into(),
         }
     }
 }
 impl Settings for Network {
     const SECTION: &'static str = "network";
+
+    fn migrate(
+        file_version: Option<&Version>,
+        target_version: &Version,
+        data: serde_json::Value,
+    ) -> Result<(serde_json::Value, bool), SettingsError> {
+        let mut map = match data {
+            serde_json::Value::Object(map) => map,
+            _ => return Err(SettingsError::Invalid("network settings not an object")),
+        };
+
+        let needs_upgrade = file_version.map(|ver| ver < target_version).unwrap_or(true);
+        tracing::info!(
+            "File version: {}, Target version: {}, Needs upgrade: {}",
+            file_version
+                .map(|ver| ver.to_string())
+                .unwrap_or("None".to_string()),
+            target_version,
+            needs_upgrade
+        );
+
+        if needs_upgrade {
+            if let Some(old_value) = map.remove("uds_file") {
+                map.insert("uds_path".to_string(), old_value);
+            }
+            if !map.contains_key("uds_path") {
+                map.insert(
+                    "uds_path".to_string(),
+                    serde_json::Value::String(Network::default().uds_path),
+                );
+            }
+            return Ok((serde_json::Value::Object(map), true));
+        }
+
+        Ok((serde_json::Value::Object(map), false))
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Resource)]
@@ -129,14 +166,60 @@ impl Settings for Security {
 /// <config_root>/settings.json  (RON format; preferred new location).
 pub fn build_server_settings_store<P: Into<std::path::PathBuf>>(
     config_root: P,
+    version: &'static str,
 ) -> Result<SettingsStore, SettingsError> {
     let root: std::path::PathBuf = config_root.into();
     let file_path = root.join("settings.json");
-    let store = SettingsStore::builder()
+    let store = SettingsStore::builder(version)
         .with_settings_file(file_path)
         .build()?;
     store.register::<General>()?;
     store.register::<Network>()?;
     store.register::<Security>()?;
     Ok(store)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::Value as JsonValue;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn migrates_network_uds_field() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
+        let config_root = dir.path();
+        fs::create_dir_all(config_root)?;
+        let settings_path = config_root.join("settings.json");
+
+        fs::write(
+            &settings_path,
+            r#"{
+  "network": {
+    "uds_file": "legacy.sock"
+  }
+}
+"#,
+        )?;
+
+        let store = build_server_settings_store(config_root, "0.1.0")?;
+        let expected_version = store.schema_version().to_string();
+
+        let doc: JsonValue = serde_json::from_str(&fs::read_to_string(&settings_path)?)?;
+        dbg!(&doc);
+
+        let cfg = store.get::<Network>()?;
+        dbg!(&cfg.uds_path);
+        assert_eq!(cfg.uds_path, "legacy.sock");
+
+        assert_eq!(
+            doc["__meta"]["version"].as_str(),
+            Some(expected_version.as_str()),
+        );
+        assert!(doc["network"].get("uds_file").is_none());
+        assert_eq!(doc["network"]["uds_path"].as_str(), Some("legacy.sock"),);
+
+        Ok(())
+    }
 }

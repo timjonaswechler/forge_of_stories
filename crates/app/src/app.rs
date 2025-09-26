@@ -8,6 +8,7 @@ pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 pub struct AppBase {
     pub app_id: &'static str,
+    pub version: &'static str,
     pub config_dir: PathBuf,
     pub data_dir: PathBuf,
     pub logs_dir: PathBuf,
@@ -18,6 +19,9 @@ pub struct AppBase {
 impl AppBase {
     pub fn app_id(&self) -> &'static str {
         self.app_id
+    }
+    pub fn version(&self) -> &'static str {
+        self.version
     }
 }
 
@@ -31,7 +35,7 @@ pub trait Application: Sized + 'static {
     }
 }
 
-pub fn init<A: Application>() -> Result<AppBase, A::Error> {
+pub fn init<A: Application>(version: &'static str) -> Result<AppBase, A::Error> {
     let app_id = A::APP_ID;
 
     let config_dir = paths::config_dir().join(app_id);
@@ -75,6 +79,7 @@ pub fn init<A: Application>() -> Result<AppBase, A::Error> {
 
     Ok(AppBase {
         app_id,
+        version,
         config_dir,
         data_dir,
         logs_dir,
