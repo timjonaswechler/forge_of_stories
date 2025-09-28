@@ -5,12 +5,12 @@ use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 use crate::{
-    json_utils::{parse_json_with_comments, to_pretty_json},
     Settings, SettingsError,
+    json_utils::{parse_json_with_comments, to_pretty_json},
 };
 
 use semver::Version;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Map as JsonMap, Value as JsonValue};
 
 const META_KEY: &str = "__meta";
@@ -257,7 +257,6 @@ impl SectionRuntime {
 /// Builder for `SettingsStore` (single delta file).
 pub struct SettingsStoreBuilder {
     settings_file: Option<PathBuf>,
-    logger: Option<Arc<dyn Fn(&str) + Send + Sync>>,
     schema_version: Version,
 }
 
@@ -265,7 +264,6 @@ impl SettingsStoreBuilder {
     pub fn new(version: &'static str) -> Self {
         Self {
             settings_file: None,
-            logger: None,
             schema_version: Version::parse(version)
                 .expect("invalid crate version for settings schema"),
         }
@@ -278,16 +276,6 @@ impl SettingsStoreBuilder {
 
     pub fn with_schema_version(mut self, version: Version) -> Self {
         self.schema_version = version;
-        self
-    }
-
-    /// Provide a logger callback; if unset falls back to the global tracing
-    /// subscriber when available (otherwise `eprintln!`).
-    pub fn with_logger<F>(mut self, f: F) -> Self
-    where
-        F: Fn(&str) + Send + Sync + 'static,
-    {
-        self.logger = Some(Arc::new(f));
         self
     }
 
@@ -333,7 +321,6 @@ impl SettingsStoreBuilder {
             loaded_file_schema_version: RwLock::new(stored_version_for_loaded),
             file_schema_version: RwLock::new(stored_version),
             section_runtimes: RwLock::new(HashMap::new()),
-            logger: RwLock::new(self.logger),
         })
     }
 }
@@ -354,7 +341,6 @@ pub struct SettingsStore {
     loaded_file_schema_version: RwLock<Option<Version>>,
     file_schema_version: RwLock<Option<Version>>,
     section_runtimes: RwLock<HashMap<&'static str, SectionRuntime>>, // migration helpers per section
-    logger: RwLock<Option<Arc<dyn Fn(&str) + Send + Sync>>>,         // optional logging hook
 }
 
 impl SettingsStore {
@@ -377,14 +363,6 @@ impl SettingsStore {
     {
         let section = T::name();
         self.values.read().unwrap().contains_key(section)
-    }
-
-    /// Install / replace logger at runtime.
-    pub fn set_logger<F>(&self, f: F)
-    where
-        F: Fn(&str) + Send + Sync + 'static,
-    {
-        *self.logger.write().unwrap() = Some(Arc::new(f));
     }
 
     /// Register a section type (loads defaults and applies existing delta if present).
@@ -455,9 +433,7 @@ impl SettingsStore {
 
         if !pruned_unknown_fields.is_empty() {
             let joined = pruned_unknown_fields.join(", ");
-            self.log(&format!(
-                "removed unknown fields from settings section '{section}': {joined}"
-            ));
+            tracing::debug!("removed unknown fields from settings section '{section}': {joined}");
             persist_needed = true;
         }
 
@@ -473,10 +449,10 @@ impl SettingsStore {
                 .as_ref()
                 .map(|v| v.to_string())
                 .unwrap_or_else(|| "unversioned".to_string());
-            self.log(&format!(
+            tracing::debug!(
                 "migrated settings section '{section}' from schema {from_display} to {}",
                 self.target_schema_version
-            ));
+            );
             persist_needed = true;
         }
 
@@ -573,10 +549,10 @@ impl SettingsStore {
 
         self.persist_deltas()?;
         if version_changed {
-            self.log(&format!(
+            tracing::info!(
                 "updated settings schema version metadata to {}",
                 self.target_schema_version
-            ));
+            );
         }
         Ok(())
     }
@@ -666,18 +642,18 @@ impl SettingsStore {
                     .as_ref()
                     .map(|v| v.to_string())
                     .unwrap_or_else(|| "unversioned".to_string());
-                self.log(&format!(
+                tracing::debug!(
                     "migrated settings section '{section}' from schema {from_display} to {}",
                     self.target_schema_version
-                ));
+                );
                 persist_needed = true;
             }
 
             if !pruned_unknown_fields.is_empty() {
                 let joined = pruned_unknown_fields.join(", ");
-                self.log(&format!(
+                tracing::debug!(
                     "removed unknown fields from settings section '{section}': {joined}"
-                ));
+                );
                 persist_needed = true;
             }
         }
@@ -776,7 +752,7 @@ impl SettingsStore {
     fn remove_settings_file_if_exists(&self) -> Result<(), SettingsError> {
         match fs::remove_file(&self.file_path) {
             Ok(()) => {
-                self.log("removed empty settings delta file");
+                tracing::debug!("removed empty settings delta file");
                 Ok(())
             }
             Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
@@ -845,19 +821,6 @@ impl SettingsStore {
             }
         }
     }
-
-    fn log(&self, message: &str) {
-        if let Some(logger) = self.logger.read().unwrap().as_ref() {
-            logger(message);
-            return;
-        }
-
-        if tracing::dispatcher::has_been_set() {
-            tracing::info!(target: "settings::store", "{message}");
-        } else {
-            eprintln!("{message}");
-        }
-    }
 }
 
 // (file watcher functionality removed; doc comment left intentionally cleared)
@@ -867,7 +830,7 @@ mod tests {
     use super::*;
     use semver::Version;
     use serde::{Deserialize, Serialize};
-    use serde_json::{json, Number as JsonNumber, Value as JsonValue};
+    use serde_json::{Number as JsonNumber, Value as JsonValue, json};
     use std::{cell::RefCell, fs, thread_local};
     use tempfile::tempdir;
 
@@ -962,9 +925,11 @@ mod tests {
 
         let recorded = collected_migration_versions();
         assert!(!recorded.is_empty());
-        assert!(recorded
-            .iter()
-            .all(|entry| entry.as_deref() == Some("0.1.0")));
+        assert!(
+            recorded
+                .iter()
+                .all(|entry| entry.as_deref() == Some("0.1.0"))
+        );
 
         let doc: JsonValue = serde_json::from_str(&fs::read_to_string(&path)?)?;
         assert_eq!(
@@ -1094,9 +1059,11 @@ mod tests {
 
         let recorded = collected_migration_versions();
         assert!(recorded.len() >= 2);
-        assert!(recorded
-            .iter()
-            .all(|entry| entry.as_deref() == Some("0.1.0")));
+        assert!(
+            recorded
+                .iter()
+                .all(|entry| entry.as_deref() == Some("0.1.0"))
+        );
 
         let doc: JsonValue = serde_json::from_str(&fs::read_to_string(&path)?)?;
         assert_eq!(doc["__meta"]["version"].as_str(), Some("0.2.0"));
