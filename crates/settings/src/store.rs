@@ -200,7 +200,11 @@ where
         None => JsonValue::Object(default_map.clone()),
     };
 
-    let (working_value, migrated) = T::migrate(file_version, target_version, merged_value)?;
+    let (working_value, migrated) = if file_version.is_some() {
+        T::migrate(file_version, target_version, merged_value)?
+    } else {
+        (merged_value, false)
+    };
 
     let mut object_map = match working_value {
         JsonValue::Object(map) => map,
@@ -1152,6 +1156,42 @@ mod tests {
         let section = doc["one"].as_object().unwrap();
         assert!(!section.contains_key("typo_key"));
         assert_eq!(section.get("value").and_then(JsonValue::as_u64), Some(5));
+
+        Ok(())
+    }
+
+    #[test]
+    fn register_skips_migrate_for_unversioned_file() -> Result<(), Box<dyn std::error::Error>> {
+        reset_migration_versions();
+        let dir = tempdir()?;
+        let path = dir.path().join("settings.json");
+        fs::write(
+            &path,
+            json!({
+                "example": {
+                    "old_field": 3
+                }
+            })
+            .to_string(),
+        )?;
+
+        let store = SettingsStore::builder("0.2.0")
+            .with_settings_file(&path)
+            .build()?;
+
+        store.register::<ExampleSettings>()?;
+
+        let recorded = collected_migration_versions();
+        assert!(
+            recorded.is_empty(),
+            "expected no migration calls when file version absent"
+        );
+
+        let doc_contents = fs::read_to_string(&path);
+        assert!(
+            doc_contents.is_err(),
+            "delta file should be removed when no deltas remain"
+        );
 
         Ok(())
     }
