@@ -1,7 +1,7 @@
 use crate::bevy::build_bevy_app;
 use aether_config::bevy::AppAetherSettingsExt;
 use app::{AppBase, Application};
-use bevy::{app::Update, prelude::App};
+use bevy::prelude::App;
 use color_eyre::Result;
 
 impl Application for AetherApp {
@@ -24,8 +24,12 @@ pub struct AetherApp {
 
 impl AetherApp {
     pub fn init(base: AppBase) -> Result<Self> {
-        let mut bevy_app =
-            App::new().use_aether_server_settings(&base.config_dir, None, base.version());
+        let mut bevy_app = App::new().use_aether_server_settings(
+            &base.config_dir,
+            None,
+            base.version(),
+            base.app_id(),
+        );
         build_bevy_app(&mut bevy_app);
         Ok(Self {
             base,

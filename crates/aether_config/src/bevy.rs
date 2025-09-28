@@ -11,6 +11,7 @@ pub trait AppAetherSettingsExt {
         config_dir: &PathBuf,
         store: Option<settings::SettingsStore>,
         version: &'static str,
+        app_id: &'static str,
     ) -> Self;
 }
 
@@ -20,10 +21,11 @@ impl AppAetherSettingsExt for App {
         config_dir: &PathBuf,
         store: Option<settings::SettingsStore>,
         version: &'static str,
+        app_id: &'static str,
     ) -> Self {
         let store = match store {
             Some(s) => s,
-            None => crate::build_server_settings_store(config_dir, version)
+            None => crate::build_server_settings_store(config_dir, version, app_id)
                 .expect("build server settings store"),
         };
         self = self.insert_settings_store(store);

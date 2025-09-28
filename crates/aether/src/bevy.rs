@@ -1,6 +1,5 @@
 pub mod settings_bridge;
 
-use crate::bevy::settings_bridge::AetherSettingsPlugin;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use std::time::Duration;
@@ -54,12 +53,10 @@ pub(crate) fn heartbeat_fixed(
     let real_delta_ms = real_delta_s * 1000.0;
 
     tracing::debug!(
-        "fixed_tick={} target=({:.3} ms|{:.3} s) real=({:.3} ms|{:.3} s)",
+        "fixed_tick={} target=({:.3} ms) real=({:.3} ms)",
         stats.ticks + 1,
         target_ms,
-        target_s,
         real_delta_ms,
-        real_delta_s,
     );
 
     // Schritt als abgeschlossen markieren

@@ -100,14 +100,6 @@ impl Settings for Network {
         };
 
         let needs_upgrade = file_version.map(|ver| ver < target_version).unwrap_or(true);
-        tracing::info!(
-            "File version: {}, Target version: {}, Needs upgrade: {}",
-            file_version
-                .map(|ver| ver.to_string())
-                .unwrap_or("None".to_string()),
-            target_version,
-            needs_upgrade
-        );
 
         if needs_upgrade {
             if let Some(old_value) = map.remove("uds_file") {
@@ -167,9 +159,10 @@ impl Settings for Security {
 pub fn build_server_settings_store<P: Into<std::path::PathBuf>>(
     config_root: P,
     version: &'static str,
+    app_id: &str,
 ) -> Result<SettingsStore, SettingsError> {
     let root: std::path::PathBuf = config_root.into();
-    let file_path = root.join("settings.json");
+    let file_path = root.join(format!("{}.settings.json", app_id));
     let store = SettingsStore::builder(version)
         .with_settings_file(file_path)
         .build()?;
@@ -203,7 +196,7 @@ mod tests {
 "#,
         )?;
 
-        let store = build_server_settings_store(config_root, "0.1.0")?;
+        let store = build_server_settings_store(config_root, "0.1.0", "app_id")?;
         let expected_version = store.schema_version().to_string();
 
         let doc: JsonValue = serde_json::from_str(&fs::read_to_string(&settings_path)?)?;
