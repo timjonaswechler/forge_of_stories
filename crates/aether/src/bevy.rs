@@ -1,6 +1,7 @@
 pub mod settings_bridge;
 
 use crate::bevy::settings_bridge::AetherSettingsPlugin;
+use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use std::time::Duration;
 use tracing;
@@ -68,8 +69,7 @@ pub(crate) fn heartbeat_fixed(
 
 // 3) Bevy-App Aufbau mit 30 Hz FixedUpdate (ohne UI)
 pub(crate) fn build_bevy_app(app: &mut App) {
-    app.add_plugins(DefaultPlugins)
-        .add_plugins(AetherSettingsPlugin)
+    app.add_plugins(DefaultPlugins.build().disable::<LogPlugin>())
         .insert_resource(Time::<Fixed>::from_hz(10.0))
         .configure_sets(
             FixedUpdate,
