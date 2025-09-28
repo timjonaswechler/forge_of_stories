@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
+use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
@@ -456,6 +457,13 @@ impl SettingsStore {
             persist_needed = true;
         }
 
+        if self.file_path.exists() {
+            let deltas_guard = self.deltas.read().unwrap();
+            if deltas_guard.is_empty() {
+                persist_needed = true;
+            }
+        }
+
         if migrated {
             let from_display = file_version_snapshot
                 .as_ref()
@@ -677,9 +685,15 @@ impl SettingsStore {
             }
         }
 
+        let delta_map_is_empty = delta_map.is_empty();
+
         {
             let mut deltas_guard = self.deltas.write().unwrap();
             *deltas_guard = delta_map;
+        }
+
+        if delta_map_is_empty && self.file_path.exists() {
+            persist_needed = true;
         }
 
         let version_changed = self.ensure_file_version();
@@ -709,6 +723,19 @@ impl SettingsStore {
         }
 
         drop(deltas_guard);
+
+        if clean.is_empty() {
+            self.remove_settings_file_if_exists()?;
+            {
+                let mut guard = self.file_schema_version.write().unwrap();
+                *guard = None;
+            }
+            {
+                let mut guard = self.loaded_file_schema_version.write().unwrap();
+                *guard = None;
+            }
+            return Ok(());
+        }
 
         let schema_version = self
             .file_schema_version
@@ -740,6 +767,17 @@ impl SettingsStore {
         fs::write(&tmp, buffer)?;
         fs::rename(&tmp, &self.file_path)?;
         Ok(())
+    }
+
+    fn remove_settings_file_if_exists(&self) -> Result<(), SettingsError> {
+        match fs::remove_file(&self.file_path) {
+            Ok(()) => {
+                self.log("removed empty settings delta file");
+                Ok(())
+            }
+            Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
+            Err(err) => Err(err.into()),
+        }
     }
 
     /// Remove stale / orphaned delta entries:
@@ -1114,6 +1152,55 @@ mod tests {
         let section = doc["one"].as_object().unwrap();
         assert!(!section.contains_key("typo_key"));
         assert_eq!(section.get("value").and_then(JsonValue::as_u64), Some(5));
+
+        Ok(())
+    }
+
+    #[test]
+    fn register_removes_file_when_only_meta_remains() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
+        let path = dir.path().join("settings.json");
+        fs::write(
+            &path,
+            json!({
+                "__meta": { "version": "0.1.0" },
+                "one": { "typo_only": true }
+            })
+            .to_string(),
+        )?;
+
+        let store = SettingsStore::builder("0.2.0")
+            .with_settings_file(&path)
+            .build()?;
+        store.register::<SectionOne>()?;
+
+        assert!(!path.exists());
+
+        Ok(())
+    }
+
+    #[test]
+    fn reload_removes_file_when_only_meta_remains() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
+        let path = dir.path().join("settings.json");
+
+        let store = SettingsStore::builder("0.2.0")
+            .with_settings_file(&path)
+            .build()?;
+        store.register::<SectionOne>()?;
+
+        fs::write(
+            &path,
+            json!({
+                "__meta": { "version": "0.2.0" }
+            })
+            .to_string(),
+        )?;
+
+        assert!(path.exists());
+        store.reload()?;
+
+        assert!(!path.exists());
 
         Ok(())
     }

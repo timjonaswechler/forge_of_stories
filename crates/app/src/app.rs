@@ -49,7 +49,7 @@ pub fn init<A: Application>(version: &'static str) -> Result<AppBase, A::Error> 
     fs::create_dir_all(&config_dir).ok();
     fs::create_dir_all(&data_dir).ok();
     fs::create_dir_all(&logs_dir).ok();
-
+    tracing::error!("{:?}", logs_dir);
     let file_appender = tracing_appender::rolling::never(
         &logs_dir,
         paths::log_file(app_id, custom_format.as_str()),
