@@ -4,12 +4,12 @@ use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 use crate::{
-    Settings, SettingsError,
     json_utils::{parse_json_with_comments, to_pretty_json},
+    Settings, SettingsError,
 };
 
 use semver::Version;
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{Map as JsonMap, Value as JsonValue};
 
 const META_KEY: &str = "__meta";
@@ -32,6 +32,7 @@ struct SectionMergeOutcome {
     delta_value: Option<JsonValue>,
     delta_changed: bool,
     migrated: bool,
+    pruned_unknown_fields: Vec<String>,
 }
 
 /// Convert any serializable struct to `serde_json::Value`.
@@ -104,6 +105,46 @@ fn diff_map(
     out
 }
 
+fn prune_unknown_fields(
+    default_ref: &JsonMap<String, JsonValue>,
+    candidate: &mut JsonMap<String, JsonValue>,
+) -> Vec<String> {
+    fn prune_recursive(
+        default_ref: &JsonMap<String, JsonValue>,
+        candidate: &mut JsonMap<String, JsonValue>,
+        prefix: &str,
+        removed: &mut Vec<String>,
+    ) {
+        let keys: Vec<String> = candidate.keys().cloned().collect();
+
+        for key in keys {
+            let full_path = if prefix.is_empty() {
+                key.clone()
+            } else {
+                format!("{prefix}.{key}")
+            };
+
+            match (default_ref.get(&key), candidate.get_mut(&key)) {
+                (None, _) => {
+                    candidate.remove(&key);
+                    removed.push(full_path);
+                }
+                (Some(JsonValue::Object(def_sub)), Some(JsonValue::Object(cand_sub))) => {
+                    prune_recursive(def_sub, cand_sub, &full_path, removed);
+                    if cand_sub.is_empty() {
+                        candidate.remove(&key);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let mut removed = Vec::new();
+    prune_recursive(default_ref, candidate, "", &mut removed);
+    removed
+}
+
 fn split_meta(
     mut document: JsonMap<String, JsonValue>,
 ) -> Result<(JsonMap<String, JsonValue>, Option<Version>), SettingsError> {
@@ -160,10 +201,12 @@ where
 
     let (working_value, migrated) = T::migrate(file_version, target_version, merged_value)?;
 
-    let object_map = match working_value {
+    let mut object_map = match working_value {
         JsonValue::Object(map) => map,
         _ => return Err(SettingsError::Invalid("settings must serialize to map")),
     };
+
+    let pruned_unknown_fields = prune_unknown_fields(default_map, &mut object_map);
 
     let diff_root = diff_map(&object_map, default_map);
     let delta_value = if diff_root.is_empty() {
@@ -187,10 +230,11 @@ where
     };
 
     Ok(SectionMergeOutcome {
-        merged_value: JsonValue::Object(object_map),
+        merged_value: JsonValue::Object(object_map.clone()),
         delta_value,
         delta_changed,
         migrated,
+        pruned_unknown_fields,
     })
 }
 
@@ -232,7 +276,8 @@ impl SettingsStoreBuilder {
         self
     }
 
-    /// Provide a logger callback; if unset falls back to eprintln!.
+    /// Provide a logger callback; if unset falls back to the global tracing
+    /// subscriber when available (otherwise `eprintln!`).
     pub fn with_logger<F>(mut self, f: F) -> Self
     where
         F: Fn(&str) + Send + Sync + 'static,
@@ -266,6 +311,7 @@ impl SettingsStoreBuilder {
         };
 
         let (delta_map, stored_version) = split_meta(raw_map)?;
+        let stored_version_for_loaded = stored_version.clone();
 
         if let Some(ref version) = stored_version {
             if version > &self.schema_version {
@@ -279,6 +325,7 @@ impl SettingsStoreBuilder {
             defaults: RwLock::new(HashMap::new()),
             values: RwLock::new(HashMap::new()),
             target_schema_version: self.schema_version,
+            loaded_file_schema_version: RwLock::new(stored_version_for_loaded),
             file_schema_version: RwLock::new(stored_version),
             section_runtimes: RwLock::new(HashMap::new()),
             logger: RwLock::new(self.logger),
@@ -299,6 +346,7 @@ pub struct SettingsStore {
     defaults: RwLock<HashMap<&'static str, JsonMap<String, JsonValue>>>, // section -> full default map
     values: RwLock<HashMap<&'static str, JsonValue>>, // section -> full effective merged value
     target_schema_version: Version,
+    loaded_file_schema_version: RwLock<Option<Version>>,
     file_schema_version: RwLock<Option<Version>>,
     section_runtimes: RwLock<HashMap<&'static str, SectionRuntime>>, // migration helpers per section
     logger: RwLock<Option<Arc<dyn Fn(&str) + Send + Sync>>>,         // optional logging hook
@@ -358,13 +406,14 @@ impl SettingsStore {
             let deltas = self.deltas.read().unwrap();
             deltas.get(section).cloned()
         };
-        let file_version_snapshot = self.file_schema_version.read().unwrap().clone();
+        let file_version_snapshot = self.loaded_file_schema_version.read().unwrap().clone();
 
         let SectionMergeOutcome {
             merged_value,
             delta_value,
             delta_changed,
             migrated,
+            pruned_unknown_fields,
         } = merge_for_settings::<T>(
             &default_map,
             existing_delta.as_ref(),
@@ -398,6 +447,14 @@ impl SettingsStore {
         }
 
         let mut persist_needed = delta_changed;
+
+        if !pruned_unknown_fields.is_empty() {
+            let joined = pruned_unknown_fields.join(", ");
+            self.log(&format!(
+                "removed unknown fields from settings section '{section}': {joined}"
+            ));
+            persist_needed = true;
+        }
 
         if migrated {
             let from_display = file_version_snapshot
@@ -540,6 +597,11 @@ impl SettingsStore {
             *version_guard = file_version_snapshot.clone();
         }
 
+        {
+            let mut loaded_guard = self.loaded_file_schema_version.write().unwrap();
+            *loaded_guard = file_version_snapshot.clone();
+        }
+
         let defaults_snapshot = {
             let defs = self.defaults.read().unwrap();
             defs.clone()
@@ -565,6 +627,7 @@ impl SettingsStore {
                 delta_value,
                 delta_changed,
                 migrated,
+                pruned_unknown_fields,
             } = (runtime.merge)(
                 default_map,
                 existing_delta.as_ref(),
@@ -594,6 +657,14 @@ impl SettingsStore {
                 self.log(&format!(
                     "migrated settings section '{section}' from schema {from_display} to {}",
                     self.target_schema_version
+                ));
+                persist_needed = true;
+            }
+
+            if !pruned_unknown_fields.is_empty() {
+                let joined = pruned_unknown_fields.join(", ");
+                self.log(&format!(
+                    "removed unknown fields from settings section '{section}': {joined}"
                 ));
                 persist_needed = true;
             }
@@ -707,8 +778,8 @@ impl SettingsStore {
                 };
 
                 if let JsonValue::Object(delta_map) = delta_val {
-                    let changed = Self::prune_map_recursive(default_map, delta_map);
-                    if changed && delta_map.is_empty() {
+                    let removed = prune_unknown_fields(default_map, delta_map);
+                    if !removed.is_empty() && delta_map.is_empty() {
                         deltas.remove(&section);
                     }
                 }
@@ -721,40 +792,6 @@ impl SettingsStore {
 
     /// Recursively prune keys in `candidate` that do not exist in `default_ref`.
     /// Returns true if any modification was made.
-    fn prune_map_recursive(
-        default_ref: &JsonMap<String, JsonValue>,
-        candidate: &mut JsonMap<String, JsonValue>,
-    ) -> bool {
-        let mut to_remove: Vec<String> = Vec::new();
-        let mut changed = false;
-
-        for (k, v) in candidate.iter_mut() {
-            if !default_ref.contains_key(k) {
-                to_remove.push(k.clone());
-                continue;
-            }
-            if let (Some(JsonValue::Object(def_sub)), JsonValue::Object(cand_sub)) =
-                (default_ref.get(k), v)
-            {
-                if Self::prune_map_recursive(def_sub, cand_sub) {
-                    changed = true;
-                }
-                if cand_sub.is_empty() {
-                    to_remove.push(k.clone());
-                }
-            }
-        }
-
-        if !to_remove.is_empty() {
-            for k in to_remove {
-                candidate.remove(&k);
-            }
-            changed = true;
-        }
-
-        changed
-    }
-
     fn ensure_file_version(&self) -> bool {
         let target = self.target_schema_version.clone();
         let mut guard = self.file_schema_version.write().unwrap();
@@ -770,6 +807,11 @@ impl SettingsStore {
     fn log(&self, message: &str) {
         if let Some(logger) = self.logger.read().unwrap().as_ref() {
             logger(message);
+            return;
+        }
+
+        if tracing::dispatcher::has_been_set() {
+            tracing::info!(target: "settings::store", "{message}");
         } else {
             eprintln!("{message}");
         }
@@ -783,9 +825,26 @@ mod tests {
     use super::*;
     use semver::Version;
     use serde::{Deserialize, Serialize};
-    use serde_json::{Number as JsonNumber, Value as JsonValue, json};
-    use std::fs;
+    use serde_json::{json, Number as JsonNumber, Value as JsonValue};
+    use std::{cell::RefCell, fs, thread_local};
     use tempfile::tempdir;
+
+    thread_local! {
+        static MIGRATION_VERSIONS: RefCell<Vec<Option<String>>> = const { RefCell::new(Vec::new()) };
+    }
+
+    fn reset_migration_versions() {
+        MIGRATION_VERSIONS.with(|versions| versions.borrow_mut().clear());
+    }
+
+    fn push_migration_version(file_version: Option<&Version>) {
+        let entry = file_version.map(|ver| ver.to_string());
+        MIGRATION_VERSIONS.with(|versions| versions.borrow_mut().push(entry));
+    }
+
+    fn collected_migration_versions() -> Vec<Option<String>> {
+        MIGRATION_VERSIONS.with(|versions| versions.borrow().clone())
+    }
 
     #[derive(Clone, Serialize, Deserialize)]
     struct ExampleSettings {
@@ -806,6 +865,7 @@ mod tests {
             target_version: &Version,
             data: JsonValue,
         ) -> Result<(JsonValue, bool), SettingsError> {
+            push_migration_version(file_version);
             let mut map = match data {
                 JsonValue::Object(map) => map,
                 _ => return Err(SettingsError::Invalid("migration expects object")),
@@ -844,11 +904,12 @@ mod tests {
 
     #[test]
     fn migrates_schema_on_register() -> Result<(), Box<dyn std::error::Error>> {
+        reset_migration_versions();
         let dir = tempdir()?;
         let path = dir.path().join("settings.json");
         fs::write(&path, schema_v1_document())?;
 
-        let store = SettingsStore::builder("0.1.0")
+        let store = SettingsStore::builder("0.2.0")
             .with_settings_file(&path)
             .build()?;
         store.register::<ExampleSettings>()?;
@@ -856,6 +917,12 @@ mod tests {
 
         let cfg = store.get::<ExampleSettings>()?;
         assert_eq!(cfg.new_field, 7);
+
+        let recorded = collected_migration_versions();
+        assert!(!recorded.is_empty());
+        assert!(recorded
+            .iter()
+            .all(|entry| entry.as_deref() == Some("0.1.0")));
 
         let doc: JsonValue = serde_json::from_str(&fs::read_to_string(&path)?)?;
         assert_eq!(
@@ -902,6 +969,151 @@ mod tests {
             example_obj.get("new_field").and_then(JsonValue::as_u64),
             Some(7)
         );
+
+        Ok(())
+    }
+
+    #[derive(Clone, Serialize, Deserialize)]
+    struct SectionOne {
+        value: u32,
+    }
+
+    impl Default for SectionOne {
+        fn default() -> Self {
+            Self { value: 0 }
+        }
+    }
+
+    impl Settings for SectionOne {
+        const SECTION: &'static str = "one";
+
+        fn migrate(
+            file_version: Option<&Version>,
+            _target_version: &Version,
+            data: JsonValue,
+        ) -> Result<(JsonValue, bool), SettingsError> {
+            push_migration_version(file_version);
+            match data {
+                JsonValue::Object(map) => Ok((JsonValue::Object(map), false)),
+                _ => Err(SettingsError::Invalid("section one expects object")),
+            }
+        }
+    }
+
+    #[derive(Clone, Serialize, Deserialize)]
+    struct SectionTwo {
+        value: u32,
+    }
+
+    impl Default for SectionTwo {
+        fn default() -> Self {
+            Self { value: 0 }
+        }
+    }
+
+    impl Settings for SectionTwo {
+        const SECTION: &'static str = "two";
+
+        fn migrate(
+            file_version: Option<&Version>,
+            _target_version: &Version,
+            data: JsonValue,
+        ) -> Result<(JsonValue, bool), SettingsError> {
+            push_migration_version(file_version);
+            match data {
+                JsonValue::Object(map) => Ok((JsonValue::Object(map), false)),
+                _ => Err(SettingsError::Invalid("section two expects object")),
+            }
+        }
+    }
+
+    #[test]
+    fn register_uses_loaded_version_for_each_section() -> Result<(), Box<dyn std::error::Error>> {
+        reset_migration_versions();
+
+        let dir = tempdir()?;
+        let path = dir.path().join("settings.json");
+        fs::write(
+            &path,
+            json!({
+                "__meta": { "version": "0.1.0" },
+                "one": { "value": 1 },
+                "two": { "value": 2 }
+            })
+            .to_string(),
+        )?;
+
+        let store = SettingsStore::builder("0.2.0")
+            .with_settings_file(&path)
+            .build()?;
+
+        store.register::<SectionOne>()?;
+        store.register::<SectionTwo>()?;
+
+        let recorded = collected_migration_versions();
+        assert!(recorded.len() >= 2);
+        assert!(recorded
+            .iter()
+            .all(|entry| entry.as_deref() == Some("0.1.0")));
+
+        let doc: JsonValue = serde_json::from_str(&fs::read_to_string(&path)?)?;
+        assert_eq!(doc["__meta"]["version"].as_str(), Some("0.2.0"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn register_prunes_unknown_fields() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
+        let path = dir.path().join("settings.json");
+        fs::write(
+            &path,
+            json!({
+                "__meta": { "version": "0.1.0" },
+                "one": { "value": 7, "typo_key": true }
+            })
+            .to_string(),
+        )?;
+
+        let store = SettingsStore::builder("0.2.0")
+            .with_settings_file(&path)
+            .build()?;
+        store.register::<SectionOne>()?;
+
+        let doc: JsonValue = serde_json::from_str(&fs::read_to_string(&path)?)?;
+        let section = doc["one"].as_object().unwrap();
+        assert!(!section.contains_key("typo_key"));
+        assert_eq!(section.get("value").and_then(JsonValue::as_u64), Some(7));
+
+        Ok(())
+    }
+
+    #[test]
+    fn reload_prunes_unknown_fields() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
+        let path = dir.path().join("settings.json");
+
+        let store = SettingsStore::builder("0.2.0")
+            .with_settings_file(&path)
+            .build()?;
+        store.register::<SectionOne>()?;
+
+        // Introduce typo directly in the file to simulate external edit.
+        fs::write(
+            &path,
+            json!({
+                "__meta": { "version": "0.2.0" },
+                "one": { "value": 5, "typo_key": true }
+            })
+            .to_string(),
+        )?;
+
+        store.reload()?;
+
+        let doc: JsonValue = serde_json::from_str(&fs::read_to_string(&path)?)?;
+        let section = doc["one"].as_object().unwrap();
+        assert!(!section.contains_key("typo_key"));
+        assert_eq!(section.get("value").and_then(JsonValue::as_u64), Some(5));
 
         Ok(())
     }
