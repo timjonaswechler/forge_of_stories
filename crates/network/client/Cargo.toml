@@ -6,6 +6,13 @@ edition.workspace = true
 [lib]
 path = "src/lib.rs"
 
-
 [dependencies]
 network_shared.workspace = true
+tokio.workspace = true
+thiserror.workspace = true
+futures.workspace = true
+quinn.workspace = true
+rustls.workspace = true
+bytes.workspace = true
+rustls-native-certs.workspace = true
+rustls-pemfile.workspace = true
