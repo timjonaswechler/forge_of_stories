@@ -11,13 +11,13 @@ use std::{
     time::Duration,
 };
 
+#[cfg(feature = "steamworks-mock")]
+use network_shared::discovery::SteamLobbyId;
 use network_shared::{
     config::{DiscoveryConfig, ServerDeployment, SteamDiscoveryMode},
     discovery::{LanServerAnnouncement, PlayerCapacity, encode_lan_announcement},
     serialization::SerializationError,
 };
-#[cfg(feature = "steamworks-mock")]
-use network_shared::discovery::SteamLobbyId;
 use thiserror::Error;
 use tokio::{net::UdpSocket, task::JoinHandle};
 use tracing::{debug, warn};
@@ -25,19 +25,15 @@ use tracing::{debug, warn};
 use crate::{
     runtime::NetworkRuntime,
     steam::{
-        ChannelSteamDiscoveryBackend,
-        SteamBackendHandle,
-        SteamDiscoveryController,
-        SteamIntegration,
-        SteamIntegrationError,
-        SteamServerEventSender,
+        ChannelSteamDiscoveryBackend, SteamBackendHandle, SteamDiscoveryController,
+        SteamIntegration, SteamIntegrationError, SteamServerEventSender,
     },
 };
 
-#[cfg(feature = "steamworks")]
-use crate::steam::{SteamworksIntegration, SteamworksIntegrationConfig};
 #[cfg(feature = "steamworks-mock")]
 use crate::steam::{MockLobbyConfig, MockSteamIntegration};
+#[cfg(feature = "steamworks")]
+use crate::steam::{SteamworksIntegration, SteamworksIntegrationConfig};
 
 /// Intervall, in dem LAN-Broadcasts ausgesendet werden.
 const LAN_BROADCAST_INTERVAL: Duration = Duration::from_millis(750);
@@ -127,7 +123,8 @@ impl ServerDiscovery {
     ) -> Result<(), DiscoveryError> {
         {
             let mut announcement = self.announcement.write().unwrap();
-            announcement.player_capacity = capacity.map(|(current, max)| PlayerCapacity::new(current, max));
+            announcement.player_capacity =
+                capacity.map(|(current, max)| PlayerCapacity::new(current, max));
         }
         self.refresh_payload()
     }
@@ -216,15 +213,12 @@ impl ServerDiscovery {
     }
 
     /// Validiert ein Steam-Auth-Ticket über die aktive Integration.
-    pub fn validate_steam_ticket(
-        &mut self,
-        ticket: &[u8],
-    ) -> Result<u64, SteamIntegrationError> {
+    pub fn validate_steam_ticket(&mut self, ticket: &[u8]) -> Result<u64, SteamIntegrationError> {
         if let Some(integration) = self.steam_integration.as_mut() {
             integration.validate_ticket(ticket)
         } else {
             Err(SteamIntegrationError::runtime(
-                "steam integration not active".into(),
+                "steam integration not active",
             ))
         }
     }
@@ -251,15 +245,14 @@ impl ServerDiscovery {
         self.refresh_payload()?;
 
         let payload = self.payload.clone();
-        let broadcaster = LanBroadcaster::spawn(
-            &self.runtime,
-            self.config.lan_port,
-            payload,
-        )?;
+        let broadcaster = LanBroadcaster::spawn(&self.runtime, self.config.lan_port, payload)?;
 
         self.state = VisibilityState::Lan;
         self.broadcaster = Some(broadcaster);
-        debug!(target = "network::discovery", "LAN visibility enabled on port {}", self.config.lan_port);
+        debug!(
+            target = "network::discovery",
+            "LAN visibility enabled on port {}", self.config.lan_port
+        );
         self.auto_configure_steam();
         Ok(())
     }
@@ -422,7 +415,8 @@ impl Drop for LanBroadcaster {
 }
 
 fn create_broadcast_socket() -> Result<UdpSocket, DiscoveryError> {
-    let std_socket = std::net::UdpSocket::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0))?;
+    let std_socket =
+        std::net::UdpSocket::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0))?;
     std_socket.set_nonblocking(true)?;
     std_socket.set_broadcast(true)?;
     UdpSocket::from_std(std_socket).map_err(DiscoveryError::from)

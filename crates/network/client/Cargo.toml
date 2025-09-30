@@ -6,6 +6,10 @@ edition.workspace = true
 [lib]
 path = "src/lib.rs"
 
+[features]
+default = []
+steamworks = ["dep:steamworks"]
+
 [dependencies]
 network_shared.workspace = true
 tokio.workspace = true
@@ -17,3 +21,4 @@ bytes.workspace = true
 rustls-native-certs.workspace = true
 rustls-pemfile.workspace = true
 tracing.workspace = true
+steamworks = { version = "0.7", optional = true }

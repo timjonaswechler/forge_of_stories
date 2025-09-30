@@ -6,7 +6,7 @@
 //! später um Steam Relay oder WAN-Suchen erweitern.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::{Arc, Mutex},
     time::{Duration, Instant},
@@ -28,6 +28,9 @@ use tokio::{
 use tracing::{debug, warn};
 
 use crate::runtime::ClientNetworkRuntime;
+
+#[cfg(feature = "steamworks")]
+use steamworks::{Client, ClientManager, LobbyId, LobbyMatchList, LobbyType, SteamError};
 
 const LAN_BUFFER_SIZE: usize = 512;
 const LAN_ENTRY_TTL: Duration = Duration::from_secs(6);
@@ -69,6 +72,8 @@ pub enum DiscoveryError {
     Serialization(String),
     #[error("invalid config: {0}")]
     InvalidConfig(String),
+    #[error("steam error: {0}")]
+    Steam(String),
 }
 
 impl From<LanPacketDecodeError> for DiscoveryError {
@@ -89,6 +94,8 @@ pub struct ClientDiscovery {
     config: DiscoveryConfig,
     state: DiscoveryState,
     steam: SteamDiscoveryHandle,
+    #[cfg(feature = "steamworks")]
+    steamworks: Option<SteamworksBrowser>,
 }
 
 #[derive(Debug)]
@@ -105,6 +112,8 @@ impl ClientDiscovery {
             config,
             state: DiscoveryState::Idle,
             steam: SteamDiscoveryHandle::new(steam_mode),
+            #[cfg(feature = "steamworks")]
+            steamworks: None,
         }
     }
 
@@ -141,10 +150,12 @@ impl ClientDiscovery {
         self.steam
             .reconfigure(self.config.steam.mode.clone(), &events);
         if self.config.lan_broadcast {
-            self.start_lan_listener(events)?;
+            self.start_lan_listener(events.clone())?;
         } else {
             self.stop_lan_listener();
         }
+        #[cfg(feature = "steamworks")]
+        self.configure_steamworks(events)?;
         Ok(())
     }
 
@@ -160,6 +171,8 @@ impl ClientDiscovery {
     /// Beendet alle Listener und bleibt im Hidden-Modus.
     pub fn stop(&mut self) {
         self.stop_lan_listener();
+        #[cfg(feature = "steamworks")]
+        self.stop_steam_listener();
     }
 
     fn start_lan_listener(
@@ -181,6 +194,40 @@ impl ClientDiscovery {
     fn stop_lan_listener(&mut self) {
         if let DiscoveryState::Lan(listener) = std::mem::replace(&mut self.state, DiscoveryState::Idle) {
             listener.abort();
+        }
+    }
+
+    #[cfg(feature = "steamworks")]
+    fn configure_steamworks(
+        &mut self,
+        events: UnboundedSender<DiscoveryEvent>,
+    ) -> Result<(), DiscoveryError> {
+        if matches!(self.config.steam.mode, SteamDiscoveryMode::Disabled) {
+            self.stop_steam_listener();
+            return Ok(());
+        }
+
+        let app_id = 480; // default Steam test AppID
+
+        if self.steamworks.is_none() {
+            match SteamworksBrowser::start(self.runtime.clone(), events, app_id) {
+                Ok(browser) => {
+                    self.steamworks = Some(browser);
+                }
+                Err(err) => {
+                    warn!(target = "network::discovery", "steamworks init failed: {err}");
+                    return Err(DiscoveryError::Steam(err));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    #[cfg(feature = "steamworks")]
+    fn stop_steam_listener(&mut self) {
+        if let Some(browser) = self.steamworks.take() {
+            browser.stop();
         }
     }
 }
@@ -258,6 +305,139 @@ fn bind_lan_socket(port: u16) -> Result<UdpSocket, DiscoveryError> {
     std_socket.set_nonblocking(true)?;
     std_socket.set_broadcast(true)?;
     UdpSocket::from_std(std_socket).map_err(DiscoveryError::from)
+}
+
+#[cfg(feature = "steamworks")]
+struct SteamworksBrowser {
+    client: Client<ClientManager>,
+    single: Arc<Mutex<SingleClient>>,
+    callback_task: JoinHandle<()>,
+    poll_task: JoinHandle<()>,
+}
+
+#[cfg(feature = "steamworks")]
+impl SteamworksBrowser {
+    fn start(
+        runtime: ClientNetworkRuntime,
+        events: UnboundedSender<DiscoveryEvent>,
+        app_id: u32,
+    ) -> Result<Self, String> {
+        let (client, single) = Client::init_app(app_id)
+            .map_err(|err| format!("steam init failed: {err}"))?;
+
+        let single = Arc::new(Mutex::new(single));
+        let callback_task = runtime.spawn({
+            let single = Arc::clone(&single);
+            let events = events.clone();
+            async move {
+                let mut ticker = tokio::time::interval(Duration::from_millis(50));
+                loop {
+                    ticker.tick().await;
+                    if let Err(err) = single.lock().await.run_callbacks() {
+                        warn!(target = "network::discovery", "steam callbacks failed: {err}");
+                        let _ = events.send(DiscoveryEvent::SteamError(format!(
+                            "steam callbacks failed: {err}"
+                        )));
+                        break;
+                    }
+                }
+            }
+        });
+
+        let poll_task = runtime.spawn(Self::poll_lobbies(client.clone(), events.clone()));
+
+        Ok(Self {
+            client,
+            single,
+            callback_task,
+            poll_task,
+        })
+    }
+
+    async fn poll_lobbies(
+        client: Client<ClientManager>,
+        events: UnboundedSender<DiscoveryEvent>,
+    ) {
+        let matchmaking = client.matchmaking();
+        let mut known: HashMap<SteamLobbyId, SteamLobbyInfo> = HashMap::new();
+        let mut ticker = tokio::time::interval(Duration::from_secs(5));
+
+        loop {
+            ticker.tick().await;
+            let (sender, receiver) = std::sync::mpsc::channel();
+            matchmaking.request_lobby_list(move |result: Result<LobbyMatchList, SteamError>| {
+                let converted = result.map(|list| list.into_iter().collect::<Vec<LobbyId>>());
+                let _ = sender.send(converted);
+            });
+
+            let result = receiver.recv_timeout(Duration::from_secs(5));
+            let list = match result {
+                Ok(Ok(list)) => list,
+                Ok(Err(err)) => {
+                    let _ = events.send(DiscoveryEvent::SteamError(format!(
+                        "failed to fetch lobby list: {err}"
+                    )));
+                    continue;
+                }
+                Err(_) => {
+                    let _ = events.send(DiscoveryEvent::SteamError(
+                        "timed out fetching lobby list".into(),
+                    ));
+                    continue;
+                }
+            };
+
+            let mut current: HashSet<SteamLobbyId> = HashSet::new();
+
+            for lobby_id in list {
+                let name = matchmaking
+                    .get_lobby_data(lobby_id, "name")
+                    .unwrap_or_else(|| "Unknown Lobby".into());
+                let owner = matchmaking
+                    .get_lobby_owner(lobby_id)
+                    .map(|id| id.raw())
+                    .unwrap_or(0);
+                let members = matchmaking.get_num_lobby_members(lobby_id) as u16;
+                let max_members = matchmaking.get_lobby_member_limit(lobby_id) as u16;
+
+                let info = SteamLobbyInfo {
+                    lobby_id: SteamLobbyId::new(lobby_id.raw()),
+                    host_steam_id: owner,
+                    name,
+                    player_count: members,
+                    max_players: max_members,
+                    requires_password: false,
+                    relay_enabled: true,
+                    wan_visible: false,
+                };
+
+                current.insert(info.lobby_id);
+
+                if known
+                    .insert(info.lobby_id, info.clone())
+                    .is_none()
+                {
+                    let _ = events.send(DiscoveryEvent::SteamLobbyDiscovered(info.clone()));
+                }
+                let _ = events.send(DiscoveryEvent::SteamLobbyUpdated(info));
+            }
+
+            let removed: Vec<SteamLobbyId> = known
+                .keys()
+                .copied()
+                .filter(|id| !current.contains(id))
+                .collect();
+            for lobby_id in removed {
+                known.remove(&lobby_id);
+                let _ = events.send(DiscoveryEvent::SteamLobbyRemoved(lobby_id));
+            }
+        }
+    }
+
+    fn stop(self) {
+        self.callback_task.abort();
+        self.poll_task.abort();
+    }
 }
 
 fn handle_datagram(
