@@ -2,8 +2,8 @@
 
 use std::{sync::Arc, time::Duration};
 
-use network_shared::discovery::SteamServerEvent;
-use steamworks::{Client, ClientManager, SingleClient};
+use network_shared::discovery::{SteamLobbyId, SteamLobbyInfo, SteamRelayTicket, SteamServerEvent};
+use steamworks::{AuthTicket, Client, ClientManager, Lobby, LobbyId, LobbyType, SingleClient};
 use tokio::{sync::Mutex, task::JoinHandle};
 use tracing::{debug, warn};
 
@@ -16,6 +16,7 @@ use super::{SteamBackendHandle, SteamIntegration, SteamIntegrationError};
 pub struct SteamworksIntegrationConfig {
     pub app_id: u32,
     pub callback_interval: Duration,
+    pub max_players: u32,
 }
 
 impl Default for SteamworksIntegrationConfig {
@@ -23,6 +24,7 @@ impl Default for SteamworksIntegrationConfig {
         Self {
             app_id: 0,
             callback_interval: Duration::from_millis(50),
+            max_players: 16,
         }
     }
 }
@@ -35,6 +37,9 @@ pub struct SteamworksIntegration {
     client: Option<Client<ClientManager>>,
     single: Option<Arc<Mutex<SingleClient>>>,
     callbacks_task: Option<JoinHandle<()>>,
+    lobby: Option<Lobby<ClientManager>>,
+    lobby_id: Option<LobbyId>,
+    auth_ticket: Option<AuthTicket>,
 }
 
 impl SteamworksIntegration {
@@ -46,6 +51,9 @@ impl SteamworksIntegration {
             client: None,
             single: None,
             callbacks_task: None,
+            lobby: None,
+            lobby_id: None,
+            auth_ticket: None,
         }
     }
 
@@ -73,6 +81,58 @@ impl SteamworksIntegration {
             }
         })
     }
+
+    fn initialise_lobby(
+        &mut self,
+        handle: &SteamBackendHandle,
+    ) -> Result<(), SteamIntegrationError> {
+        let client = self
+            .client
+            .as_ref()
+            .ok_or_else(|| SteamIntegrationError::runtime("steam client missing"))?;
+
+        let matchmaking = client.matchmaking();
+        let max_players = self.config.max_players.max(2) as i32;
+        let lobby = matchmaking
+            .create_lobby(LobbyType::Friends, max_players)
+            .map_err(|err| SteamIntegrationError::runtime(err))?;
+
+        let lobby_id = lobby.id();
+        let server_name = "Forge of Stories Server";
+        let _ = matchmaking.set_lobby_data(&lobby, "name", server_name);
+
+        let user = client.user();
+        let steam_id = user.steam_id().raw();
+
+        let lobby_info = SteamLobbyInfo {
+            lobby_id: SteamLobbyId::new(lobby_id.raw()),
+            host_steam_id: steam_id,
+            name: server_name.into(),
+            player_count: 0,
+            max_players: max_players as u16,
+            requires_password: false,
+            relay_enabled: true,
+            wan_visible: false,
+        };
+
+        let _ = handle.send(SteamServerEvent::LobbyDiscovered(lobby_info.clone()));
+        let _ = handle.send(SteamServerEvent::LobbyUpdated(lobby_info));
+
+        if let Ok((ticket, data)) = user.authentication_session_ticket() {
+            let relay_ticket = SteamRelayTicket {
+                lobby_id: SteamLobbyId::new(lobby_id.raw()),
+                app_id: self.config.app_id,
+                token: data,
+                expires_at: None,
+            };
+            let _ = handle.send(SteamServerEvent::TicketIssued(relay_ticket));
+            self.auth_ticket = Some(ticket);
+        }
+
+        self.lobby = Some(lobby);
+        self.lobby_id = Some(lobby_id);
+        Ok(())
+    }
 }
 
 impl SteamIntegration for SteamworksIntegration {
@@ -98,6 +158,12 @@ impl SteamIntegration for SteamworksIntegration {
         self.callbacks_task = Some(callbacks);
 
         let _ = handle.send(SteamServerEvent::Activated);
+        if let Err(err) = self.initialise_lobby(&handle) {
+            warn!(target = "network::discovery", "failed to initialise lobby: {err}");
+            let _ = handle.send(SteamServerEvent::Error {
+                message: format!("lobby init failed: {err}"),
+            });
+        }
         Ok(())
     }
 
@@ -105,12 +171,21 @@ impl SteamIntegration for SteamworksIntegration {
         if let Some(task) = self.callbacks_task.take() {
             task.abort();
         }
+        if let Some(client) = &self.client {
+            if let Some(lobby) = self.lobby.take() {
+                client.matchmaking().leave_lobby(lobby.id());
+            }
+            if let Some(ticket) = self.auth_ticket.take() {
+                client.user().cancel_authentication_ticket(ticket);
+            }
+        }
         self.single = None;
         self.client = None;
         if let Some(handle) = &self.backend_handle {
             let _ = handle.send(SteamServerEvent::Deactivated);
         }
         self.backend_handle = None;
+        self.lobby_id = None;
     }
 }
 

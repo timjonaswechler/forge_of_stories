@@ -12,18 +12,32 @@ use std::{
 };
 
 use network_shared::{
-    config::{DiscoveryConfig, ServerDeployment},
+    config::{DiscoveryConfig, ServerDeployment, SteamDiscoveryMode},
     discovery::{LanServerAnnouncement, PlayerCapacity, encode_lan_announcement},
     serialization::SerializationError,
 };
+#[cfg(feature = "steamworks-mock")]
+use network_shared::discovery::SteamLobbyId;
 use thiserror::Error;
 use tokio::{net::UdpSocket, task::JoinHandle};
 use tracing::{debug, warn};
 
 use crate::{
     runtime::NetworkRuntime,
-    steam::{ChannelSteamDiscoveryBackend, SteamBackendHandle, SteamDiscoveryController, SteamIntegration, SteamIntegrationError, SteamServerEventSender},
+    steam::{
+        ChannelSteamDiscoveryBackend,
+        SteamBackendHandle,
+        SteamDiscoveryController,
+        SteamIntegration,
+        SteamIntegrationError,
+        SteamServerEventSender,
+    },
 };
+
+#[cfg(feature = "steamworks")]
+use crate::steam::{SteamworksIntegration, SteamworksIntegrationConfig};
+#[cfg(feature = "steamworks-mock")]
+use crate::steam::{MockLobbyConfig, MockSteamIntegration};
 
 /// Intervall, in dem LAN-Broadcasts ausgesendet werden.
 const LAN_BROADCAST_INTERVAL: Duration = Duration::from_millis(750);
@@ -133,6 +147,7 @@ impl ServerDiscovery {
         } else {
             self.disable_lan();
         }
+        self.auto_configure_steam();
         Ok(())
     }
 
@@ -148,6 +163,7 @@ impl ServerDiscovery {
                 self.enable_lan()?;
             }
         }
+        self.auto_configure_steam();
         Ok(())
     }
 
@@ -157,7 +173,9 @@ impl ServerDiscovery {
         self.deployment = deployment;
         self.steam
             .set_mode(self.deployment.clone(), self.config.steam.mode.clone());
-        self.refresh_payload()
+        self.refresh_payload()?;
+        self.auto_configure_steam();
+        Ok(())
     }
 
     /// Hinterlegt einen Sender, über den Steam-Discovery-Ereignisse nach außen gemeldet werden.
@@ -221,6 +239,7 @@ impl ServerDiscovery {
         self.state = VisibilityState::Lan;
         self.broadcaster = Some(broadcaster);
         debug!(target = "network::discovery", "LAN visibility enabled on port {}", self.config.lan_port);
+        self.auto_configure_steam();
         Ok(())
     }
 
@@ -232,6 +251,7 @@ impl ServerDiscovery {
             self.state = VisibilityState::Hidden;
             debug!(target = "network::discovery", "LAN visibility disabled");
         }
+        self.auto_configure_steam();
     }
 
     fn refresh_payload(&self) -> Result<(), DiscoveryError> {
@@ -249,6 +269,69 @@ impl ServerDiscovery {
     fn steam_lan_available(&self) -> bool {
         self.steam.is_active()
     }
+
+    fn should_run_steam(&self) -> bool {
+        matches!(self.config.steam.mode, SteamDiscoveryMode::LocalOnly)
+            && matches!(self.deployment, ServerDeployment::LocalHost)
+            && self.state == VisibilityState::Lan
+    }
+
+    fn auto_configure_steam(&mut self) {
+        if self.should_run_steam() {
+            if self.steam_integration.is_none() {
+                match self.create_steam_integration() {
+                    Some(integration) => {
+                        if let Err(err) = self.start_steam_integration(integration) {
+                            warn!(
+                                target = "network::discovery",
+                                "failed to start steam integration: {err}"
+                            );
+                        }
+                    }
+                    None => {
+                        warn!(
+                            target = "network::discovery",
+                            "steam integration requested but no backend available"
+                        );
+                    }
+                }
+            }
+        } else {
+            self.stop_steam_integration();
+        }
+    }
+
+    fn create_steam_integration(&self) -> Option<Box<dyn SteamIntegration>> {
+        #[cfg(feature = "steamworks")]
+        {
+            let config = SteamworksIntegrationConfig {
+                app_id: 480,
+                callback_interval: Duration::from_millis(50),
+                max_players: 16,
+            };
+            return Some(Box::new(SteamworksIntegration::new(
+                self.runtime.clone(),
+                config,
+            )));
+        }
+
+        #[cfg(feature = "steamworks-mock")]
+        {
+            let mut integration = MockSteamIntegration::new(self.runtime.clone());
+            let announcement = self.announcement.read().unwrap().clone();
+            integration = integration.with_lobby(MockLobbyConfig {
+                lobby_id: SteamLobbyId::new(1),
+                name: announcement.server_name,
+                players: (0, 16),
+            });
+            return Some(Box::new(integration));
+        }
+
+        #[cfg(not(feature = "steamworks-mock"))]
+        {
+            None
+        }
+    }
 }
 
 impl fmt::Debug for ServerDiscovery {
@@ -259,6 +342,12 @@ impl fmt::Debug for ServerDiscovery {
             .field("state", &self.state)
             .field("steam_status", &self.steam.status())
             .finish()
+    }
+}
+
+impl Drop for ServerDiscovery {
+    fn drop(&mut self) {
+        self.stop_steam_integration();
     }
 }
 /// Hintergrundaufgabe, die Discovery-Pakete sendet.
