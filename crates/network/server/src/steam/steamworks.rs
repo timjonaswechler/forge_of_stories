@@ -98,8 +98,8 @@ impl SteamworksIntegration {
             .map_err(|err| SteamIntegrationError::runtime(err))?;
 
         let lobby_id = lobby.id();
-        let server_name = "Forge of Stories Server";
-        let _ = matchmaking.set_lobby_data(&lobby, "name", server_name);
+        let server_name = self.config.server_name.clone();
+        let _ = matchmaking.set_lobby_data(&lobby, "name", &server_name);
 
         let user = client.user();
         let steam_id = user.steam_id().raw();
@@ -107,7 +107,7 @@ impl SteamworksIntegration {
         let lobby_info = SteamLobbyInfo {
             lobby_id: SteamLobbyId::new(lobby_id.raw()),
             host_steam_id: steam_id,
-            name: server_name.into(),
+            name: server_name,
             player_count: 0,
             max_players: max_players as u16,
             requires_password: false,
@@ -173,10 +173,19 @@ impl SteamIntegration for SteamworksIntegration {
         }
         if let Some(client) = &self.client {
             if let Some(lobby) = self.lobby.take() {
-                client.matchmaking().leave_lobby(lobby.id());
+                let lobby_id = lobby.id();
+                client.matchmaking().leave_lobby(lobby_id);
+                if let Some(handle) = &self.backend_handle {
+                    let _ = handle.send(SteamServerEvent::LobbyRemoved(SteamLobbyId::new(lobby_id.raw())));
+                }
             }
             if let Some(ticket) = self.auth_ticket.take() {
                 client.user().cancel_authentication_ticket(ticket);
+                if let Some(handle) = &self.backend_handle {
+                    if let Some(lobby_id) = self.lobby_id {
+                        let _ = handle.send(SteamServerEvent::TicketRevoked(SteamLobbyId::new(lobby_id.raw())));
+                    }
+                }
             }
         }
         self.single = None;

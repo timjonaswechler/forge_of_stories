@@ -304,15 +304,20 @@ impl ServerDiscovery {
     fn create_steam_integration(&self) -> Option<Box<dyn SteamIntegration>> {
         #[cfg(feature = "steamworks")]
         {
-            let config = SteamworksIntegrationConfig {
-                app_id: 480,
-                callback_interval: Duration::from_millis(50),
-                max_players: 16,
-            };
-            return Some(Box::new(SteamworksIntegration::new(
-                self.runtime.clone(),
-                config,
-            )));
+            let announcement = self.announcement.read().unwrap().clone();
+            let app_id = self.config.steam_app_id.unwrap_or(480);
+            if app_id != 0 {
+                let config = SteamworksIntegrationConfig {
+                    app_id,
+                    callback_interval: Duration::from_millis(50),
+                    max_players: self.config.transport.max_connections,
+                    server_name: announcement.server_name,
+                };
+                return Some(Box::new(SteamworksIntegration::new(
+                    self.runtime.clone(),
+                    config,
+                )));
+            }
         }
 
         #[cfg(feature = "steamworks-mock")]
@@ -322,7 +327,7 @@ impl ServerDiscovery {
             integration = integration.with_lobby(MockLobbyConfig {
                 lobby_id: SteamLobbyId::new(1),
                 name: announcement.server_name,
-                players: (0, 16),
+                players: (0, self.config.transport.max_connections as u16),
             });
             return Some(Box::new(integration));
         }

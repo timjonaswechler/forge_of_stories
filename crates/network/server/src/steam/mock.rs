@@ -51,6 +51,7 @@ impl MockSteamIntegration {
             };
             let _ = handle.send(SteamServerEvent::Activated);
             let _ = handle.send(SteamServerEvent::LobbyDiscovered(lobby.clone()));
+            let _ = handle.send(SteamServerEvent::LobbyUpdated(lobby.clone()));
             let ticket = SteamRelayTicket {
                 lobby_id: config.lobby_id,
                 app_id: 0,
@@ -76,6 +77,10 @@ impl SteamIntegration for MockSteamIntegration {
     fn stop(&mut self) {
         if let Some(handle) = &self.sender {
             let _ = handle.send(SteamServerEvent::Deactivated);
+            if let Some(config) = &self.auto_lobby {
+                let _ = handle.send(SteamServerEvent::TicketRevoked(config.lobby_id));
+                let _ = handle.send(SteamServerEvent::LobbyRemoved(config.lobby_id));
+            }
         }
         self.sender = None;
     }
