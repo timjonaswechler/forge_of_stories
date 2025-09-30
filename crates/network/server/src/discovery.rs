@@ -5,6 +5,7 @@
 //! dass später weitere Modi (Steam Relay, WAN) ergänzt werden können.
 
 use std::{
+    fmt,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::{Arc, RwLock},
     time::Duration,
@@ -21,7 +22,7 @@ use tracing::{debug, warn};
 
 use crate::{
     runtime::NetworkRuntime,
-    steam::SteamDiscoveryController,
+    steam::{ChannelSteamDiscoveryBackend, SteamBackendHandle, SteamDiscoveryController, SteamIntegration, SteamIntegrationError, SteamServerEventSender},
 };
 
 /// Intervall, in dem LAN-Broadcasts ausgesendet werden.
@@ -35,7 +36,6 @@ pub enum VisibilityState {
 }
 
 /// Zentrale Verwaltung des Discovery-Zustands.
-#[derive(Debug)]
 pub struct ServerDiscovery {
     runtime: NetworkRuntime,
     config: DiscoveryConfig,
@@ -45,6 +45,8 @@ pub struct ServerDiscovery {
     state: VisibilityState,
     broadcaster: Option<LanBroadcaster>,
     steam: SteamDiscoveryController,
+    steam_backend_handle: Option<SteamBackendHandle>,
+    steam_integration: Option<Box<dyn SteamIntegration>>,
 }
 
 impl ServerDiscovery {
@@ -70,6 +72,8 @@ impl ServerDiscovery {
             state: VisibilityState::Hidden,
             broadcaster: None,
             steam: SteamDiscoveryController::new(deployment_mode, steam_mode),
+            steam_backend_handle: None,
+            steam_integration: None,
         };
 
         if discovery.config.lan_broadcast {
@@ -156,6 +160,43 @@ impl ServerDiscovery {
         self.refresh_payload()
     }
 
+    /// Hinterlegt einen Sender, über den Steam-Discovery-Ereignisse nach außen gemeldet werden.
+    pub fn set_steam_event_sender(&mut self, sender: SteamServerEventSender) {
+        self.steam.set_event_sender(sender);
+    }
+
+    /// Installiert ein Channel-basiertes Steam-Backend und liefert dessen Handle.
+    pub fn install_channel_steam_backend(&mut self) -> SteamBackendHandle {
+        if let Some(handle) = &self.steam_backend_handle {
+            return handle.clone();
+        }
+        let (backend, handle) = ChannelSteamDiscoveryBackend::new();
+        self.steam.replace_backend(backend);
+        self.steam_backend_handle = Some(handle.clone());
+        handle
+    }
+
+    /// Startet eine Steam-Integration (z. B. Steamworks), die Ereignisse an den Controller liefert.
+    pub fn start_steam_integration(
+        &mut self,
+        mut integration: Box<dyn SteamIntegration>,
+    ) -> Result<(), SteamIntegrationError> {
+        if let Some(mut existing) = self.steam_integration.take() {
+            existing.stop();
+        }
+        let handle = self.install_channel_steam_backend();
+        integration.start(handle)?;
+        self.steam_integration = Some(integration);
+        Ok(())
+    }
+
+    /// Stoppt eine aktive Steam-Integration.
+    pub fn stop_steam_integration(&mut self) {
+        if let Some(mut integration) = self.steam_integration.take() {
+            integration.stop();
+        }
+    }
+
     /// Liefert eine Kopie der aktuellen Ankündigung (z. B. für Tests oder UI).
     pub fn announcement(&self) -> LanServerAnnouncement {
         self.announcement.read().unwrap().clone()
@@ -207,6 +248,17 @@ impl ServerDiscovery {
 
     fn steam_lan_available(&self) -> bool {
         self.steam.is_active()
+    }
+}
+
+impl fmt::Debug for ServerDiscovery {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ServerDiscovery")
+            .field("config", &self.config)
+            .field("deployment", &self.deployment)
+            .field("state", &self.state)
+            .field("steam_status", &self.steam.status())
+            .finish()
     }
 }
 /// Hintergrundaufgabe, die Discovery-Pakete sendet.

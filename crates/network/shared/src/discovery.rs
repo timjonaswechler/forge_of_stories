@@ -117,6 +117,19 @@ pub struct SteamRelayTicket {
     pub expires_at: Option<u64>,
 }
 
+/// Ereignisse, die der Server über Steam-Discovery herausgeben kann.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SteamServerEvent {
+    Activated,
+    Deactivated,
+    LobbyDiscovered(SteamLobbyInfo),
+    LobbyUpdated(SteamLobbyInfo),
+    LobbyRemoved(SteamLobbyId),
+    TicketIssued(SteamRelayTicket),
+    TicketRevoked(SteamLobbyId),
+    Error { message: String },
+}
+
 /// Kodiert eine LAN-Ankündigung inkl. Magic-Bytes.
 pub fn encode_lan_announcement(
     announcement: &LanServerAnnouncement,

@@ -16,7 +16,7 @@ use network_shared::{
     config::{DiscoveryConfig, SteamDiscoveryMode},
     discovery::{
         LanPacketDecodeError, LanServerAnnouncement, SteamLobbyId, SteamLobbyInfo,
-        SteamRelayTicket, decode_lan_announcement,
+        SteamRelayTicket, SteamServerEvent, decode_lan_announcement,
     },
 };
 use thiserror::Error;
@@ -47,6 +47,8 @@ pub enum DiscoveryEvent {
         lobby: SteamLobbyId,
         ticket: SteamRelayTicket,
     },
+    SteamTicketRevoked(SteamLobbyId),
+    SteamError(String),
 }
 
 /// Informationen zu einem via LAN gefundenen Server.
@@ -117,6 +119,11 @@ impl ClientDiscovery {
         }
     }
 
+    /// Gibt die aktuell bekannten Steam-Lobbys zurück.
+    pub fn steam_lobbies(&self) -> Vec<SteamLobbyInfo> {
+        self.steam.lobbies()
+    }
+
     /// Gibt den aktiven Steam-Discovery-Modus zurück (zur UI-Anzeige oder Debugging).
     pub fn steam_mode(&self) -> &SteamDiscoveryMode {
         self.steam.mode()
@@ -137,6 +144,15 @@ impl ClientDiscovery {
             self.stop_lan_listener();
         }
         Ok(())
+    }
+
+    /// Verarbeitet ein vom Server geliefertes Steam-Event.
+    pub fn handle_steam_server_event(
+        &mut self,
+        event: SteamServerEvent,
+        events: &UnboundedSender<DiscoveryEvent>,
+    ) {
+        self.steam.handle_event(event, events);
     }
 
     /// Beendet alle Listener und bleibt im Hidden-Modus.
@@ -313,11 +329,17 @@ fn prune_expired(
 #[derive(Debug)]
 struct SteamDiscoveryHandle {
     mode: SteamDiscoveryMode,
+    lobbies: HashMap<SteamLobbyId, SteamLobbyInfo>,
+    tickets: HashMap<SteamLobbyId, SteamRelayTicket>,
 }
 
 impl SteamDiscoveryHandle {
     fn new(mode: SteamDiscoveryMode) -> Self {
-        let handle = Self { mode };
+        let handle = Self {
+            mode,
+            lobbies: HashMap::new(),
+            tickets: HashMap::new(),
+        };
         handle.log_state("init");
         handle
     }
@@ -333,7 +355,59 @@ impl SteamDiscoveryHandle {
         } else {
             self.log_state("noop");
         }
+        self.clear(events);
         self.emit_state(events);
+    }
+
+    fn handle_event(
+        &mut self,
+        event: SteamServerEvent,
+        events: &UnboundedSender<DiscoveryEvent>,
+    ) {
+        match event {
+            SteamServerEvent::Activated => {
+                self.log_state("activated");
+                self.emit_state(events);
+            }
+            SteamServerEvent::Deactivated => {
+                self.log_state("deactivated");
+                self.clear(events);
+                self.emit_state(events);
+            }
+            SteamServerEvent::LobbyDiscovered(info) => {
+                self.log_state("lobby_discovered");
+                self.lobbies.insert(info.lobby_id, info.clone());
+                let _ = events.send(DiscoveryEvent::SteamLobbyDiscovered(info));
+            }
+            SteamServerEvent::LobbyUpdated(info) => {
+                self.log_state("lobby_updated");
+                self.lobbies.insert(info.lobby_id, info.clone());
+                let _ = events.send(DiscoveryEvent::SteamLobbyUpdated(info));
+            }
+            SteamServerEvent::LobbyRemoved(lobby) => {
+                self.log_state("lobby_removed");
+                self.lobbies.remove(&lobby);
+                self.tickets.remove(&lobby);
+                let _ = events.send(DiscoveryEvent::SteamLobbyRemoved(lobby));
+            }
+            SteamServerEvent::TicketIssued(ticket) => {
+                self.log_state("ticket_issued");
+                self.tickets.insert(ticket.lobby_id, ticket.clone());
+                let _ = events.send(DiscoveryEvent::SteamTicketOffered {
+                    lobby: ticket.lobby_id,
+                    ticket,
+                });
+            }
+            SteamServerEvent::TicketRevoked(lobby) => {
+                self.log_state("ticket_revoked");
+                self.tickets.remove(&lobby);
+                let _ = events.send(DiscoveryEvent::SteamTicketRevoked(lobby));
+            }
+            SteamServerEvent::Error { message } => {
+                self.log_state("error");
+                let _ = events.send(DiscoveryEvent::SteamError(message));
+            }
+        }
     }
 
     fn emit_state(&self, events: &UnboundedSender<DiscoveryEvent>) {
@@ -343,8 +417,20 @@ impl SteamDiscoveryHandle {
         let _ = events.send(event);
     }
 
+    fn clear(&mut self, events: &UnboundedSender<DiscoveryEvent>) {
+        for lobby in self.lobbies.keys().copied().collect::<Vec<_>>() {
+            let _ = events.send(DiscoveryEvent::SteamLobbyRemoved(lobby));
+        }
+        self.lobbies.clear();
+        self.tickets.clear();
+    }
+
     fn mode(&self) -> &SteamDiscoveryMode {
         &self.mode
+    }
+
+    fn lobbies(&self) -> Vec<SteamLobbyInfo> {
+        self.lobbies.values().cloned().collect()
     }
 
     fn log_state(&self, stage: &str) {
@@ -355,7 +441,7 @@ impl SteamDiscoveryHandle {
             ),
             SteamDiscoveryMode::LocalOnly => debug!(
                 target = "network::discovery",
-                "steam discovery {stage}: local-only placeholder"
+                "steam discovery {stage}: local-only active"
             ),
         }
     }
