@@ -11,7 +11,7 @@ use std::{
 };
 
 use network_shared::{
-    config::{DiscoveryConfig, ServerDeployment, SteamDiscoveryMode},
+    config::{DiscoveryConfig, ServerDeployment},
     discovery::{LanServerAnnouncement, PlayerCapacity, encode_lan_announcement},
     serialization::SerializationError,
 };
@@ -19,7 +19,10 @@ use thiserror::Error;
 use tokio::{net::UdpSocket, task::JoinHandle};
 use tracing::{debug, warn};
 
-use crate::runtime::NetworkRuntime;
+use crate::{
+    runtime::NetworkRuntime,
+    steam::SteamDiscoveryController,
+};
 
 /// Intervall, in dem LAN-Broadcasts ausgesendet werden.
 const LAN_BROADCAST_INTERVAL: Duration = Duration::from_millis(750);
@@ -193,14 +196,6 @@ impl ServerDiscovery {
     fn refresh_payload(&self) -> Result<(), DiscoveryError> {
         let encoded = {
             let mut announcement = self.announcement.write().unwrap();
-            if matches!(self.config.steam.mode, SteamDiscoveryMode::LocalOnly)
-                && matches!(self.deployment, ServerDeployment::Dedicated)
-            {
-                warn!(
-                    target = "network::discovery",
-                    "steam discovery disabled: deployment set to dedicated"
-                );
-            }
             announcement.flags.steam_relay = self.steam_lan_available();
             encode_lan_announcement(&announcement).map_err(DiscoveryError::from)?
         };
@@ -214,54 +209,6 @@ impl ServerDiscovery {
         self.steam.is_active()
     }
 }
-
-/// Steuerung der Steam-basierten Discovery/Relay-Bekanntmachung.
-#[derive(Debug)]
-struct SteamDiscoveryController {
-    deployment: ServerDeployment,
-    mode: SteamDiscoveryMode,
-}
-
-impl SteamDiscoveryController {
-    fn new(deployment: ServerDeployment, mode: SteamDiscoveryMode) -> Self {
-        let controller = Self { deployment, mode };
-        controller.apply_mode();
-        controller
-    }
-
-    fn set_mode(&mut self, deployment: ServerDeployment, mode: SteamDiscoveryMode) {
-        self.deployment = deployment;
-        self.mode = mode;
-        self.apply_mode();
-    }
-
-    fn is_active(&self) -> bool {
-        matches!(self.mode, SteamDiscoveryMode::LocalOnly)
-            && matches!(self.deployment, ServerDeployment::LocalHost)
-    }
-
-    fn apply_mode(&self) {
-        match (&self.mode, self.deployment.clone()) {
-            (SteamDiscoveryMode::Disabled, _) => {
-                debug!(target = "network::discovery", "steam discovery disabled");
-            }
-            (SteamDiscoveryMode::LocalOnly, ServerDeployment::LocalHost) => {
-                debug!(
-                    target = "network::discovery",
-                    "steam discovery pending activation (local host)"
-                );
-                // TODO: Steamworks-API integrieren, um Relay/Lobby anzukündigen.
-            }
-            (SteamDiscoveryMode::LocalOnly, ServerDeployment::Dedicated) => {
-                warn!(
-                    target = "network::discovery",
-                    "steam discovery disabled because deployment is dedicated"
-                );
-            }
-        }
-    }
-}
-
 /// Hintergrundaufgabe, die Discovery-Pakete sendet.
 #[derive(Debug)]
 struct LanBroadcaster {

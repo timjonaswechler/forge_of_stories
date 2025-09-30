@@ -15,7 +15,8 @@ use std::{
 use network_shared::{
     config::{DiscoveryConfig, SteamDiscoveryMode},
     discovery::{
-        LanPacketDecodeError, LanServerAnnouncement, decode_lan_announcement,
+        LanPacketDecodeError, LanServerAnnouncement, SteamLobbyId, SteamLobbyInfo,
+        SteamRelayTicket, decode_lan_announcement,
     },
 };
 use thiserror::Error;
@@ -38,6 +39,14 @@ pub enum DiscoveryEvent {
     LanServerDiscovered(LanServerInfo),
     LanServerUpdated(LanServerInfo),
     LanServerExpired(SocketAddr),
+    SteamStateChanged { mode: SteamDiscoveryMode },
+    SteamLobbyDiscovered(SteamLobbyInfo),
+    SteamLobbyUpdated(SteamLobbyInfo),
+    SteamLobbyRemoved(SteamLobbyId),
+    SteamTicketOffered {
+        lobby: SteamLobbyId,
+        ticket: SteamRelayTicket,
+    },
 }
 
 /// Informationen zu einem via LAN gefundenen Server.
@@ -120,7 +129,8 @@ impl ClientDiscovery {
         events: UnboundedSender<DiscoveryEvent>,
     ) -> Result<(), DiscoveryError> {
         self.config = config;
-        self.steam.set_mode(self.config.steam.mode.clone());
+        self.steam
+            .reconfigure(self.config.steam.mode.clone(), &events);
         if self.config.lan_broadcast {
             self.start_lan_listener(events)?;
         } else {
@@ -312,11 +322,25 @@ impl SteamDiscoveryHandle {
         handle
     }
 
-    fn set_mode(&mut self, mode: SteamDiscoveryMode) {
+    fn reconfigure(
+        &mut self,
+        mode: SteamDiscoveryMode,
+        events: &UnboundedSender<DiscoveryEvent>,
+    ) {
         if self.mode != mode {
             self.mode = mode;
             self.log_state("update");
+        } else {
+            self.log_state("noop");
         }
+        self.emit_state(events);
+    }
+
+    fn emit_state(&self, events: &UnboundedSender<DiscoveryEvent>) {
+        let event = DiscoveryEvent::SteamStateChanged {
+            mode: self.mode.clone(),
+        };
+        let _ = events.send(event);
     }
 
     fn mode(&self) -> &SteamDiscoveryMode {

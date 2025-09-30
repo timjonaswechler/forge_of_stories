@@ -65,6 +65,58 @@ impl PlayerCapacity {
     }
 }
 
+/// Eindeutiger Identifier für eine Steam-Lobby/Session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct SteamLobbyId(pub u64);
+
+impl SteamLobbyId {
+    pub const fn new(id: u64) -> Self {
+        Self(id)
+    }
+
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+}
+
+/// Informationen zu einer via Steam sichtbaren Lobby/Relay-Session.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SteamLobbyInfo {
+    pub lobby_id: SteamLobbyId,
+    pub host_steam_id: u64,
+    pub name: String,
+    pub player_count: u16,
+    pub max_players: u16,
+    pub requires_password: bool,
+    pub relay_enabled: bool,
+    pub wan_visible: bool,
+}
+
+impl SteamLobbyInfo {
+    pub fn new(lobby_id: SteamLobbyId) -> Self {
+        Self {
+            lobby_id,
+            host_steam_id: 0,
+            name: "Forge of Stories Lobby".into(),
+            player_count: 0,
+            max_players: 0,
+            requires_password: false,
+            relay_enabled: true,
+            wan_visible: false,
+        }
+    }
+}
+
+/// Ticket, das Clients vom Server erhalten, um Steam Relay zu nutzen.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SteamRelayTicket {
+    pub lobby_id: SteamLobbyId,
+    pub app_id: u32,
+    pub token: Vec<u8>,
+    /// Optionaler Ablaufzeitpunkt in Unix-Sekunden.
+    pub expires_at: Option<u64>,
+}
+
 /// Kodiert eine LAN-Ankündigung inkl. Magic-Bytes.
 pub fn encode_lan_announcement(
     announcement: &LanServerAnnouncement,

@@ -8,13 +8,13 @@
 use network_shared::events::ClientEvent;
 use tokio::sync::mpsc::UnboundedSender;
 
-pub use crate::discovery::{DiscoveryEvent as LanDiscoveryEvent, LanServerInfo};
+pub use crate::discovery::{DiscoveryEvent, LanServerInfo};
 
 /// Oberflächen-Eventtyp für den Client-Netzwerkstack.
 #[derive(Debug)]
 pub enum ClientNetworkEvent {
     Transport(ClientEvent),
-    Discovery(LanDiscoveryEvent),
+    Discovery(DiscoveryEvent),
 }
 
 /// Convenience-Alias für Event-Sender.
