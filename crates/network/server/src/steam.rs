@@ -19,6 +19,11 @@ pub mod integration;
 pub use channel_backend::{ChannelSteamDiscoveryBackend, SteamBackendHandle};
 pub use integration::{SteamIntegration, SteamIntegrationError};
 
+#[cfg(feature = "steamworks")]
+mod steamworks;
+#[cfg(feature = "steamworks")]
+pub use steamworks::{SteamworksIntegration, SteamworksIntegrationConfig};
+
 /// Status des Steam-Discovery-Subsystems.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SteamDiscoveryStatus {

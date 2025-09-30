@@ -6,6 +6,10 @@ edition = "2024"
 [lib]
 path = "src/lib.rs"
 
+[features]
+default = []
+steamworks = ["dep:steamworks"]
+
 [dependencies]
 bevy = { version = "0.16.1", default-features = false, features = [
     "std",
@@ -24,3 +28,4 @@ rcgen.workspace = true
 bytes.workspace = true
 rustls-pemfile.workspace = true
 tracing.workspace = true
+steamworks = { version = "0.7", optional = true }
