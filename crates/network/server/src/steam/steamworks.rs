@@ -17,6 +17,7 @@ pub struct SteamworksIntegrationConfig {
     pub app_id: u32,
     pub callback_interval: Duration,
     pub max_players: u32,
+    pub server_name: String,
 }
 
 impl Default for SteamworksIntegrationConfig {
@@ -25,6 +26,7 @@ impl Default for SteamworksIntegrationConfig {
             app_id: 0,
             callback_interval: Duration::from_millis(50),
             max_players: 16,
+            server_name: "Forge of Stories Server".into(),
         }
     }
 }
@@ -40,6 +42,7 @@ pub struct SteamworksIntegration {
     lobby: Option<Lobby<ClientManager>>,
     lobby_id: Option<LobbyId>,
     auth_ticket: Option<AuthTicket>,
+    lobby_poller: Option<JoinHandle<()>>,
 }
 
 impl SteamworksIntegration {
@@ -54,6 +57,7 @@ impl SteamworksIntegration {
             lobby: None,
             lobby_id: None,
             auth_ticket: None,
+            lobby_poller: None,
         }
     }
 
@@ -131,7 +135,36 @@ impl SteamworksIntegration {
 
         self.lobby = Some(lobby);
         self.lobby_id = Some(lobby_id);
+        self.spawn_lobby_poller(handle.clone(), lobby_id);
         Ok(())
+    }
+
+    fn spawn_lobby_poller(&mut self, handle: SteamBackendHandle, lobby_id: LobbyId) {
+        if let Some(client) = &self.client {
+            let runtime = self.runtime.clone();
+            let client = client.clone();
+            let server_name = self.config.server_name.clone();
+            let max_players = self.config.max_players as u16;
+            self.lobby_poller = Some(runtime.spawn(async move {
+                let mut ticker = tokio::time::interval(Duration::from_secs(2));
+                loop {
+                    ticker.tick().await;
+                    let matchmaking = client.matchmaking();
+                    let members = matchmaking.get_num_lobby_members(lobby_id) as u16;
+                    let lobby_info = SteamLobbyInfo {
+                        lobby_id: SteamLobbyId::new(lobby_id.raw()),
+                        host_steam_id: client.user().steam_id().raw(),
+                        name: server_name.clone(),
+                        player_count: members,
+                        max_players,
+                        requires_password: false,
+                        relay_enabled: true,
+                        wan_visible: false,
+                    };
+                    let _ = handle.send(SteamServerEvent::LobbyUpdated(lobby_info));
+                }
+            }));
+        }
     }
 }
 
@@ -170,6 +203,9 @@ impl SteamIntegration for SteamworksIntegration {
     fn stop(&mut self) {
         if let Some(task) = self.callbacks_task.take() {
             task.abort();
+        }
+        if let Some(poller) = self.lobby_poller.take() {
+            poller.abort();
         }
         if let Some(client) = &self.client {
             if let Some(lobby) = self.lobby.take() {

@@ -310,7 +310,7 @@ impl ServerDiscovery {
                 let config = SteamworksIntegrationConfig {
                     app_id,
                     callback_interval: Duration::from_millis(50),
-                    max_players: self.config.transport.max_connections,
+                    max_players: 16,
                     server_name: announcement.server_name,
                 };
                 return Some(Box::new(SteamworksIntegration::new(
@@ -327,7 +327,7 @@ impl ServerDiscovery {
             integration = integration.with_lobby(MockLobbyConfig {
                 lobby_id: SteamLobbyId::new(1),
                 name: announcement.server_name,
-                players: (0, self.config.transport.max_connections as u16),
+                players: (0, 16),
             });
             return Some(Box::new(integration));
         }
