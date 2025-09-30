@@ -17,6 +17,9 @@ impl ProtocolVersion {
     }
 }
 
+/// Aktuelle Netzwerkprotokoll-Version, die Server/Client erwarten.
+pub const CURRENT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::new(0, 1);
+
 /// Nachrichten für Handshake und Sitzungsverwaltung.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload")]

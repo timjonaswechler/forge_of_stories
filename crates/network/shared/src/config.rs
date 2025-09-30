@@ -15,7 +15,7 @@ use crate::events::TransportCapabilities;
 pub struct DiscoveryConfig {
     pub lan_broadcast: bool,
     pub lan_port: u16,
-    pub steam_enabled: bool,
+    pub steam: SteamDiscoveryConfig,
 }
 
 impl Default for DiscoveryConfig {
@@ -23,7 +23,7 @@ impl Default for DiscoveryConfig {
         Self {
             lan_broadcast: false,
             lan_port: 50_000,
-            steam_enabled: false,
+            steam: SteamDiscoveryConfig::default(),
         }
     }
 }
@@ -83,6 +83,7 @@ pub struct ServerNetworkingConfig {
     pub capabilities: TransportCapabilities,
     pub steam_app_id: Option<u32>,
     pub steam_log_on: Option<String>,
+    pub deployment: ServerDeployment,
     pub tls: ServerTlsConfig,
 }
 
@@ -94,6 +95,7 @@ impl Default for ServerNetworkingConfig {
             capabilities: TransportCapabilities::default(),
             steam_app_id: None,
             steam_log_on: None,
+            deployment: ServerDeployment::LocalHost,
             tls: ServerTlsConfig::default(),
         }
     }
@@ -121,6 +123,40 @@ impl Default for ClientNetworkingConfig {
             tls: ClientTlsConfig::default(),
         }
     }
+}
+
+/// Steam-spezifische Discovery-Konfiguration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SteamDiscoveryConfig {
+    pub mode: SteamDiscoveryMode,
+}
+
+impl Default for SteamDiscoveryConfig {
+    fn default() -> Self {
+        Self {
+            mode: SteamDiscoveryMode::Disabled,
+        }
+    }
+}
+
+/// Betriebsmodi für Steam-Discovery.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum SteamDiscoveryMode {
+    /// Steam wird nicht genutzt.
+    Disabled,
+    /// Steam-Relay/Lobby ist verfügbar, aber nur für lokal gehostete Server.
+    LocalOnly,
+}
+
+/// Ziel-Deployment eines Servers.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ServerDeployment {
+    /// Server wird auf einem Spieler-Host lokal betrieben (LAN + Steam Relay erlaubt).
+    LocalHost,
+    /// Server läuft headless/dediziert im WAN (Steam Relay deaktiviert).
+    Dedicated,
 }
 
 /// TLS-Identität für den Server.

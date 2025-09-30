@@ -6,6 +6,7 @@
 
 pub mod channels;
 pub mod config;
+pub mod discovery;
 pub mod envelope;
 pub mod events;
 pub mod ids;
@@ -15,6 +16,7 @@ pub mod serialization;
 pub mod prelude {
     pub use super::channels::*;
     pub use super::config::*;
+    pub use super::discovery::*;
     pub use super::envelope::*;
     pub use super::events::*;
     pub use super::ids::*;
