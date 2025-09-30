@@ -1,5 +1,7 @@
 #![cfg(feature = "steamworks-mock")]
 
+use std::collections::HashSet;
+
 use network_shared::discovery::{
     SteamLobbyId, SteamLobbyInfo, SteamRelayTicket, SteamServerEvent,
 };
@@ -13,6 +15,7 @@ pub struct MockSteamIntegration {
     runtime: NetworkRuntime,
     auto_lobby: Option<LobbyConfig>,
     sender: Option<SteamBackendHandle>,
+    authenticated: HashSet<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -28,6 +31,7 @@ impl MockSteamIntegration {
             runtime,
             auto_lobby: None,
             sender: None,
+            authenticated: HashSet::new(),
         }
     }
 
@@ -83,5 +87,27 @@ impl SteamIntegration for MockSteamIntegration {
             }
         }
         self.sender = None;
+        self.authenticated.clear();
+    }
+
+    fn validate_ticket(
+        &mut self,
+        _ticket: &[u8],
+    ) -> Result<u64, super::SteamIntegrationError> {
+        let steam_id = 42;
+        self.authenticated.insert(steam_id);
+        if let Some(handle) = &self.sender {
+            let _ = handle.send(SteamServerEvent::AuthApproved { steam_id });
+        }
+        Ok(steam_id)
+    }
+
+    fn end_session(&mut self, steam_id: u64) {
+        self.authenticated.remove(&steam_id);
+        if let Some(handle) = &self.sender {
+            let _ = handle.send(SteamServerEvent::AuthRejected {
+                reason: format!("session ended for steam_id {steam_id}"),
+            });
+        }
     }
 }

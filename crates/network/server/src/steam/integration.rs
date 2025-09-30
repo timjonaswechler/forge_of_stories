@@ -37,4 +37,14 @@ pub trait SteamIntegration: Send {
 
     /// Stoppt laufende Tasks und räumt Ressourcen auf.
     fn stop(&mut self);
+
+    /// Validiert ein Authentifizierungs-Ticket und liefert die verifizierte SteamID.
+    fn validate_ticket(&mut self, _ticket: &[u8]) -> Result<u64, SteamIntegrationError> {
+        Err(SteamIntegrationError::Runtime(
+            "steam integration does not support ticket validation".into(),
+        ))
+    }
+
+    /// Beendet eine laufende Authentifizierungs-Session für die gegebene SteamID.
+    fn end_session(&mut self, _steam_id: u64) {}
 }

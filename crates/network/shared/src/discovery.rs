@@ -127,6 +127,8 @@ pub enum SteamServerEvent {
     LobbyRemoved(SteamLobbyId),
     TicketIssued(SteamRelayTicket),
     TicketRevoked(SteamLobbyId),
+    AuthApproved { steam_id: u64 },
+    AuthRejected { reason: String },
     Error { message: String },
 }
 

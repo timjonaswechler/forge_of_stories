@@ -1,9 +1,12 @@
 #![cfg(feature = "steamworks")]
 
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use network_shared::discovery::{SteamLobbyId, SteamLobbyInfo, SteamRelayTicket, SteamServerEvent};
-use steamworks::{AuthTicket, Client, ClientManager, Lobby, LobbyId, LobbyType, SingleClient};
+use steamworks::{
+    AuthSessionTicketResponse, AuthSessionTicketResponseState, AuthTicket, CallbackHandle, Client,
+    ClientManager, Lobby, LobbyId, LobbyType, SingleClient,
+};
 use tokio::{sync::Mutex, task::JoinHandle};
 use tracing::{debug, warn};
 
@@ -43,6 +46,8 @@ pub struct SteamworksIntegration {
     lobby_id: Option<LobbyId>,
     auth_ticket: Option<AuthTicket>,
     lobby_poller: Option<JoinHandle<()>>,
+    auth_ticket_cb: Option<CallbackHandle<AuthSessionTicketResponse>>,
+    authenticated: HashMap<u64, AuthTicket>,
 }
 
 impl SteamworksIntegration {
@@ -58,6 +63,8 @@ impl SteamworksIntegration {
             lobby_id: None,
             auth_ticket: None,
             lobby_poller: None,
+            auth_ticket_cb: None,
+            authenticated: HashMap::new(),
         }
     }
 
@@ -89,7 +96,7 @@ impl SteamworksIntegration {
     fn initialise_lobby(
         &mut self,
         handle: &SteamBackendHandle,
-    ) -> Result<(), SteamIntegrationError> {
+    ) -> Result<LobbyId, SteamIntegrationError> {
         let client = self
             .client
             .as_ref()
@@ -131,12 +138,20 @@ impl SteamworksIntegration {
             };
             let _ = handle.send(SteamServerEvent::TicketIssued(relay_ticket));
             self.auth_ticket = Some(ticket);
+            let sender = handle.clone();
+            let cb = client.register_callback(move |resp: AuthSessionTicketResponse| {
+                if resp.result != AuthSessionTicketResponseState::OK {
+                    let _ = sender.send(SteamServerEvent::Error {
+                        message: format!("steam ticket state: {:?}", resp.result),
+                    });
+                }
+            });
+            self.auth_ticket_cb = Some(cb);
         }
 
         self.lobby = Some(lobby);
         self.lobby_id = Some(lobby_id);
-        self.spawn_lobby_poller(handle.clone(), lobby_id);
-        Ok(())
+        Ok(lobby_id)
     }
 
     fn spawn_lobby_poller(&mut self, handle: SteamBackendHandle, lobby_id: LobbyId) {
@@ -191,11 +206,14 @@ impl SteamIntegration for SteamworksIntegration {
         self.callbacks_task = Some(callbacks);
 
         let _ = handle.send(SteamServerEvent::Activated);
-        if let Err(err) = self.initialise_lobby(&handle) {
-            warn!(target = "network::discovery", "failed to initialise lobby: {err}");
-            let _ = handle.send(SteamServerEvent::Error {
-                message: format!("lobby init failed: {err}"),
-            });
+        match self.initialise_lobby(&handle) {
+            Ok(lobby_id) => self.spawn_lobby_poller(handle.clone(), lobby_id),
+            Err(err) => {
+                warn!(target = "network::discovery", "failed to initialise lobby: {err}");
+                let _ = handle.send(SteamServerEvent::Error {
+                    message: format!("lobby init failed: {err}"),
+                });
+            }
         }
         Ok(())
     }
@@ -207,6 +225,7 @@ impl SteamIntegration for SteamworksIntegration {
         if let Some(poller) = self.lobby_poller.take() {
             poller.abort();
         }
+        self.auth_ticket_cb.take();
         if let Some(client) = &self.client {
             if let Some(lobby) = self.lobby.take() {
                 let lobby_id = lobby.id();
@@ -231,6 +250,43 @@ impl SteamIntegration for SteamworksIntegration {
         }
         self.backend_handle = None;
         self.lobby_id = None;
+        self.authenticated.clear();
+    }
+
+    fn validate_ticket(
+        &mut self,
+        ticket: &[u8],
+    ) -> Result<u64, SteamIntegrationError> {
+        let client = self
+            .client
+            .as_ref()
+            .ok_or_else(|| SteamIntegrationError::runtime("steam integration inactive"))?;
+        let user = client.user();
+        match user.authenticate_user_ticket(ticket) {
+            Ok((auth, steam_id)) => {
+                let raw = steam_id.raw();
+                self.authenticated.insert(raw, auth);
+                if let Some(handle) = &self.backend_handle {
+                    let _ = handle.send(SteamServerEvent::AuthApproved { steam_id: raw });
+                }
+                Ok(raw)
+            }
+            Err(err) => {
+                if let Some(handle) = &self.backend_handle {
+                    let _ = handle.send(SteamServerEvent::AuthRejected {
+                        reason: format!("authenticate_user_ticket failed: {err}"),
+                    });
+                }
+                Err(SteamIntegrationError::runtime(err))
+            }
+        }
+    }
+
+    fn end_session(&mut self, steam_id: u64) {
+        if let Some(client) = &self.client {
+            client.user().end_auth_session(steamworks::SteamId::from_raw(steam_id));
+        }
+        self.authenticated.remove(&steam_id);
     }
 }
 

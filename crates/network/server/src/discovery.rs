@@ -215,6 +215,27 @@ impl ServerDiscovery {
         }
     }
 
+    /// Validiert ein Steam-Auth-Ticket über die aktive Integration.
+    pub fn validate_steam_ticket(
+        &mut self,
+        ticket: &[u8],
+    ) -> Result<u64, SteamIntegrationError> {
+        if let Some(integration) = self.steam_integration.as_mut() {
+            integration.validate_ticket(ticket)
+        } else {
+            Err(SteamIntegrationError::runtime(
+                "steam integration not active".into(),
+            ))
+        }
+    }
+
+    /// Beendet eine Steam-Auth-Session (z. B. wenn ein Spieler disconnectet).
+    pub fn end_steam_session(&mut self, steam_id: u64) {
+        if let Some(integration) = self.steam_integration.as_mut() {
+            integration.end_session(steam_id);
+        }
+    }
+
     /// Liefert eine Kopie der aktuellen Ankündigung (z. B. für Tests oder UI).
     pub fn announcement(&self) -> LanServerAnnouncement {
         self.announcement.read().unwrap().clone()

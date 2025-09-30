@@ -48,6 +48,8 @@ pub enum DiscoveryEvent {
         ticket: SteamRelayTicket,
     },
     SteamTicketRevoked(SteamLobbyId),
+    SteamAuthApproved(u64),
+    SteamAuthRejected(String),
     SteamError(String),
 }
 
@@ -402,6 +404,12 @@ impl SteamDiscoveryHandle {
                 self.log_state("ticket_revoked");
                 self.tickets.remove(&lobby);
                 let _ = events.send(DiscoveryEvent::SteamTicketRevoked(lobby));
+            }
+            SteamServerEvent::AuthApproved { steam_id } => {
+                let _ = events.send(DiscoveryEvent::SteamAuthApproved(steam_id));
+            }
+            SteamServerEvent::AuthRejected { reason } => {
+                let _ = events.send(DiscoveryEvent::SteamAuthRejected(reason));
             }
             SteamServerEvent::Error { message } => {
                 self.log_state("error");
