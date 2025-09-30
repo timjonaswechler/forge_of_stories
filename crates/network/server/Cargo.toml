@@ -9,6 +9,7 @@ path = "src/lib.rs"
 [features]
 default = []
 steamworks = ["dep:steamworks"]
+steamworks-mock = []
 
 [dependencies]
 bevy = { version = "0.16.1", default-features = false, features = [

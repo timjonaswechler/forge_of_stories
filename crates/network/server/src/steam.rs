@@ -24,6 +24,11 @@ mod steamworks;
 #[cfg(feature = "steamworks")]
 pub use steamworks::{SteamworksIntegration, SteamworksIntegrationConfig};
 
+#[cfg(feature = "steamworks-mock")]
+mod mock;
+#[cfg(feature = "steamworks-mock")]
+pub use mock::{LobbyConfig as MockLobbyConfig, MockSteamIntegration};
+
 /// Status des Steam-Discovery-Subsystems.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SteamDiscoveryStatus {
