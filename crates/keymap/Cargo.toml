@@ -1,0 +1,22 @@
+[package]
+name = "keymap"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+# Serialization
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Utilities
+smallvec = { workspace = true }
+
+# Internal dependencies
+paths = { path = "../paths" }
+settings = { path = "../settings" }
+
+[dev-dependencies]

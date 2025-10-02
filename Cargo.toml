@@ -12,7 +12,7 @@ members = [
     "crates/network/shared",
     "crates/ui/fate",
     "crates/ui/illusion",
-    "crates/ui/oracle",
+    "crates/ui/oracle", "crates/keymap",
     # "crates/ui/wizard",
 ]
 default-members = ["crates/forge_of_stories"]
