@@ -22,8 +22,14 @@ pub trait Settings: Default + Serialize + for<'de> Deserialize<'de> {
 
     /// Perform in-place schema migrations for this section.
     ///
-    /// `file_version` reflects the schema version recorded in the settings file (if any) and
-    /// `target_version` is the version the application expects (usually the crate version).
+    /// This method is **only called when a migration is actually needed**, i.e., when
+    /// `file_version < target_version`. It will not be called for unversioned files
+    /// or when the file version already matches the target version.
+    ///
+    /// `file_version` reflects the schema version recorded in the settings file
+    /// (guaranteed to be `Some` when this method is called) and `target_version` is
+    /// the version the application expects (usually the crate version).
+    ///
     /// Return the transformed data plus a flag indicating whether any changes were applied.
     #[allow(unused_variables)]
     fn migrate(

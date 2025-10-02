@@ -1,16 +1,10 @@
-//! Transport- und Netzwerkereignisse, die in die ECS gespiegelt werden.
-
-use serde::{Deserialize, Serialize};
+use bytes::Bytes;
 use thiserror::Error;
 
-use crate::{
-    channels::ChannelKind,
-    ids::{ClientId, SessionId},
-    messages::NetworkMessage,
-};
+use crate::{channels::ChannelId, ClientId};
 
-/// Gründe für das Trennen einer Verbindung.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+/// Reasons why a peer might be disconnected from the transport layer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DisconnectReason {
     Graceful,
     Timeout,
@@ -20,97 +14,83 @@ pub enum DisconnectReason {
     TransportError,
 }
 
-/// Fehler, die vom Transport gemeldet werden können.
+/// Generic transport level error surfaced to higher layers.
 #[derive(Debug, Error)]
 pub enum TransportError {
-    #[error("transport not implemented")]
-    Unimplemented,
+    #[error("transport not ready")]
+    NotReady,
+    #[error("configuration error: {0}")]
+    InvalidConfig(&'static str),
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
     #[error("serialization error: {0}")]
-    Serialization(#[from] crate::serialization::SerializationError),
-    #[error("invalid config: {0}")]
-    InvalidConfig(String),
+    Serialization(String),
     #[error("other: {0}")]
     Other(String),
 }
 
-/// Fähigkeitsbeschreibungen des Transports.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+/// Capability description for a concrete transport implementation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TransportCapabilities {
+    pub supports_reliable_streams: bool,
+    pub supports_unreliable_streams: bool,
     pub supports_datagrams: bool,
-    pub requires_auth: bool,
-    pub max_ordered_streams: u16,
-    pub max_unordered_streams: u16,
+    pub max_channels: u16,
 }
 
 impl TransportCapabilities {
     pub const fn new(
+        supports_reliable_streams: bool,
+        supports_unreliable_streams: bool,
         supports_datagrams: bool,
-        requires_auth: bool,
-        max_ordered_streams: u16,
-        max_unordered_streams: u16,
+        max_channels: u16,
     ) -> Self {
         Self {
+            supports_reliable_streams,
+            supports_unreliable_streams,
             supports_datagrams,
-            requires_auth,
-            max_ordered_streams,
-            max_unordered_streams,
+            max_channels,
         }
     }
 }
 
 impl Default for TransportCapabilities {
     fn default() -> Self {
-        Self::new(true, false, 8, 8)
+        Self::new(true, true, true, u8::MAX as u16)
     }
 }
 
-/// Ereignisse, die ein Servertransport Richtung Gameplay schickt.
+/// Server-side events emitted by a transport implementation.
 #[derive(Debug)]
 pub enum TransportEvent {
     PeerConnected {
-        session: SessionId,
         client: ClientId,
     },
     PeerDisconnected {
-        session: SessionId,
         client: ClientId,
         reason: DisconnectReason,
     },
     Message {
-        session: SessionId,
         client: ClientId,
-        channel: ChannelKind,
-        payload: NetworkMessage,
+        channel: ChannelId,
+        payload: Bytes,
     },
     Datagram {
-        session: SessionId,
         client: ClientId,
-        payload: Vec<u8>,
+        payload: Bytes,
     },
     Error {
-        session: Option<SessionId>,
         client: Option<ClientId>,
         error: TransportError,
     },
 }
 
-/// Ereignisse, die der Client-Transport Richtung Gameplay schickt.
+/// Client-side events emitted by a transport implementation.
 #[derive(Debug)]
 pub enum ClientEvent {
-    Connected,
-    Disconnected {
-        reason: DisconnectReason,
-    },
-    Message {
-        channel: ChannelKind,
-        payload: NetworkMessage,
-    },
-    Datagram {
-        payload: Vec<u8>,
-    },
-    Error {
-        error: TransportError,
-    },
+    Connected { client_id: Option<ClientId> },
+    Disconnected { reason: DisconnectReason },
+    Message { channel: ChannelId, payload: Bytes },
+    Datagram { payload: Bytes },
+    Error { error: TransportError },
 }

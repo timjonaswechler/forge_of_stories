@@ -1,15 +1,8 @@
 [package]
 name = "server"
-version = "0.1.0"
-edition = "2024"
+version = "0.2.0"
+edition.workspace = true
 
-[lib]
-path = "src/lib.rs"
-
-[features]
-default = []
-steamworks = ["dep:steamworks"]
-steamworks-mock = []
 
 [dependencies]
 bevy = { version = "0.16.1", default-features = false, features = [
@@ -20,13 +13,18 @@ bevy = { version = "0.16.1", default-features = false, features = [
     "bevy_log",
     "serialize",
 ] }
-network_shared.workspace = true
-tokio.workspace = true
-thiserror.workspace = true
-futures.workspace = true
-quinn.workspace = true
-rcgen.workspace = true
+bincode.workspace = true
 bytes.workspace = true
+futures.workspace = true
+network_shared.workspace = true
+rcgen.workspace = true
+rustls.workspace = true
 rustls-pemfile.workspace = true
-tracing.workspace = true
+serde.workspace = true
 steamworks = { version = "0.7", optional = true }
+thiserror.workspace = true
+tracing.workspace = true
+tokio.workspace = true
+quinn.workspace = true
+quinn-proto.workspace = true
+paths.workspace = true

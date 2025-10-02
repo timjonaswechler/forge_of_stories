@@ -6,3 +6,4 @@ AGENTS.md
 Cargo.lock
 Dockerfile
 docker-compose.yaml
+assets/codecks/
