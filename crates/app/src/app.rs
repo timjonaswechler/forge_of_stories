@@ -1,5 +1,4 @@
-use chrono::{DateTime, Local};
-use std::{fs, path::PathBuf};
+use paths::PathContext;
 use tracing_subscriber::{
     Layer, filter::LevelFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt,
 };
@@ -7,20 +6,22 @@ use tracing_subscriber::{
 pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 pub struct AppBase {
-    pub app_id: &'static str,
+    pub path_context: PathContext,
     pub version: &'static str,
-    pub config_dir: &'static PathBuf,
-    pub data_dir: &'static PathBuf,
-    pub logs_dir: &'static PathBuf,
     pub log_guard: tracing_appender::non_blocking::WorkerGuard,
 }
 
 impl AppBase {
-    pub fn app_id(&self) -> &'static str {
-        self.app_id
+    pub fn app_id(&self) -> &str {
+        self.path_context.app_id()
     }
+
     pub fn version(&self) -> &'static str {
         self.version
+    }
+
+    pub fn path_context(&self) -> &PathContext {
+        &self.path_context
     }
 }
 
@@ -28,6 +29,8 @@ pub trait Application: Sized + 'static {
     type Error: From<BoxError> + std::fmt::Display + std::fmt::Debug + 'static;
 
     const APP_ID: &'static str;
+    const STUDIO: &'static str = "chicken105";
+    const PROJECT_ID: &'static str = "forge_of_stories";
 
     fn init_platform() -> Result<(), Self::Error> {
         Ok(())
@@ -36,23 +39,25 @@ pub trait Application: Sized + 'static {
 
 pub fn init<A: Application>(version: &'static str) -> Result<AppBase, A::Error> {
     let app_id = A::APP_ID;
+    let studio = A::STUDIO;
+    let project_id = A::PROJECT_ID;
 
-    let config_dir = paths::config_dir();
-    let data_dir = paths::data_dir();
-    let logs_dir = paths::logs_dir();
+    // Create PathContext with studio/project/app hierarchy
+    let path_context = PathContext::new(studio, project_id, app_id);
 
-    let current_local: DateTime<Local> = Local::now();
-    let custom_format = current_local.format("%Y-%m-%dT%H:%M:%S").to_string();
+    // Ensure all directories exist
+    path_context.ensure_directories().map_err(BoxError::from)?;
 
-    // Ensure directory structure exists
-    fs::create_dir_all(&config_dir).ok();
-    fs::create_dir_all(&data_dir).ok();
-    fs::create_dir_all(&logs_dir).ok();
+    // Get log file path and split into directory + filename
+    let log_file_path = path_context.log_file_now();
+    let log_dir = log_file_path
+        .parent()
+        .expect("log file path should have parent directory");
+    let log_filename = log_file_path
+        .file_name()
+        .expect("log file path should have filename");
 
-    let file_appender = tracing_appender::rolling::never(
-        &logs_dir,
-        paths::log_file(app_id, custom_format.as_str()),
-    );
+    let file_appender = tracing_appender::rolling::never(log_dir, log_filename);
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
     #[cfg(debug_assertions)]
@@ -77,11 +82,8 @@ pub fn init<A: Application>(version: &'static str) -> Result<AppBase, A::Error> 
     A::init_platform()?;
 
     Ok(AppBase {
-        app_id,
+        path_context,
         version,
-        config_dir,
-        data_dir,
-        logs_dir,
         log_guard: guard,
     })
 }
