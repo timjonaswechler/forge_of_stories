@@ -39,6 +39,8 @@ pub use error::*;
 pub mod certificate;
 /// Transport abstraction layer (QUIC, Steam, ...)
 pub mod transport;
+/// Steam transport runtime wrappers
+pub mod steam;
 
 /// Connection event raised when a client just connected to the server. Raised in the CoreStage::PreUpdate stage.
 #[derive(Event, Debug, Copy, Clone)]

@@ -17,6 +17,8 @@ pub mod error;
 pub mod events;
 /// Shared message wrappers passed between gameplay layers and transports
 pub mod messages;
+/// Steam-related shared helpers (AppID, limits)
+pub mod steam;
 
 /// Default max size of async channels used to hold network messages. 1 async channel per connection.
 pub const DEFAULT_MESSAGE_QUEUE_SIZE: usize = 150;
@@ -49,6 +51,9 @@ pub use events::{
     ClientEvent, DisconnectReason, TransportCapabilities, TransportError, TransportEvent,
 };
 pub use messages::OutgoingMessage;
+
+/// Steamworks AppID used for local development/testing.
+pub const STEAM_APP_ID: u32 = 480;
 
 /// System set used to update the sync client & server from updates coming from the async quinnet back-end.
 ///

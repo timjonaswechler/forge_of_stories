@@ -1,14 +1,13 @@
 use std::fmt::Debug;
 
 use bytes::Bytes;
-use network_shared::{
-    ClientId, DisconnectReason, OutgoingMessage, TransportCapabilities, TransportEvent,
-};
+use network_shared::{ClientId, DisconnectReason, OutgoingMessage, TransportCapabilities, TransportEvent};
 use tokio::sync::mpsc::UnboundedSender;
 
 pub mod quic;
 
 pub use quic::{QuicServerTransport, QuicServerTransportError};
+pub use crate::steam::{SteamServerTransport, SteamServerTransportError};
 
 /// Common interface implemented by all server-side transports (e.g. QUIC, Steam Relay).
 pub trait ServerTransport: Send + Sync + Debug {

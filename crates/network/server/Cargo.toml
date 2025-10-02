@@ -27,4 +27,4 @@ tracing.workspace = true
 tokio.workspace = true
 quinn.workspace = true
 quinn-proto.workspace = true
-paths.workspace = true
+dirs.workspace = true

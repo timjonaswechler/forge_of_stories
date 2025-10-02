@@ -37,6 +37,8 @@ pub mod certificate;
 pub mod connection;
 /// Transport abstraction for pluggable backends (QUIC, Steam, ...)
 pub mod transport;
+/// Steam transport runtime wrappers
+pub mod steam;
 
 mod error;
 pub use error::*;

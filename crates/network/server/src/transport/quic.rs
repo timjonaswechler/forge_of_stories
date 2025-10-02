@@ -2,6 +2,7 @@ use std::{
     collections::HashSet,
     fs,
     net::IpAddr,
+    path::PathBuf,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -20,8 +21,6 @@ use tokio::{
 };
 
 use super::ServerTransport;
-use paths::config_dir;
-
 use crate::{
     certificate::CertificateRetrievalMode,
     error::{
@@ -302,7 +301,7 @@ fn forward_server_async_message(
 }
 
 fn default_certificate_mode(config: &ServerEndpointConfiguration) -> CertificateRetrievalMode {
-    let cert_dir = config_dir().join("network").join("certs");
+    let cert_dir = default_cert_directory();
     if let Err(err) = fs::create_dir_all(&cert_dir) {
         warn!(
             "failed to create certificate directory {}: {}",
@@ -325,4 +324,11 @@ fn default_certificate_mode(config: &ServerEndpointConfiguration) -> Certificate
         server_hostname: hostname,
         save_on_disk: true,
     }
+}
+
+fn default_cert_directory() -> PathBuf {
+    let base = dirs::config_dir()
+        .or_else(|| dirs::data_dir())
+        .unwrap_or_else(|| PathBuf::from("."));
+    base.join("Forge_of_Stories").join("network").join("certs")
 }

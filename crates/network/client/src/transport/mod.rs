@@ -7,13 +7,14 @@ use tokio::sync::mpsc::UnboundedSender;
 pub mod quic;
 
 pub use quic::{QuicClientTransport, QuicClientTransportError};
+pub use crate::steam::{SteamClientTransport, SteamTransportError as SteamClientTransportError};
 
 /// Possible endpoints a client can connect to.
 #[derive(Debug, Clone)]
 pub enum ConnectTarget {
     /// QUIC endpoint reachable via host/port pair.
     Quic { host: String, port: u16 },
-    /// Placeholder future Steam lobby/relay target.
+    /// Steam lobby or relay identifier.
     SteamLobby { lobby_id: u64 },
 }
 
