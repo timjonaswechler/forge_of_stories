@@ -95,6 +95,51 @@ let pred = KeyBindingContextPredicate::parse(
 ).unwrap();
 ```
 
+### Default Actions
+
+The keymap system provides a comprehensive set of default actions organized by category:
+
+```rust
+use keymap::actions::*;
+
+// File operations
+file::Save, file::SaveAs, file::Open, file::Close, file::Quit
+
+// Edit operations
+edit::Undo, edit::Redo, edit::Cut, edit::Copy, edit::Paste
+
+// Navigation
+navigation::NextTab, navigation::PreviousTab, navigation::FocusEditor
+
+// View
+view::ZoomIn, view::ZoomOut, view::ToggleFullscreen
+
+// Search
+search::Find, search::Replace, search::FindInFiles
+
+// Debug
+debug::ToggleInspector, debug::ReloadKeymap
+
+// Game-specific
+game::Pause, game::QuickSave, game::OpenMenu, game::Screenshot
+```
+
+### Default Keybindings
+
+Platform-appropriate default keybindings are available:
+
+```rust
+use keymap::defaults;
+
+// Automatically select platform defaults (macOS/Windows/Linux)
+let builder = KeymapStore::builder();
+let builder = defaults::register_platform_defaults(builder);
+
+// Or explicitly choose:
+let builder = defaults::register_macos_defaults(builder);
+let builder = defaults::register_windows_linux_defaults(builder);
+```
+
 ### Key Bindings
 
 Connect keystrokes to actions with optional context predicates.
@@ -191,33 +236,77 @@ Add to your `Cargo.toml`:
 keymap = { path = "crates/keymap", features = ["bevy_plugin"] }
 ```
 
-### Usage
+### Basic Usage
 
 ```rust
 use bevy::prelude::*;
-use keymap::bevy::{KeymapPlugin, ContextStack, KeymapStoreResource};
-use keymap::{action, KeyBinding, Keystroke};
-
-action!(MyAction);
+use keymap::bevy::{KeymapPlugin, ContextStack, ActionEvent};
+use keymap::actions::file;
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .add_plugins(KeymapPlugin::default())
-        .add_systems(Startup, setup_keybindings)
-        .add_systems(Update, update_context)
+        .add_systems(Update, handle_actions)
         .run();
 }
 
-fn setup_keybindings(store: Res<KeymapStoreResource>) {
-    let binding = KeyBinding::new(
-        vec![Keystroke::parse("cmd-s").unwrap()],
-        Box::new(MyAction),
-        None,
-    );
-    store.add_user_binding(binding);
+fn handle_actions(mut events: EventReader<ActionEvent>) {
+    for event in events.read() {
+        // Check action type and handle it
+        if event.action.partial_eq(&file::Save) {
+            println!("Saving file...");
+            // Perform save operation
+        } else if event.action.partial_eq(&file::Open) {
+            println!("Opening file...");
+        }
+    }
+}
+```
+
+### Action Dispatcher
+
+The plugin automatically dispatches actions as Bevy events when key bindings are triggered:
+
+```rust
+// The ActionEvent contains the triggered action
+#[derive(Event, Clone)]
+pub struct ActionEvent {
+    pub action: Arc<dyn Action>,
 }
 
+// Listen for actions in any system
+fn my_system(mut events: EventReader<ActionEvent>) {
+    for event in events.read() {
+        // Handle the action
+        println!("Action: {}", event.action.debug_name());
+    }
+}
+```
+
+### Default Actions & Keybindings
+
+The plugin automatically registers all default actions and can load platform defaults:
+
+```rust
+use keymap::bevy::KeymapPlugin;
+use keymap::defaults;
+
+fn main() {
+    App::new()
+        .add_plugins(KeymapPlugin::default()) // Includes all default actions
+        .run();
+}
+
+// Actions are automatically available:
+// - file::Save, file::Open, etc.
+// - edit::Cut, edit::Copy, edit::Paste, etc.
+// - All categories from keymap::actions
+```
+
+### Managing Context
+
+```rust
 fn update_context(mut context_stack: ResMut<ContextStack>) {
     // Update context based on UI state
     context_stack.clear();
@@ -277,6 +366,9 @@ cargo test -p keymap --features bevy_plugin
 - [x] Bevy Plugin integration (optional)
 - [x] KeyCode → Keystroke interpreter
 - [x] Context stack for hierarchical matching
+- [x] Action Dispatcher (Bevy Event System)
+- [x] Default Actions (file, edit, navigation, view, search, debug, game)
+- [x] Default Keybindings (macOS/Windows/Linux)
 
 ## License
 

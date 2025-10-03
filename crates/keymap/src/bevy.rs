@@ -10,32 +10,52 @@
 //!
 //! ```ignore
 //! use bevy::prelude::*;
-//! use keymap::bevy::{KeymapPlugin, ContextStack};
-//! use keymap::{KeymapStore, action};
-//!
-//! action!(MyAction);
+//! use keymap::bevy::{KeymapPlugin, ContextStack, ActionEvent};
+//! use keymap::actions::file;
 //!
 //! fn main() {
 //!     App::new()
 //!         .add_plugins(DefaultPlugins)
 //!         .add_plugins(KeymapPlugin::default())
 //!         .add_systems(Startup, setup_keybindings)
+//!         .add_systems(Update, handle_actions)
 //!         .run();
 //! }
 //!
-//! fn setup_keybindings(mut store: ResMut<KeymapStore>) {
-//!     // Add bindings...
+//! fn setup_keybindings(store: Res<KeymapStoreResource>) {
+//!     // Bindings are automatically registered with default actions
+//! }
+//!
+//! fn handle_actions(mut events: EventReader<ActionEvent>) {
+//!     for event in events.read() {
+//!         if event.action.partial_eq(&file::Save) {
+//!             println!("Saving...");
+//!         }
+//!     }
 //! }
 //! ```
 
 use crate::action::Action;
+#[cfg(feature = "bevy_plugin")]
+use crate::actions;
 use crate::context::KeyContext;
 use crate::keystroke::{Keystroke, Modifiers};
 use crate::store::KeymapStore;
+use bevy::ecs::event::Event;
 use bevy::input::ButtonState;
 use bevy::input::keyboard::{KeyCode, KeyboardInput};
 use bevy::prelude::*;
 use std::collections::VecDeque;
+use std::sync::Arc;
+
+/// Event that carries an action to be dispatched.
+///
+/// Systems can observe this event to handle specific actions.
+#[derive(Event, Clone)]
+pub struct ActionEvent {
+    /// The action to be executed.
+    pub action: Arc<dyn Action>,
+}
 
 /// Bevy plugin for keymap integration.
 ///
@@ -49,8 +69,15 @@ pub struct KeymapPlugin {
 
 impl Plugin for KeymapPlugin {
     fn build(&self, app: &mut App) {
-        // Insert KeymapStore resource (wrapped in a Resource-compatible struct)
-        let store = KeymapStore::builder()
+        // Insert KeymapStore resource with default actions registered
+        let mut builder = KeymapStore::builder();
+
+        #[cfg(feature = "bevy_plugin")]
+        {
+            builder = actions::register_default_actions(builder);
+        }
+
+        let store = builder
             .build()
             .expect("Failed to create default KeymapStore");
         app.insert_resource(KeymapStoreResource(store));
@@ -60,6 +87,9 @@ impl Plugin for KeymapPlugin {
 
         // Insert pending keystroke buffer
         app.insert_resource(PendingKeystrokes::default());
+
+        // Register ActionEvent
+        app.add_event::<ActionEvent>();
 
         // Add input handling system
         app.add_systems(PreUpdate, handle_keyboard_input);
@@ -321,7 +351,7 @@ fn handle_keyboard_input(
     store: Res<KeymapStoreResource>,
     context_stack: Res<ContextStack>,
     mut pending: ResMut<PendingKeystrokes>,
-    _commands: Commands,
+    mut action_events: EventWriter<ActionEvent>,
 ) {
     for event in keyboard_events.read() {
         // Only process key presses, not releases
@@ -350,7 +380,7 @@ fn handle_keyboard_input(
         if !matches.is_empty() {
             // Found a match! Execute the action
             let binding = &matches[0];
-            let action = binding.action().boxed_clone();
+            let action = binding.action();
 
             // Log action (using bevy's built-in logging)
             println!(
@@ -363,8 +393,10 @@ fn handle_keyboard_input(
                     .join(" ")
             );
 
-            // TODO: Dispatch action as event or command
-            // Example: commands.trigger(action);
+            // Dispatch action as event
+            action_events.write(ActionEvent {
+                action: Arc::from(action.boxed_clone()),
+            });
 
             // Clear pending buffer
             pending.clear();
@@ -390,6 +422,58 @@ fn handle_keyboard_input(
             );
             pending.clear();
         }
+    }
+}
+
+/// Example: How to handle actions in your Bevy app
+///
+/// ```ignore
+/// use bevy::prelude::*;
+/// use keymap::bevy::{ActionEvent, KeymapPlugin};
+/// use keymap::actions::file;
+///
+/// fn main() {
+///     App::new()
+///         .add_plugins(KeymapPlugin::default())
+///         .add_systems(Update, handle_file_actions)
+///         .run();
+/// }
+///
+/// fn handle_file_actions(mut events: EventReader<ActionEvent>) {
+///     for event in events.read() {
+///         // Check action type and handle it
+///         if event.action.partial_eq(&file::Save) {
+///             println!("Saving file...");
+///             // Perform save operation
+///         } else if event.action.partial_eq(&file::Open) {
+///             println!("Opening file...");
+///             // Perform open operation
+///         }
+///     }
+/// }
+/// ```
+///
+/// Or use the type-safe observer pattern:
+///
+/// ```ignore
+/// fn setup(mut commands: Commands) {
+///     commands.spawn(MyEntity)
+///         .observe(on_save_action);
+/// }
+///
+/// fn on_save_action(trigger: Trigger<ActionEvent>) {
+///     if trigger.event().action.partial_eq(&file::Save) {
+///         // Handle save
+///     }
+/// }
+/// ```
+pub fn example_action_handler(mut events: EventReader<ActionEvent>) {
+    for event in events.read() {
+        // Example: Log all triggered actions
+        println!("[ACTION] Triggered: {}", event.action.debug_name());
+
+        // In a real app, you would match against specific actions:
+        // if event.action.partial_eq(&crate::actions::file::Save) { ... }
     }
 }
 

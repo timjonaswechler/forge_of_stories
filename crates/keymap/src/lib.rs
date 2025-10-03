@@ -34,6 +34,12 @@ pub mod keymap;
 pub mod keystroke;
 pub mod store;
 
+// Default actions
+pub mod actions;
+
+// Default keybindings
+pub mod defaults;
+
 // Bevy integration (optional)
 #[cfg(feature = "bevy_plugin")]
 pub mod bevy;

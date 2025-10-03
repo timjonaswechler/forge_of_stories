@@ -56,6 +56,7 @@ type ActionRegistry = HashMap<String, Box<dyn Fn() -> Box<dyn Action> + Send + S
 pub struct KeymapStoreBuilder {
     user_keymap_path: Option<PathBuf>,
     action_registry: Arc<Mutex<ActionRegistry>>,
+    default_bindings: Vec<KeyBinding>,
 }
 
 impl KeymapStoreBuilder {
@@ -64,6 +65,7 @@ impl KeymapStoreBuilder {
         Self {
             user_keymap_path: None,
             action_registry: Arc::new(Mutex::new(HashMap::new())),
+            default_bindings: Vec::new(),
         }
     }
 
@@ -85,6 +87,12 @@ impl KeymapStoreBuilder {
         self
     }
 
+    /// Add a default binding.
+    pub fn add_default_binding(mut self, binding: KeyBinding) -> Self {
+        self.default_bindings.push(binding);
+        self
+    }
+
     /// Build the KeymapStore.
     pub fn build(self) -> Result<KeymapStore> {
         let user_keymap_path = self.user_keymap_path.unwrap_or_else(|| {
@@ -100,7 +108,7 @@ impl KeymapStoreBuilder {
             }
         }
 
-        Ok(KeymapStore {
+        let store = KeymapStore {
             user_keymap_path,
             inner: Mutex::new(StoreInner {
                 default_bindings: Vec::new(),
@@ -109,7 +117,14 @@ impl KeymapStoreBuilder {
                 version: KeymapVersion::default(),
             }),
             action_registry: self.action_registry,
-        })
+        };
+
+        // Add default bindings if any
+        if !self.default_bindings.is_empty() {
+            store.add_default_bindings(self.default_bindings);
+        }
+
+        Ok(store)
     }
 }
 
