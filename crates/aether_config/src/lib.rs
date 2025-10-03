@@ -157,14 +157,11 @@ impl Settings for Security {
 /// Build the server settings store inside an explicit application config directory:
 /// <config_root>/settings.json  (RON format; preferred new location).
 pub fn build_server_settings_store<P: Into<std::path::PathBuf>>(
-    config_root: P,
+    settings_file: P,
     version: &'static str,
-    app_id: &str,
 ) -> Result<SettingsStore, SettingsError> {
-    let root: std::path::PathBuf = config_root.into();
-    let file_path = root.join(format!("{}.settings.json", app_id));
     let store = SettingsStore::builder(version)
-        .with_settings_file(file_path)
+        .with_settings_file(settings_file)
         .build()?;
     store.register::<General>()?;
     store.register::<Network>()?;
@@ -175,31 +172,51 @@ pub fn build_server_settings_store<P: Into<std::path::PathBuf>>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use app::{AppBase, Application};
+    use color_eyre::Result;
     use serde_json::Value as JsonValue;
     use std::fs;
-    use tempfile::tempdir;
 
     #[test]
     fn migrates_network_uds_field() -> Result<(), Box<dyn std::error::Error>> {
-        let dir = tempdir()?;
-        let config_root = dir.path();
-        fs::create_dir_all(config_root)?;
-        let settings_path = config_root.join("settings.json");
+        impl Application for MyAppApp {
+            type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
+            const APP_ID: &'static str = "MyApp";
+            fn init_platform() -> Result<(), Self::Error> {
+                Ok(())
+            }
+        }
+
+        pub struct MyAppApp {
+            pub base: AppBase,
+        }
+
+        impl MyAppApp {
+            pub fn init(base: AppBase) -> Result<Self> {
+                Ok(Self { base: base })
+            }
+        }
+
+        let base =
+            app::init::<MyAppApp>(env!("CARGO_PKG_VERSION")).expect("Inizialisation went wrong");
+        base.path_context.settings_file(None);
 
         fs::write(
-            &settings_path,
+            &base.path_context.settings_file(None),
             r#"{
-  "network": {
-    "uds_file": "legacy.sock"
-  }
-}
-"#,
+          "network": {
+            "uds_file": "legacy.sock"
+          }
+        }
+        "#,
         )?;
 
-        let store = build_server_settings_store(config_root, "0.1.0", "app_id")?;
+        let store = build_server_settings_store(&base.path_context.settings_file(None), "0.1.0")?;
         let expected_version = store.schema_version().to_string();
 
-        let doc: JsonValue = serde_json::from_str(&fs::read_to_string(&settings_path)?)?;
+        let doc: JsonValue = serde_json::from_str(&fs::read_to_string(
+            &&base.path_context.settings_file(None),
+        )?)?;
         dbg!(&doc);
 
         let cfg = store.get::<Network>()?;

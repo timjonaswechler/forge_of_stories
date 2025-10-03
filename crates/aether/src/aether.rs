@@ -24,15 +24,10 @@ pub struct AetherApp {
 
 impl AetherApp {
     pub fn init(base: AppBase) -> Result<Self> {
-        let mut bevy_app = App::new().use_aether_server_settings(
-            &base.config_dir,
-            None,
-            base.version(),
-            base.app_id(),
-        );
+        let mut bevy_app = App::new().use_aether_server_settings(&base, None);
         build_bevy_app(&mut bevy_app);
         Ok(Self {
-            base,
+            base: base,
             bevy: bevy_app,
         })
     }
