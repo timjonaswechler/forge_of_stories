@@ -29,7 +29,7 @@ rustls-native-certs.workspace = true
 rustls-pemfile.workspace = true
 rustls-platform-verifier.workspace = true
 serde.workspace = true
-steamworks = { version = "0.7", optional = true }
+steamworks = { version = "0.12", optional = true }
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true

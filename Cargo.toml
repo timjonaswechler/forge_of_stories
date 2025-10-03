@@ -12,8 +12,10 @@ members = [
     "crates/network/shared",
     "crates/ui/fate",
     "crates/ui/illusion",
-    "crates/ui/oracle", "crates/keymap",
+    "crates/ui/oracle",
+    "crates/keymap",
     # "crates/ui/wizard",
+    "third_party/steamworks-sys",
 ]
 default-members = ["crates/forge_of_stories"]
 
@@ -35,6 +37,7 @@ oracle.path = "crates/ui/oracle"
 paths.path = "crates/paths"
 settings.path = "crates/settings"
 server.path = "crates/network/server"
+steamworks-sys.path = "third_party/steamworks-sys"
 # wizard.path = "crates/ui/wizard"
 
 
@@ -88,3 +91,6 @@ uuid = { version = "1.18.1", features = ["v4"] }
 quinn =  "0.11.8"
 quinn-proto = "0.11.8"
 bytes = "1.8.0"
+
+[patch.crates-io]
+steamworks-sys = { path = "third_party/steamworks-sys" }

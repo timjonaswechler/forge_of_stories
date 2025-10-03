@@ -21,7 +21,7 @@ rcgen.workspace = true
 rustls.workspace = true
 rustls-pemfile.workspace = true
 serde.workspace = true
-steamworks = { version = "0.7", optional = true }
+steamworks = { version = "0.12", optional = true }
 thiserror.workspace = true
 tracing.workspace = true
 tokio.workspace = true
