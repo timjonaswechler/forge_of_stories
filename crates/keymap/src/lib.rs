@@ -30,13 +30,17 @@
 pub mod action;
 pub mod binding;
 pub mod context;
+pub mod keymap;
 pub mod keystroke;
+pub mod store;
 
 // Re-export main types
 pub use action::{Action, NoAction, is_no_action};
 pub use binding::{KeyBinding, KeyBindingMetaIndex};
 pub use context::{ContextEntry, KeyBindingContextPredicate, KeyContext};
+pub use keymap::{Keymap, KeymapVersion};
 pub use keystroke::{Keystroke, Modifiers, parse_keystroke_sequence};
+pub use store::{KeymapFile, KeymapSection, KeymapStore, KeymapStoreBuilder};
 
 // Re-export macros
 pub use action as action_macro;
