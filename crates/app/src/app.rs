@@ -1,6 +1,5 @@
 use paths::PathContext;
 #[cfg(debug_assertions)]
-use std::hash::BuildHasherDefault;
 use std::path::PathBuf;
 use tracing_subscriber::{
     Layer, filter::LevelFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt,
