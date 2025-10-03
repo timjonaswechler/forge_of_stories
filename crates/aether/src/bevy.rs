@@ -5,6 +5,8 @@ use bevy::prelude::*;
 use std::time::Duration;
 use tracing;
 
+use crate::bevy::settings_bridge::AetherSettingsPlugin;
+
 // 1) Labels für unsere Pipeline
 #[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
 pub enum NetSets {
@@ -67,6 +69,7 @@ pub(crate) fn heartbeat_fixed(
 // 3) Bevy-App Aufbau mit 30 Hz FixedUpdate (ohne UI)
 pub(crate) fn build_bevy_app(app: &mut App) {
     app.add_plugins(DefaultPlugins.build().disable::<LogPlugin>())
+        .add_plugins(AetherSettingsPlugin)
         .insert_resource(Time::<Fixed>::from_hz(10.0))
         .configure_sets(
             FixedUpdate,

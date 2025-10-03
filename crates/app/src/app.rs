@@ -1,4 +1,7 @@
 use paths::PathContext;
+#[cfg(debug_assertions)]
+use std::hash::BuildHasherDefault;
+use std::path::PathBuf;
 use tracing_subscriber::{
     Layer, filter::LevelFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt,
 };
@@ -43,6 +46,17 @@ pub fn init<A: Application>(version: &'static str) -> Result<AppBase, A::Error> 
     let project_id = A::PROJECT_ID;
 
     // Create PathContext with studio/project/app hierarchy
+    #[cfg(debug_assertions)]
+    let path_context = PathContext::with_base_path(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join(".out"),
+        studio,
+        project_id,
+        app_id,
+    );
+    #[cfg(not(debug_assertions))]
     let path_context = PathContext::new(studio, project_id, app_id);
 
     // Ensure all directories exist
