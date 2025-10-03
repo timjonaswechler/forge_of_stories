@@ -1,6 +1,7 @@
 docs/**
 /target
 .**
+!.gitignore
 WARP.md
 AGENTS.md
 Cargo.lock
