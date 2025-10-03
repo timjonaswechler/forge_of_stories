@@ -10,9 +10,19 @@ use bevy::{
     prelude::Event,
 };
 use bytes::Bytes;
-use quinn::{crypto::rustls::QuicClientConfig, ClientConfig, Endpoint};
+use quinn::{ClientConfig, Endpoint, crypto::rustls::QuicClientConfig};
 use quinn_proto::ConnectionStats;
 
+use network_shared::{
+    ClientId, DEFAULT_INTERNAL_MESSAGES_CHANNEL_SIZE, DEFAULT_KILL_MESSAGE_QUEUE_SIZE,
+    DEFAULT_MESSAGE_QUEUE_SIZE, DEFAULT_QCHANNEL_MESSAGES_CHANNEL_SIZE, InternalConnectionRef,
+    channels::{
+        Channel, ChannelAsyncMessage, ChannelId, ChannelKind, ChannelSyncMessage,
+        ChannelsConfiguration, CloseReason, CloseRecv, CloseSend, spawn_recv_channels_tasks,
+        spawn_send_channels_tasks_spawner,
+    },
+    error::{AsyncChannelError, ChannelCloseError, ChannelCreationError},
+};
 use rustls_platform_verifier::BuilderVerifierExt;
 use serde::Deserialize;
 use tokio::{
@@ -26,15 +36,6 @@ use tokio::{
     },
 };
 
-use network_shared::{
-    channels::{
-        spawn_recv_channels_tasks, spawn_send_channels_tasks_spawner, Channel, ChannelAsyncMessage,
-        ChannelId, ChannelKind, ChannelSyncMessage, ChannelsConfiguration, CloseReason, CloseRecv,
-        CloseSend,
-    },
-    error::{AsyncChannelError, ChannelCloseError, ChannelCreationError},
-};
-
 use super::{
     ClientAsyncMessage, ClientConnectionCloseError, ConnectionClosed, QuinnetConnectionError,
     certificate::{
@@ -44,7 +45,6 @@ use super::{
     error::{
         ClientMessageReceiveError, ClientMessageSendError, ClientPayloadSendError, ClientSendError,
     },
-    ClientAsyncMessage, ClientConnectionCloseError, ConnectionClosed, QuinnetConnectionError,
 };
 
 /// Alias type for a local id of a connection
