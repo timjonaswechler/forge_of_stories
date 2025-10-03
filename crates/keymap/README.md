@@ -131,6 +131,9 @@ keymap/
 ├── binding.rs      # KeyBinding struct
 ├── context.rs      # KeyContext & Predicate
 ├── keystroke.rs    # Keystroke parsing
+├── keymap.rs       # Keymap matching logic
+├── store.rs        # Persistence & storage
+├── bevy.rs         # Bevy integration (optional)
 └── lib.rs          # Public API
 ```
 
@@ -176,19 +179,104 @@ if save_binding.match_keystrokes(&typed) == Some(false) {
 }
 ```
 
+## Bevy Integration
+
+The keymap system can be integrated with Bevy using the optional `bevy_plugin` feature.
+
+### Setup
+
+Add to your `Cargo.toml`:
+
+```toml
+keymap = { path = "crates/keymap", features = ["bevy_plugin"] }
+```
+
+### Usage
+
+```rust
+use bevy::prelude::*;
+use keymap::bevy::{KeymapPlugin, ContextStack, KeymapStoreResource};
+use keymap::{action, KeyBinding, Keystroke};
+
+action!(MyAction);
+
+fn main() {
+    App::new()
+        .add_plugins(DefaultPlugins)
+        .add_plugins(KeymapPlugin::default())
+        .add_systems(Startup, setup_keybindings)
+        .add_systems(Update, update_context)
+        .run();
+}
+
+fn setup_keybindings(store: Res<KeymapStoreResource>) {
+    let binding = KeyBinding::new(
+        vec![Keystroke::parse("cmd-s").unwrap()],
+        Box::new(MyAction),
+        None,
+    );
+    store.add_user_binding(binding);
+}
+
+fn update_context(mut context_stack: ResMut<ContextStack>) {
+    // Update context based on UI state
+    context_stack.clear();
+    let mut ctx = keymap::KeyContext::new_with_defaults();
+    ctx.add("Editor");
+    context_stack.push(ctx);
+}
+```
+
+### KeyCode → Keystroke Interpreter
+
+The Bevy plugin automatically converts Bevy's `KeyCode` events to our `Keystroke` format:
+
+- Letter keys: `KeyA` → `"a"`
+- Modifiers: Automatically detected from `ButtonInput<KeyCode>`
+- Function keys: `F1` → `"f1"`
+- Special keys: `Escape` → `"escape"`, `Space` → `"space"`, etc.
+
+### Context Stack
+
+The `ContextStack` resource manages hierarchical contexts:
+
+```rust
+fn my_system(mut stack: ResMut<ContextStack>) {
+    // Push context when entering UI element
+    let mut ctx = KeyContext::default();
+    ctx.add("MyPanel");
+    stack.push(ctx);
+    
+    // Pop when leaving
+    stack.pop();
+    
+    // Clear all
+    stack.clear();
+}
+```
+
 ## Testing
 
 ```bash
+# Test without Bevy
 cargo test -p keymap
+
+# Test with Bevy integration
+cargo test -p keymap --features bevy_plugin
 ```
 
-## Next Steps
+## Completed Features
 
-- [ ] Implement `Keymap` struct with matching logic
-- [ ] Implement `KeymapStore` for persistence
-- [ ] JSON serialization/deserialization
-- [ ] Bevy integration
-- [ ] NoAction support for disabling bindings
+- [x] Core Keymap infrastructure (Action, Binding, Context, Predicate)
+- [x] Keystroke parsing system
+- [x] Keymap matching logic with precedence rules
+- [x] KeymapStore with persistence
+- [x] JSON serialization/deserialization
+- [x] Default + User merge logic
+- [x] NoAction support for disabling bindings
+- [x] Bevy Plugin integration (optional)
+- [x] KeyCode → Keystroke interpreter
+- [x] Context stack for hierarchical matching
 
 ## License
 

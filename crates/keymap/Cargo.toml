@@ -19,5 +19,16 @@ smallvec = { workspace = true }
 paths = { path = "../paths" }
 settings = { path = "../settings" }
 
+# Optional Bevy integration
+[dependencies.bevy]
+version = "0.16"
+optional = true
+default-features = false
+features = ["bevy_winit"]
+
+[features]
+default = []
+bevy_plugin = ["bevy"]
+
 [dev-dependencies]
 tempfile = "3.0"

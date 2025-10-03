@@ -34,6 +34,10 @@ pub mod keymap;
 pub mod keystroke;
 pub mod store;
 
+// Bevy integration (optional)
+#[cfg(feature = "bevy_plugin")]
+pub mod bevy;
+
 // Re-export main types
 pub use action::{Action, NoAction, is_no_action};
 pub use binding::{KeyBinding, KeyBindingMetaIndex};
