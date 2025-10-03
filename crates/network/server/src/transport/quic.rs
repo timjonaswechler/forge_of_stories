@@ -10,8 +10,8 @@ use std::{
 use bevy::log::{error, trace, warn};
 use bytes::Bytes;
 use network_shared::{
-    channels::{ChannelAsyncMessage, ChannelId, ChannelKind, ChannelsConfiguration},
     ClientId, DisconnectReason, OutgoingMessage, TransportCapabilities, TransportEvent,
+    channels::{ChannelAsyncMessage, ChannelId, ChannelKind, ChannelsConfiguration},
 };
 use tokio::{
     runtime::Runtime,
@@ -22,12 +22,12 @@ use tokio::{
 
 use super::ServerTransport;
 use crate::{
+    QuinnetServer, ServerAsyncMessage, ServerEndpointConfiguration,
     certificate::CertificateRetrievalMode,
     error::{
         EndpointAlreadyClosed, EndpointStartError, ServerDisconnectError, ServerReceiveError,
         ServerSendError,
     },
-    QuinnetServer, ServerAsyncMessage, ServerEndpointConfiguration,
 };
 
 #[derive(thiserror::Error, Debug)]

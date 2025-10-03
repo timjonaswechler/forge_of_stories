@@ -4,21 +4,22 @@ use std::{
     sync::Arc,
 };
 
-use crate::certificate::{retrieve_certificate, CertificateRetrievalMode, ServerCertificate};
-use bevy::prelude::*;
+use crate::certificate::{CertificateRetrievalMode, ServerCertificate, retrieve_certificate};
+use ::bevy::prelude::*;
+use tracing::{error, info, trace};
 use bytes::Bytes;
 use network_shared::{
+    AsyncRuntime, ClientId, DEFAULT_INTERNAL_MESSAGES_CHANNEL_SIZE, DEFAULT_KEEP_ALIVE_INTERVAL_S,
+    DEFAULT_KILL_MESSAGE_QUEUE_SIZE, DEFAULT_MESSAGE_QUEUE_SIZE,
+    DEFAULT_QCHANNEL_MESSAGES_CHANNEL_SIZE, InternalConnectionRef,
     channels::{
-        spawn_recv_channels_tasks, spawn_send_channels_tasks_spawner, Channel, ChannelAsyncMessage,
-        ChannelId, ChannelKind, ChannelSyncMessage, ChannelsConfiguration, CloseReason,
+        Channel, ChannelAsyncMessage, ChannelId, ChannelKind, ChannelSyncMessage,
+        ChannelsConfiguration, CloseReason, spawn_recv_channels_tasks,
+        spawn_send_channels_tasks_spawner,
     },
     error::{AsyncChannelError, ChannelCloseError, ChannelCreationError},
-    AsyncRuntime, ClientId, InternalConnectionRef, QuinnetSyncUpdate,
-    DEFAULT_INTERNAL_MESSAGES_CHANNEL_SIZE, DEFAULT_KEEP_ALIVE_INTERVAL_S,
-    DEFAULT_KILL_MESSAGE_QUEUE_SIZE, DEFAULT_MESSAGE_QUEUE_SIZE,
-    DEFAULT_QCHANNEL_MESSAGES_CHANNEL_SIZE,
 };
-use quinn::{default_runtime, Endpoint as QuinnEndpoint, EndpointConfig, ServerConfig};
+use quinn::{Endpoint as QuinnEndpoint, EndpointConfig, ServerConfig, default_runtime};
 use quinn_proto::ConnectionStats;
 use serde::Deserialize;
 use tokio::{
@@ -33,14 +34,22 @@ use tokio::{
 };
 
 mod error;
+pub use bevy_integration::{
+    QuinnetServerPlugin,
+    SteamServerEventChannel,
+    SteamworksServerPlugin,
+};
 pub use error::*;
 
+/// Bevy integration helpers (plugins, event channels)
+#[path = "bevy.rs"]
+pub mod bevy_integration;
 /// Module for the server's certificate features
 pub mod certificate;
-/// Transport abstraction layer (QUIC, Steam, ...)
-pub mod transport;
 /// Steam transport runtime wrappers
 pub mod steam;
+/// Transport abstraction layer (QUIC, Steam, ...)
+pub mod transport;
 
 /// Connection event raised when a client just connected to the server. Raised in the CoreStage::PreUpdate stage.
 #[derive(Event, Debug, Copy, Clone)]
@@ -1335,42 +1344,6 @@ pub fn update_sync_server(
         for client_id in lost_clients {
             endpoint.try_disconnect_client(client_id);
         }
-    }
-}
-
-/// Quinnet Server's plugin
-///
-/// It is possbile to add both this plugin and the [`crate::client::QuinnetClientPlugin`]
-pub struct QuinnetServerPlugin {
-    /// In order to have more control and only do the strict necessary, which is registering systems and events in the Bevy schedule, `initialize_later` can be set to `true`. This will prevent the plugin from initializing the `Server` Resource.
-    /// Server systems are scheduled to only run if the `Server` resource exists.
-    /// A Bevy command to create the resource `commands.init_resource::<Server>();` can be done later on, when needed.
-    pub initialize_later: bool,
-}
-
-impl Default for QuinnetServerPlugin {
-    fn default() -> Self {
-        Self {
-            initialize_later: false,
-        }
-    }
-}
-
-impl Plugin for QuinnetServerPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_event::<ConnectionEvent>()
-            .add_event::<ConnectionLostEvent>();
-
-        if !self.initialize_later {
-            app.init_resource::<QuinnetServer>();
-        }
-
-        app.add_systems(
-            PreUpdate,
-            update_sync_server
-                .in_set(QuinnetSyncUpdate)
-                .run_if(resource_exists::<QuinnetServer>),
-        );
     }
 }
 

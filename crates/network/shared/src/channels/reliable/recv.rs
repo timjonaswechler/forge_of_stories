@@ -1,4 +1,4 @@
-use bevy::log::trace;
+use tracing::trace;
 use bytes::{Buf, Bytes, BytesMut};
 use futures::StreamExt;
 use quinn::RecvStream;
@@ -7,8 +7,8 @@ use tokio::sync::mpsc::{self};
 use tokio_util::codec::FramedRead;
 
 use crate::channels::{
-    reliable::{codec::QuinnetProtocolCodecDecoder, DEFAULT_MAX_RELIABLE_FRAME_LEN},
-    ChannelId, CloseRecv, CHANNEL_ID_LEN,
+    CHANNEL_ID_LEN, ChannelId, CloseRecv,
+    reliable::{DEFAULT_MAX_RELIABLE_FRAME_LEN, codec::QuinnetProtocolCodecDecoder},
 };
 
 pub(crate) async fn reliable_channels_receiver_task<T: Display>(

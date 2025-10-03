@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use thiserror::Error;
 
-use crate::{channels::ChannelId, ClientId};
+use crate::{ClientId, channels::ChannelId, steam::SteamDiscoveryEvent};
 
 /// Reasons why a peer might be disconnected from the transport layer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,14 +83,38 @@ pub enum TransportEvent {
         client: Option<ClientId>,
         error: TransportError,
     },
+    AuthResult {
+        client: Option<ClientId>,
+        steam_id: u64,
+        owner_steam_id: u64,
+        result: Result<(), String>,
+    },
 }
 
 /// Client-side events emitted by a transport implementation.
 #[derive(Debug)]
 pub enum ClientEvent {
-    Connected { client_id: Option<ClientId> },
-    Disconnected { reason: DisconnectReason },
-    Message { channel: ChannelId, payload: Bytes },
-    Datagram { payload: Bytes },
-    Error { error: TransportError },
+    Connected {
+        client_id: Option<ClientId>,
+    },
+    Disconnected {
+        reason: DisconnectReason,
+    },
+    Message {
+        channel: ChannelId,
+        payload: Bytes,
+    },
+    Datagram {
+        payload: Bytes,
+    },
+    Error {
+        error: TransportError,
+    },
+    Discovery(SteamDiscoveryEvent),
+    AuthResult {
+        client: Option<ClientId>,
+        steam_id: u64,
+        owner_steam_id: u64,
+        result: Result<(), String>,
+    },
 }

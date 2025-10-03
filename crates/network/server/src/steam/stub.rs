@@ -1,8 +1,8 @@
 use bytes::Bytes;
 use network_shared::{
-    channels::ChannelKind,
-    steam::SteamAppId,
     ClientId, DisconnectReason, OutgoingMessage, TransportCapabilities, TransportEvent,
+    channels::ChannelKind,
+    steam::{SteamAppId, SteamAuthTicket},
 };
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -26,6 +26,14 @@ impl SteamServerTransport {
         _app_id: SteamAppId,
         _channels: &[ChannelKind],
     ) -> Result<Self, SteamServerTransportError> {
+        Err(SteamServerTransportError::Disabled)
+    }
+
+    pub fn validate_auth_ticket(
+        &self,
+        _client: ClientId,
+        _ticket: SteamAuthTicket,
+    ) -> Result<(), SteamServerTransportError> {
         Err(SteamServerTransportError::Disabled)
     }
 }

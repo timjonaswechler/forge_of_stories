@@ -1,4 +1,4 @@
-use bevy::log::trace;
+use tracing::trace;
 use bytes::Bytes;
 use quinn::VarInt;
 use std::fmt::Debug;

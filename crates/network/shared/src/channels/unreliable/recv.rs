@@ -1,9 +1,9 @@
-use bevy::log::trace;
+use tracing::trace;
 use bytes::Bytes;
 use std::fmt::Display;
 use tokio::sync::mpsc::{self};
 
-use crate::channels::{ChannelId, CloseRecv, CHANNEL_ID_LEN};
+use crate::channels::{CHANNEL_ID_LEN, ChannelId, CloseRecv};
 
 pub(crate) async fn unreliable_channel_receiver_task<T: Display>(
     task_id: T,

@@ -9,9 +9,7 @@ pub enum AsyncChannelError {
     )]
     FullQueue,
     /// The receiving half of an internal channel was explicitly closed or has been dropped
-    #[error(
-        "The receiving half of the internal channel was explicitly closed or has been dropped"
-    )]
+    #[error("The receiving half of the internal channel was explicitly closed or has been dropped")]
     InternalChannelClosed,
 }
 

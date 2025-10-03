@@ -1,9 +1,9 @@
-use bevy::log::{error, trace, warn};
+use tracing::{error, trace, warn};
 use bytes::{BufMut, Bytes, BytesMut};
 use quinn::SendDatagramError;
 
 use crate::channels::{
-    ChannelAsyncMessage, ChannelId, CloseReason, SendChannelTask, PROTOCOL_HEADER_LEN,
+    ChannelAsyncMessage, ChannelId, CloseReason, PROTOCOL_HEADER_LEN, SendChannelTask,
 };
 
 pub(crate) async fn unreliable_channel_task(mut task: SendChannelTask) {

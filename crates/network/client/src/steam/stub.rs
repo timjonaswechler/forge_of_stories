@@ -1,7 +1,8 @@
 use bytes::Bytes;
 use network_shared::{
-    steam::SteamAppId,
     ClientEvent, DisconnectReason, OutgoingMessage, TransportCapabilities,
+    channels::ChannelKind,
+    steam::{SteamAppId, SteamAuthTicket},
 };
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -17,11 +18,14 @@ pub enum SteamTransportError {
 pub struct SteamClientTransport;
 
 impl SteamClientTransport {
-    pub fn new_default() -> Result<Self, SteamTransportError> {
+    pub fn new_default(_channels: &[ChannelKind]) -> Result<Self, SteamTransportError> {
         Err(SteamTransportError::Disabled)
     }
 
-    pub fn new(_app_id: SteamAppId) -> Result<Self, SteamTransportError> {
+    pub fn new(
+        _app_id: SteamAppId,
+        _channels: &[ChannelKind],
+    ) -> Result<Self, SteamTransportError> {
         Err(SteamTransportError::Disabled)
     }
 }
@@ -51,5 +55,25 @@ impl ClientTransport for SteamClientTransport {
 
     fn capabilities(&self) -> TransportCapabilities {
         TransportCapabilities::default()
+    }
+}
+
+impl SteamClientTransport {
+    pub fn request_lobby_list(&self) -> Result<(), SteamTransportError> {
+        Err(SteamTransportError::Disabled)
+    }
+
+    pub fn request_auth_ticket(&self) -> Result<(), SteamTransportError> {
+        Err(SteamTransportError::Disabled)
+    }
+
+    pub fn cancel_auth_ticket(&self) {}
+
+    pub fn has_active_auth_ticket(&self) -> bool {
+        false
+    }
+
+    pub fn submit_auth_ticket(&self, _ticket: SteamAuthTicket) -> Result<(), SteamTransportError> {
+        Err(SteamTransportError::Disabled)
     }
 }

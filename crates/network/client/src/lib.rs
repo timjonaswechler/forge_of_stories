@@ -6,7 +6,7 @@ use std::{
     sync::Mutex,
 };
 
-use bevy::prelude::*;
+use ::bevy::prelude::*;
 
 use tokio::{
     runtime::{self},
@@ -14,9 +14,9 @@ use tokio::{
 };
 
 use network_shared::{
+    AsyncRuntime, ClientId, InternalConnectionRef,
     channels::{ChannelAsyncMessage, ChannelsConfiguration},
     error::AsyncChannelError,
-    AsyncRuntime, ClientId, InternalConnectionRef, QuinnetSyncUpdate,
 };
 
 use self::{
@@ -25,22 +25,30 @@ use self::{
         CertVerificationStatus, CertVerifierAction, CertificateVerificationMode,
     },
     connection::{
-        async_connection_task, create_async_channels, ClientEndpointConfiguration,
-        ClientSideConnection, ConnectionEvent, ConnectionFailedEvent, ConnectionLocalId,
-        ConnectionLostEvent, ConnectionState, InternalConnectionState,
+        ClientEndpointConfiguration, ClientSideConnection, ConnectionEvent, ConnectionFailedEvent,
+        ConnectionLocalId, ConnectionLostEvent, ConnectionState, InternalConnectionState,
+        async_connection_task, create_async_channels,
     },
 };
 
+/// Bevy integration helpers (plugins, event channels)
+#[path = "bevy.rs"]
+pub mod bevy_integration;
 /// Module for the client's certificate features
 pub mod certificate;
 /// Module for a client's connection to a server
 pub mod connection;
-/// Transport abstraction for pluggable backends (QUIC, Steam, ...)
-pub mod transport;
 /// Steam transport runtime wrappers
 pub mod steam;
+/// Transport abstraction for pluggable backends (QUIC, Steam, ...)
+pub mod transport;
 
 mod error;
+pub use bevy_integration::{
+    QuinnetClientPlugin,
+    SteamClientEventChannel,
+    SteamworksClientPlugin,
+};
 pub use error::*;
 
 /// Default path for the known hosts file
@@ -373,46 +381,6 @@ pub fn update_sync_client(
                 },
             }
         }
-    }
-}
-
-/// Quinnet Server's plugin
-///
-/// It is possbile to add both this plugin and the [`crate::server::QuinnetServerPlugin`]
-pub struct QuinnetClientPlugin {
-    /// In order to have more control and only do the strict necessary, which is registering systems and events in the Bevy schedule, `initialize_later` can be set to `true`. This will prevent the plugin from initializing the `Client` Resource.
-    /// Client systems are scheduled to only run if the `Client` resource exists.
-    /// A Bevy command to create the resource `commands.init_resource::<Client>();` can be done later on, when needed.
-    pub initialize_later: bool,
-}
-
-impl Default for QuinnetClientPlugin {
-    fn default() -> Self {
-        Self {
-            initialize_later: false,
-        }
-    }
-}
-
-impl Plugin for QuinnetClientPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_event::<ConnectionEvent>()
-            .add_event::<ConnectionFailedEvent>()
-            .add_event::<ConnectionLostEvent>()
-            .add_event::<CertInteractionEvent>()
-            .add_event::<CertTrustUpdateEvent>()
-            .add_event::<CertConnectionAbortEvent>();
-
-        if !self.initialize_later {
-            app.init_resource::<QuinnetClient>();
-        }
-
-        app.add_systems(
-            PreUpdate,
-            update_sync_client
-                .in_set(QuinnetSyncUpdate)
-                .run_if(resource_exists::<QuinnetClient>),
-        );
     }
 }
 

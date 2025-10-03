@@ -6,8 +6,8 @@ use tokio::sync::mpsc::UnboundedSender;
 
 pub mod quic;
 
-pub use quic::{QuicClientTransport, QuicClientTransportError};
 pub use crate::steam::{SteamClientTransport, SteamTransportError as SteamClientTransportError};
+pub use quic::{QuicClientTransport, QuicClientTransportError};
 
 /// Possible endpoints a client can connect to.
 #[derive(Debug, Clone)]

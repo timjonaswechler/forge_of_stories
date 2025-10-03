@@ -8,7 +8,7 @@ path = "src/lib.rs"
 
 [dependencies]
 base64.workspace = true
-bevy = { version = "0.16.1", default-features = false}
+bevy-ecs = { package = "bevy_ecs", version = "0.16.1" }
 bincode.workspace = true
 bytes.workspace = true
 futures.workspace = true
@@ -21,3 +21,4 @@ time.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 quinn.workspace = true
+tracing.workspace = true

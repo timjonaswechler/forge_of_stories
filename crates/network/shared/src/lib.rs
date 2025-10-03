@@ -1,12 +1,11 @@
-use std::{mem::size_of, time::Duration};
+use std::{mem::size_of, ops::{Deref, DerefMut}, time::Duration};
 
-use bevy::{
-    ecs::schedule::SystemSet,
-    prelude::{Deref, DerefMut, Resource},
-};
+use bevy_ecs::{prelude::Resource, schedule::SystemSet};
 use channels::MAX_CHANNEL_COUNT;
 use tokio::runtime::Runtime;
 
+/// Shared Bevy-facing events for steam/quinnet integration
+pub mod bevy;
 /// Certificate features shared by client & server
 pub mod certificate;
 /// Channel features shared by client & server
@@ -43,8 +42,21 @@ pub type ClientId = u64;
 pub const CLIENT_ID_LEN: usize = size_of::<ClientId>();
 
 /// Async runtime newtype wrapping the tokio runtime handle. used by both quinnet client and server's async back-ends.
-#[derive(Resource, Deref, DerefMut)]
+#[derive(Resource)]
 pub struct AsyncRuntime(pub Runtime);
+impl Deref for AsyncRuntime {
+    type Target = Runtime;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for AsyncRuntime {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
 pub type InternalConnectionRef = quinn::Connection;
 
 pub use events::{
