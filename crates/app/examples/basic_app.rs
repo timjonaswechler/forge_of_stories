@@ -1,38 +1,35 @@
 //! Basic application example demonstrating app initialization with PathContext.
+//!
+//! This example shows how to create a simple application without Bevy,
+//! using just the AppContext for path management and logging.
 
-use app::{Application, BoxError};
+use app::{AppBuilder, Application, BoxError};
 
 // Define your application
 struct MyApp;
 
 impl Application for MyApp {
-    type Error = BoxError;
-
     const APP_ID: &'static str = "my_app";
     // Uses defaults: STUDIO = "chicken105", PROJECT_ID = "forge_of_stories"
-
-    fn init_platform() -> Result<(), Self::Error> {
-        println!("🚀 Platform-specific initialization");
-        Ok(())
-    }
 }
 
 fn main() -> Result<(), BoxError> {
     println!("=== Basic App Example ===\n");
 
-    // Initialize the application
-    let app_base = app::init::<MyApp>("1.0.0")?;
+    // Initialize the application using the new builder pattern
+    // This sets up paths, logging, and returns an AppContext
+    let app_context = AppBuilder::<MyApp>::new("1.0.0")?.build_simple();
 
     println!("✅ Application initialized successfully!\n");
 
     // Access application info
     println!("📋 Application Info:");
-    println!("   App ID: {}", app_base.app_id());
-    println!("   Version: {}", app_base.version());
+    println!("   App ID: {}", app_context.app_id());
+    println!("   Version: {}", app_context.version());
     println!();
 
     // Access PathContext for all path management
-    let ctx = app_base.path_context();
+    let ctx = app_context.path_context();
 
     println!("📂 Path Structure:");
     println!("   Studio: {}", ctx.studio());
@@ -57,6 +54,10 @@ fn main() -> Result<(), BoxError> {
 
     println!("💡 Tip: Check the logs directory for the application log file!");
     println!("   Log file: {:?}", ctx.log_file_now());
+    println!();
+
+    println!("🎯 Note: This is a simple app without Bevy.");
+    println!("   For Bevy apps, use `.build_with_bevy()` instead of `.build_simple()`");
 
     Ok(())
 }
