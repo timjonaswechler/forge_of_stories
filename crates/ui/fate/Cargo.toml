@@ -3,6 +3,3 @@ name = "fate"
 version = "0.1.0"
 edition.workspace = true
 description = "Fate is a development tool for Forge of Stories, providing a debug editor for game data."
-
-[lib]
-path = "src/lib.rs"

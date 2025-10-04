@@ -7,6 +7,9 @@ edition.workspace = true
 [lib]
 path = "src/app.rs"
 
+[features]
+bevy = ["dep:bevy"]
+
 [dependencies]
 
 chrono.workspace = true
@@ -16,3 +19,5 @@ tracing.workspace = true
 tracing-appender.workspace = true
 tracing-error.workspace = true
 tracing-subscriber.workspace = true
+
+bevy = { workspace = true, optional = true }

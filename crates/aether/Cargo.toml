@@ -6,7 +6,7 @@ edition.workspace = true
 
 [dependencies]
 aether_config= {workspace = true, features = ["bevy"]}
-app.workspace = true
+app = {workspace = true, features = ["bevy"]}
 color-eyre.workspace = true
 settings= {workspace = true, features = ["bevy"]}
 # server.workspace = true

@@ -3,15 +3,8 @@ name = "forge_of_stories"
 edition = { workspace = true }
 version = { workspace = true }
 
-
-[[bin]]
-name = "forge_of_stories"
-path = "src/client.rs"
-
-
-[[bin]]
-name = "forge_of_stories_server"
-path = "src/server.rs"
-
-
 [dependencies]
+app = {workspace = true, features = ["bevy"]}
+bevy = {version = "0.16.1"}
+settings.workspace = true
+paths.workspace = true

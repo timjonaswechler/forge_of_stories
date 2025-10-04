@@ -11,8 +11,6 @@ members = [
     "crates/network/server",
     "crates/network/shared",
     "crates/ui/fate",
-    "crates/ui/illusion",
-    "crates/ui/oracle",
     "crates/keymap",
     # "crates/ui/wizard",
     "third_party/steamworks-sys",
@@ -31,9 +29,7 @@ app.path = "crates/app"
 client.path = "crates/network/client"
 fate.path = "crates/ui/fate"
 fos.path = "crates/forge_of_stories"
-illusion.path = "crates/ui/illusion"
 network_shared.path = "crates/network/shared"
-oracle.path = "crates/ui/oracle"
 paths.path = "crates/paths"
 settings.path = "crates/settings"
 server.path = "crates/network/server"
@@ -46,6 +42,7 @@ steamworks-sys.path = "third_party/steamworks-sys"
 anyhow = { version = "1.0.80" }
 axum = { version = "0.8.4", features = ["json", "ws"] }
 base64 = "0.22.1"
+bevy = { version = "0.16.1", default-features = false }
 bincode = { version = "2.0.1", features = ["serde"] }
 bitflags = { version = "2.9.3", features = ["serde"] }
 chrono = "0.4.42"

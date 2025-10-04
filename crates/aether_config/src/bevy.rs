@@ -1,6 +1,6 @@
 #![cfg(feature = "bevy")]
 use crate::{General, Network, Security};
-use app::AppBase;
+use app::AppContext;
 use bevy::prelude::*;
 pub use bevy::{ecs, prelude::Resource};
 use settings::{AppSettingsExt, SettingsArc};
@@ -8,7 +8,7 @@ use settings::{AppSettingsExt, SettingsArc};
 pub trait AppAetherSettingsExt {
     fn use_aether_server_settings(
         self,
-        base: &AppBase,
+        context: &AppContext,
         store: Option<settings::SettingsStore>,
     ) -> Self;
 }
@@ -16,16 +16,16 @@ pub trait AppAetherSettingsExt {
 impl AppAetherSettingsExt for App {
     fn use_aether_server_settings(
         mut self,
-        base: &AppBase,
+        context: &AppContext,
         store: Option<settings::SettingsStore>,
     ) -> Self {
         let store = match store {
             Some(s) => s,
             None => crate::build_server_settings_store(
-                &base
+                &context
                     .path_context
-                    .settings_file(Some(base.app_id().to_string())),
-                &base.version(),
+                    .settings_file(Some(context.app_id().to_string())),
+                &context.version(),
             )
             .expect("build server settings store"),
         };

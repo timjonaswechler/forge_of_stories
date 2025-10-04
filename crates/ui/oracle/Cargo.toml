@@ -1,8 +1,0 @@
-[package] #Web UI
-name = "oracle"
-version = "0.1.0"
-description = "Oracle is the web UI for Forge of Stories, providing a web-based interface for players."
-edition.workspace = true
-
-[lib]
-path = "src/lib.rs"
