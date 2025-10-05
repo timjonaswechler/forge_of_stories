@@ -11,6 +11,7 @@
 use bevy::prelude::*;
 
 pub mod movement;
+pub mod save;
 pub mod systems;
 pub mod world;
 pub mod world_setup;

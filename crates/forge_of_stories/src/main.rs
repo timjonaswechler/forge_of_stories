@@ -18,6 +18,11 @@ fn main() {
     let mut app = AppBuilder::<FOSApp>::new(env!("CARGO_PKG_VERSION"))
         .expect("Failed to initialize application")
         .build_with_bevy(|mut app, _ctx| {
+            // Insert save path as resource (in current directory for now)
+            let save_path = std::env::current_dir()
+                .unwrap_or_default()
+                .join("world.save.ron");
+            app.insert_resource(SavePath(save_path));
             app.add_plugins(
                 DefaultPlugins
                     .build()
@@ -189,12 +194,32 @@ struct ClientPlayer {
     server_id: u64,
 }
 
+/// Resource holding the save file path.
+#[derive(Resource)]
+struct SavePath(std::path::PathBuf);
+
 /// System that captures player input and sends it to the server.
 fn handle_player_input(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut server: ResMut<EmbeddedServer>,
+    save_path: Res<SavePath>,
 ) {
     use server_logic::movement::PlayerInput;
+
+    // Handle save/load hotkeys
+    if keyboard.just_pressed(KeyCode::F5) {
+        match server.save_world(&save_path.0) {
+            Ok(_) => info!("World saved to {:?}", save_path.0),
+            Err(e) => error!("Failed to save world: {}", e),
+        }
+    }
+
+    if keyboard.just_pressed(KeyCode::F9) {
+        match server.load_world(&save_path.0) {
+            Ok(_) => info!("World loaded from {:?}", save_path.0),
+            Err(e) => error!("Failed to load world: {}", e),
+        }
+    }
 
     // Calculate movement direction from WASD/Arrow keys
     let mut direction = Vec2::ZERO;
