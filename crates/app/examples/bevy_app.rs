@@ -3,7 +3,7 @@
 //! This example shows how to create a Bevy-based application using the
 //! AppBuilder pattern with the `build_with_bevy()` method.
 
-use app::{AppBuilder, Application, BoxError};
+use app::{AppBuilder, Application};
 
 #[cfg(feature = "bevy")]
 use bevy::prelude::*;
@@ -17,25 +17,24 @@ impl Application for MyBevyApp {
 }
 
 #[cfg(feature = "bevy")]
-fn main() -> Result<(), BoxError> {
+fn main() -> Result<(), app::BoxError> {
     println!("=== Bevy App Example ===\n");
 
     // Initialize the application with Bevy
-    let mut bevy_app = AppBuilder::<MyBevyApp>::new("1.0.0")?
-        .build_with_bevy(|mut app, ctx| {
-            println!("🎮 Configuring Bevy app...");
-            println!("   App ID: {}", ctx.app_id());
-            println!("   Version: {}", ctx.version());
-            println!("   Assets Dir: {:?}", ctx.path_context().assets_dir());
-            println!();
+    let mut bevy_app = AppBuilder::<MyBevyApp>::new("1.0.0")?.build_with_bevy(|mut app, ctx| {
+        println!("🎮 Configuring Bevy app...");
+        println!("   App ID: {}", ctx.app_id());
+        println!("   Version: {}", ctx.version());
+        println!("   Assets Dir: {:?}", ctx.path_context().assets_dir());
+        println!();
 
-            // Configure the Bevy app with minimal plugins
-            app.add_plugins(MinimalPlugins);
-            app.add_systems(Startup, setup_system);
-            app.add_systems(Update, demo_system);
-            
-            app
-        });
+        // Configure the Bevy app with minimal plugins
+        app.add_plugins(MinimalPlugins);
+        app.add_systems(Startup, setup_system);
+        app.add_systems(Update, demo_system);
+
+        app
+    });
 
     println!("✅ Bevy app initialized successfully!\n");
     println!("🚀 Running Bevy app (press Ctrl+C to stop)...\n");
@@ -54,11 +53,11 @@ fn setup_system() {
 #[cfg(feature = "bevy")]
 fn demo_system(mut counter: Local<u32>) {
     *counter += 1;
-    
+
     if *counter == 1 || *counter % 60 == 0 {
         println!("⚙️  Update system tick: {}", *counter);
     }
-    
+
     // Exit after a few seconds
     if *counter >= 180 {
         println!("\n✨ Demo completed successfully!");
