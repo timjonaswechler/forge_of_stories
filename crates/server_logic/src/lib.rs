@@ -10,6 +10,7 @@
 
 use bevy::prelude::*;
 
+pub mod movement;
 pub mod systems;
 pub mod world;
 pub mod world_setup;
@@ -35,6 +36,7 @@ impl Plugin for ServerLogicPlugin {
         app
             // Add server tick rate configuration
             .insert_resource(ServerConfig::default())
+            .insert_resource(movement::PlayerInputQueue::default())
             // Configure system sets for server pipeline
             .configure_sets(
                 FixedUpdate,
@@ -54,6 +56,15 @@ impl Plugin for ServerLogicPlugin {
                 world_setup::mark_world_initialized
                     .run_if(resource_exists::<world_setup::WorldInitialized>)
                     .in_set(ServerSet::Simulation),
+            )
+            // Movement systems
+            .add_systems(
+                FixedUpdate,
+                movement::process_player_input.in_set(ServerSet::Input),
+            )
+            .add_systems(
+                FixedUpdate,
+                movement::apply_velocity.in_set(ServerSet::Simulation),
             )
             // Server systems
             .add_systems(

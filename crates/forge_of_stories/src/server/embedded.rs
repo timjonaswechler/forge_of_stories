@@ -116,9 +116,10 @@ impl EmbeddedServer {
     /// Initializes the server world and starts the transport.
     fn initialize(&mut self) -> Result<(), ServerError> {
         // Initialize server world with server logic resources
-        use server_logic::{world_setup, ServerConfig};
+        use server_logic::{movement, world_setup, ServerConfig};
 
         self.world.insert_resource(ServerConfig::default());
+        self.world.insert_resource(movement::PlayerInputQueue::default());
         self.world
             .insert_resource(Time::<bevy::time::Fixed>::from_hz(20.0));
 
@@ -128,7 +129,11 @@ impl EmbeddedServer {
 
         // Add server systems to schedule
         self.schedule
-            .add_systems(server_logic::systems::heartbeat_system);
+            .add_systems((
+                movement::process_player_input,
+                movement::apply_velocity,
+                server_logic::systems::heartbeat_system,
+            ));
 
         // Start the appropriate transport
         match &self.mode {
@@ -270,6 +275,18 @@ impl EmbeddedServer {
     /// This allows the client to connect to the embedded server.
     pub fn loopback_pair(&mut self) -> Option<&mut LoopbackPair> {
         self.loopback.as_mut()
+    }
+
+    /// Sends player input to the server for processing.
+    ///
+    /// In loopback mode, this directly queues the input for the next server tick.
+    /// In networked modes, this would send it over the transport.
+    pub fn send_player_input(&mut self, player_id: u64, input: server_logic::movement::PlayerInput) {
+        use server_logic::movement::PlayerInputQueue;
+
+        if let Some(mut queue) = self.world.get_resource_mut::<PlayerInputQueue>() {
+            queue.inputs.insert(player_id, input);
+        }
     }
 }
 

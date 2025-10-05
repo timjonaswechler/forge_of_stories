@@ -13,5 +13,6 @@ bevy = { version = "0.17.0", default-features = false, features = [
     "multi_threaded",
     "bevy_state",
     "serialize",
+    "bevy_color"
 ] }
 tracing.workspace = true

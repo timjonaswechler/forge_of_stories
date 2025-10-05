@@ -4,6 +4,7 @@
 //! - Ground plane
 //! - Player entities (colored shapes)
 
+use bevy::color::Color;
 use bevy::prelude::*;
 
 /// Marker component for the ground plane entity.

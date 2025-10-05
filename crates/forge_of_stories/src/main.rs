@@ -38,7 +38,7 @@ fn main() {
             .add_systems(OnEnter(GameState::InGame), enter_game)
             .add_systems(
                 Update,
-                sync_server_state
+                (handle_player_input, sync_server_state)
                     .run_if(in_state(GameState::InGame))
                     .run_if(resource_exists::<EmbeddedServer>),
             )
@@ -187,6 +187,41 @@ fn sync_server_state(
 #[derive(Component)]
 struct ClientPlayer {
     server_id: u64,
+}
+
+/// System that captures player input and sends it to the server.
+fn handle_player_input(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut server: ResMut<EmbeddedServer>,
+) {
+    use server_logic::movement::PlayerInput;
+
+    // Calculate movement direction from WASD/Arrow keys
+    let mut direction = Vec2::ZERO;
+
+    if keyboard.pressed(KeyCode::KeyW) || keyboard.pressed(KeyCode::ArrowUp) {
+        direction.y += 1.0;
+    }
+    if keyboard.pressed(KeyCode::KeyS) || keyboard.pressed(KeyCode::ArrowDown) {
+        direction.y -= 1.0;
+    }
+    if keyboard.pressed(KeyCode::KeyA) || keyboard.pressed(KeyCode::ArrowLeft) {
+        direction.x -= 1.0;
+    }
+    if keyboard.pressed(KeyCode::KeyD) || keyboard.pressed(KeyCode::ArrowRight) {
+        direction.x += 1.0;
+    }
+
+    // Normalize diagonal movement
+    if direction.length() > 0.01 {
+        direction = direction.normalize();
+    }
+
+    let jump = keyboard.pressed(KeyCode::Space);
+
+    // Send input to server (player ID 1 for now - the test player)
+    let input = PlayerInput { direction, jump };
+    server.send_player_input(1, input);
 }
 
 fn button_system(
