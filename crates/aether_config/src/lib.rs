@@ -284,11 +284,7 @@ mod tests {
     #[test]
     fn migrates_network_uds_field() -> Result<(), Box<dyn std::error::Error>> {
         impl Application for MyAppApp {
-            type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
             const APP_ID: &'static str = "MyApp";
-            fn init_platform() -> Result<(), Self::Error> {
-                Ok(())
-            }
         }
 
         pub struct MyAppApp {

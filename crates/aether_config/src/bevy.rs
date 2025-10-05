@@ -3,7 +3,6 @@ use crate::{General, Network, Security};
 use app::AppContext;
 use bevy::prelude::*;
 pub use bevy::{ecs, prelude::Resource};
-use settings::{AppSettingsExt, SettingsArc};
 
 pub trait AppAetherSettingsExt {
     fn use_aether_server_settings(
@@ -15,10 +14,12 @@ pub trait AppAetherSettingsExt {
 
 impl AppAetherSettingsExt for App {
     fn use_aether_server_settings(
-        mut self,
+        self,
         context: &AppContext,
         store: Option<settings::SettingsStore>,
     ) -> Self {
+        use settings::AppSettingsExt;
+
         let store = match store {
             Some(s) => s,
             None => crate::build_server_settings_store(
@@ -29,19 +30,10 @@ impl AppAetherSettingsExt for App {
             )
             .expect("build server settings store"),
         };
-        self = self.insert_settings_store(store);
 
-        // Only register each section if it hasn't been registered already
-        if !self.world().contains_resource::<SettingsArc<General>>() {
-            self = self.register_settings_section::<General>();
-        }
-        if !self.world().contains_resource::<SettingsArc<Network>>() {
-            self = self.register_settings_section::<Network>();
-        }
-        if !self.world().contains_resource::<SettingsArc<Security>>() {
-            self = self.register_settings_section::<Security>();
-        }
-
-        self
+        self.insert_settings_store(store)
+            .register_settings_section::<General>()
+            .register_settings_section::<Network>()
+            .register_settings_section::<Security>()
     }
 }

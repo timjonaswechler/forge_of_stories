@@ -2,6 +2,7 @@ pub mod settings_bridge;
 
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
+use server_logic::ServerLogicPlugin;
 use std::time::Duration;
 use tracing;
 
@@ -66,11 +67,12 @@ pub(crate) fn heartbeat_fixed(
     stats.last_real = Some(now_real);
 }
 
-// 3) Bevy-App Aufbau mit 30 Hz FixedUpdate (ohne UI)
+// 3) Bevy-App Aufbau mit 20 Hz FixedUpdate (ohne UI)
 pub(crate) fn build_bevy_app(app: &mut App) {
     app.add_plugins(DefaultPlugins.build().disable::<LogPlugin>())
         .add_plugins(AetherSettingsPlugin)
-        .insert_resource(Time::<Fixed>::from_hz(10.0))
+        .add_plugins(ServerLogicPlugin) // Shared server logic from server_logic crate
+        .insert_resource(Time::<Fixed>::from_hz(20.0)) // 20 TPS (from ServerConfig)
         .configure_sets(
             FixedUpdate,
             (
@@ -83,6 +85,6 @@ pub(crate) fn build_bevy_app(app: &mut App) {
                 .chain(),
         )
         .configure_sets(FixedUpdate, ControlSet::Apply)
-        // Demo-System: zeigt den 30-Hz-Takt
+        // Legacy heartbeat for comparison (can be removed later)
         .add_systems(FixedUpdate, heartbeat_fixed.in_set(NetSets::Simulation));
 }
