@@ -10,6 +10,7 @@ members = [
     "crates/network/client",
     "crates/network/server",
     "crates/network/shared",
+    "crates/server_logic",
     "crates/ui/fate",
     "crates/keymap",
     # "crates/ui/wizard",
@@ -33,6 +34,7 @@ network_shared.path = "crates/network/shared"
 paths.path = "crates/paths"
 settings.path = "crates/settings"
 server.path = "crates/network/server"
+server_logic.path = "crates/server_logic"
 steamworks-sys.path = "third_party/steamworks-sys"
 # wizard.path = "crates/ui/wizard"
 
@@ -42,7 +44,7 @@ steamworks-sys.path = "third_party/steamworks-sys"
 anyhow = { version = "1.0.80" }
 axum = { version = "0.8.4", features = ["json", "ws"] }
 base64 = "0.22.1"
-bevy = { version = "0.16.1", default-features = false }
+bevy = { version = "0.17.0", default-features = false }
 bincode = { version = "2.0.1", features = ["serde"] }
 bitflags = { version = "2.9.3", features = ["serde"] }
 chrono = "0.4.42"
