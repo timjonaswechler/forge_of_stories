@@ -1,4 +1,8 @@
-use std::{mem::size_of, ops::{Deref, DerefMut}, time::Duration};
+use std::{
+    mem::size_of,
+    ops::{Deref, DerefMut},
+    time::Duration,
+};
 
 use bevy_ecs::{prelude::Resource, schedule::SystemSet};
 use channels::MAX_CHANNEL_COUNT;
@@ -18,6 +22,8 @@ pub mod events;
 pub mod messages;
 /// Steam-related shared helpers (AppID, limits)
 pub mod steam;
+/// Transport implementations shared by client & server
+pub mod transport;
 
 /// Default max size of async channels used to hold network messages. 1 async channel per connection.
 pub const DEFAULT_MESSAGE_QUEUE_SIZE: usize = 150;
