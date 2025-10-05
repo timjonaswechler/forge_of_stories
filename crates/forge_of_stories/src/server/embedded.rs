@@ -352,7 +352,7 @@ mod tests {
 
     #[test]
     fn test_world_initialization() {
-        use server_logic::world::{GroundPlane, PlayerColorAssigner};
+        use server_logic::world::{GroundPlane, Player, PlayerColorAssigner};
         use server_logic::world_setup::WorldInitialized;
 
         let mut server = EmbeddedServer::new(ServerMode::Loopback).unwrap();
@@ -375,10 +375,14 @@ mod tests {
             "Exactly one ground plane should be spawned"
         );
 
-        // Verify we have at least 1 entity (the ground plane)
+        // Verify test player was spawned
+        let player_count = world.query::<&Player>().iter(world).count();
+        assert_eq!(player_count, 1, "Exactly one test player should be spawned");
+
+        // Verify we have at least 2 entities (ground plane + player)
         assert!(
-            server.world().entities().len() > 0,
-            "World should contain entities"
+            server.world().entities().len() >= 2,
+            "World should contain at least 2 entities"
         );
     }
 }

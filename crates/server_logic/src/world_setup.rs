@@ -5,7 +5,7 @@
 use bevy::prelude::*;
 use tracing::info;
 
-use crate::world::{GroundPlane, PlayerColorAssigner, Position};
+use crate::world::{GroundPlane, Player, PlayerColorAssigner, PlayerShape, Position, Velocity};
 
 /// Resource to track if the world has been initialized.
 #[derive(Resource, Default)]
@@ -38,7 +38,25 @@ pub fn spawn_world_direct(world: &mut World) {
         Name::new("Ground Plane"),
     ));
 
-    info!("Server: World spawned successfully");
+    // Spawn a test player (for development/demo)
+    let mut color_assigner = world.resource_mut::<PlayerColorAssigner>();
+    let player_color = color_assigner.next_color();
+    drop(color_assigner); // Release the borrow
+
+    world.spawn((
+        Player {
+            id: 1,
+            color: player_color,
+        },
+        PlayerShape::Capsule,
+        Position {
+            translation: Vec3::new(0.0, 1.0, 0.0),
+        },
+        Velocity::default(),
+        Name::new("Test Player"),
+    ));
+
+    info!("Server: World spawned successfully (with test player)");
 }
 
 /// System that spawns the initial world (ground plane).

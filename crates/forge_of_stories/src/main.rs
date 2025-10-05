@@ -31,10 +31,17 @@ fn main() {
                     }),
             )
             .init_resource::<InputFocus>()
+            .init_resource::<ServerToClientEntityMap>()
             .init_state::<GameState>()
             .add_systems(Startup, setup)
             .add_systems(Update, button_system.run_if(in_state(GameState::MainMenu)))
             .add_systems(OnEnter(GameState::InGame), enter_game)
+            .add_systems(
+                Update,
+                sync_server_state
+                    .run_if(in_state(GameState::InGame))
+                    .run_if(resource_exists::<EmbeddedServer>),
+            )
             .add_systems(
                 FixedUpdate,
                 crate::server::embedded::tick_embedded_server
@@ -57,12 +64,41 @@ fn setup(mut commands: Commands) {
 }
 
 /// System that runs when entering the InGame state
-fn enter_game(mut commands: Commands, server: Res<EmbeddedServer>) {
+fn enter_game(
+    mut commands: Commands,
+    server: Res<EmbeddedServer>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
     info!("Entered game state! Server mode: {:?}", server.mode());
 
     // Log server world stats
     let entity_count = server.world().entities().len();
     info!("Server world has {} entities", entity_count);
+
+    // Spawn 3D camera
+    commands.spawn((
+        Camera3d::default(),
+        Transform::from_xyz(0.0, 5.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
+    ));
+
+    // Spawn light
+    commands.spawn((
+        DirectionalLight {
+            illuminance: 10000.0,
+            shadows_enabled: true,
+            ..default()
+        },
+        Transform::from_xyz(4.0, 8.0, 4.0).looking_at(Vec3::ZERO, Vec3::Y),
+    ));
+
+    // Spawn ground plane (client-side rendering)
+    commands.spawn((
+        Mesh3d(meshes.add(Plane3d::default().mesh().size(20.0, 20.0))),
+        MeshMaterial3d(materials.add(Color::srgb(0.3, 0.5, 0.3))),
+        Transform::from_xyz(0.0, 0.0, 0.0),
+        ClientGroundPlane,
+    ));
 
     // Spawn a simple in-game UI showing we're in singleplayer
     commands.spawn((
@@ -83,6 +119,74 @@ fn enter_game(mut commands: Commands, server: Res<EmbeddedServer>) {
             ..default()
         },
     ));
+}
+
+/// Marker component for client-side ground plane rendering.
+#[derive(Component)]
+struct ClientGroundPlane;
+
+/// Resource mapping server entity IDs to client entity IDs.
+#[derive(Resource, Default)]
+struct ServerToClientEntityMap {
+    map: std::collections::HashMap<bevy::ecs::entity::Entity, bevy::ecs::entity::Entity>,
+}
+
+/// System that syncs server world state to client rendering.
+///
+/// Runs every frame, reads server entities and spawns/updates corresponding client entities.
+fn sync_server_state(
+    mut commands: Commands,
+    mut server: ResMut<EmbeddedServer>,
+    mut entity_map: ResMut<ServerToClientEntityMap>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut client_transforms: Query<&mut Transform>,
+) {
+    use server_logic::world::{Player, PlayerShape, Position};
+
+    let server_world = server.world_mut();
+
+    // Sync players
+    for (server_entity, (player, position, shape)) in server_world
+        .query::<(bevy::ecs::entity::Entity, (&Player, &Position, &PlayerShape))>()
+        .iter(server_world)
+    {
+        // Check if we already have a client entity for this server entity
+        if let Some(&client_entity) = entity_map.map.get(&server_entity) {
+            // Update existing client entity position
+            if let Ok(mut transform) = client_transforms.get_mut(client_entity) {
+                transform.translation = position.translation;
+            }
+        } else {
+            // Spawn new client entity for this player
+            let mesh = match shape {
+                PlayerShape::Cube => meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
+                PlayerShape::Sphere => meshes.add(Sphere::new(0.5).mesh().ico(5).unwrap()),
+                PlayerShape::Capsule => meshes.add(Capsule3d::new(0.3, 1.0)),
+            };
+
+            let client_entity = commands
+                .spawn((
+                    Mesh3d(mesh),
+                    MeshMaterial3d(materials.add(player.color)),
+                    Transform::from_translation(position.translation),
+                    ClientPlayer { server_id: player.id },
+                ))
+                .id();
+
+            entity_map.map.insert(server_entity, client_entity);
+            info!(
+                "Spawned client entity for player {} (shape: {:?})",
+                player.id, shape
+            );
+        }
+    }
+}
+
+/// Marker component for client-side player rendering.
+#[derive(Component)]
+struct ClientPlayer {
+    server_id: u64,
 }
 
 fn button_system(
