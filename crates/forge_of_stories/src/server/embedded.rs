@@ -116,18 +116,19 @@ impl EmbeddedServer {
     /// Initializes the server world and starts the transport.
     fn initialize(&mut self) -> Result<(), ServerError> {
         // Initialize server world with server logic resources
-        use server_logic::ServerConfig;
+        use server_logic::{world_setup, ServerConfig};
 
         self.world.insert_resource(ServerConfig::default());
         self.world
             .insert_resource(Time::<bevy::time::Fixed>::from_hz(20.0));
 
-        // Add the heartbeat system to our schedule
+        // Run world initialization (normally run at Startup)
+        world_setup::initialize_world_direct(&mut self.world);
+        world_setup::spawn_world_direct(&mut self.world);
+
+        // Add server systems to schedule
         self.schedule
             .add_systems(server_logic::systems::heartbeat_system);
-
-        // TODO: In the future, we should extract the full ServerLogicPlugin's
-        // schedule, but for Phase 3 this manual setup works
 
         // Start the appropriate transport
         match &self.mode {
@@ -347,5 +348,37 @@ mod tests {
         // Mutable access (for admin commands)
         let mut server = server;
         let _world_mut = server.world_mut();
+    }
+
+    #[test]
+    fn test_world_initialization() {
+        use server_logic::world::{GroundPlane, PlayerColorAssigner};
+        use server_logic::world_setup::WorldInitialized;
+
+        let mut server = EmbeddedServer::new(ServerMode::Loopback).unwrap();
+
+        // Verify world resources were initialized
+        assert!(
+            server.world().contains_resource::<PlayerColorAssigner>(),
+            "PlayerColorAssigner resource should exist"
+        );
+        assert!(
+            server.world().contains_resource::<WorldInitialized>(),
+            "WorldInitialized resource should exist"
+        );
+
+        // Verify ground plane entity was spawned
+        let world = server.world_mut();
+        let ground_plane_count = world.query::<&GroundPlane>().iter(world).count();
+        assert_eq!(
+            ground_plane_count, 1,
+            "Exactly one ground plane should be spawned"
+        );
+
+        // Verify we have at least 1 entity (the ground plane)
+        assert!(
+            server.world().entities().len() > 0,
+            "World should contain entities"
+        );
     }
 }

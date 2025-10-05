@@ -60,9 +60,17 @@ fn setup(mut commands: Commands) {
 fn enter_game(mut commands: Commands, server: Res<EmbeddedServer>) {
     info!("Entered game state! Server mode: {:?}", server.mode());
 
+    // Log server world stats
+    let entity_count = server.world().entities().len();
+    info!("Server world has {} entities", entity_count);
+
     // Spawn a simple in-game UI showing we're in singleplayer
     commands.spawn((
-        Text::new(format!("In Game - Server: {:?}", server.mode())),
+        Text::new(format!(
+            "In Game - Server: {:?}\nEntities: {}",
+            server.mode(),
+            entity_count
+        )),
         TextFont {
             font_size: 24.0,
             ..default()

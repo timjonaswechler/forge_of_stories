@@ -11,6 +11,8 @@
 use bevy::prelude::*;
 
 pub mod systems;
+pub mod world;
+pub mod world_setup;
 
 /// Plugin bundle containing all server-side gameplay systems.
 ///
@@ -44,7 +46,16 @@ impl Plugin for ServerLogicPlugin {
                 )
                     .chain(),
             )
-            // Add server systems
+            // World initialization (runs once at startup)
+            .add_systems(Startup, world_setup::initialize_world)
+            .add_systems(Startup, world_setup::spawn_world.after(world_setup::initialize_world))
+            .add_systems(
+                FixedUpdate,
+                world_setup::mark_world_initialized
+                    .run_if(resource_exists::<world_setup::WorldInitialized>)
+                    .in_set(ServerSet::Simulation),
+            )
+            // Server systems
             .add_systems(
                 FixedUpdate,
                 systems::heartbeat_system.in_set(ServerSet::Simulation),
