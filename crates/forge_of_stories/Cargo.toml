@@ -3,8 +3,15 @@ name = "forge_of_stories"
 edition = { workspace = true }
 version = { workspace = true }
 
+[lib]
+path = "src/lib.rs"
+
 [dependencies]
 app = {workspace = true, features = ["bevy"]}
-bevy = {version = "0.16.1"}
+bevy = {version = "0.17.0"}
 settings.workspace = true
 paths.workspace = true
+network_shared.workspace = true
+server_logic.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
