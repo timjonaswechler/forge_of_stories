@@ -11,9 +11,7 @@ members = [
     "crates/network/server",
     "crates/network/shared",
     "crates/server_logic",
-    "crates/ui/fate",
     "crates/keymap",
-    # "crates/ui/wizard",
     "third_party/steamworks-sys",
 ]
 default-members = ["crates/forge_of_stories"]
@@ -28,7 +26,6 @@ aether.path = "crates/aether"
 aether_config.path = "crates/aether_config"
 app.path = "crates/app"
 client.path = "crates/network/client"
-fate.path = "crates/ui/fate"
 fos.path = "crates/forge_of_stories"
 network_shared.path = "crates/network/shared"
 paths.path = "crates/paths"
@@ -36,8 +33,6 @@ settings.path = "crates/settings"
 server.path = "crates/network/server"
 server_logic.path = "crates/server_logic"
 steamworks-sys.path = "third_party/steamworks-sys"
-# wizard.path = "crates/ui/wizard"
-
 
 #
 

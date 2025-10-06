@@ -21,7 +21,7 @@ pub struct Player {
 }
 
 /// Player shape type (for rendering).
-#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum PlayerShape {
     Cube,
     Sphere,

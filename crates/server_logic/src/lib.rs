@@ -11,7 +11,8 @@
 use bevy::prelude::*;
 
 pub mod movement;
-pub mod save;
+pub mod protocol;
+pub mod savegame;
 pub mod systems;
 pub mod world;
 pub mod world_setup;
@@ -51,7 +52,10 @@ impl Plugin for ServerLogicPlugin {
             )
             // World initialization (runs once at startup)
             .add_systems(Startup, world_setup::initialize_world)
-            .add_systems(Startup, world_setup::spawn_world.after(world_setup::initialize_world))
+            .add_systems(
+                Startup,
+                world_setup::spawn_world.after(world_setup::initialize_world),
+            )
             .add_systems(
                 FixedUpdate,
                 world_setup::mark_world_initialized

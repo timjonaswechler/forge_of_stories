@@ -332,13 +332,13 @@ impl EmbeddedServer {
 
     /// Saves the current world state to a file.
     pub fn save_world<P: AsRef<std::path::Path>>(&mut self, path: P) -> Result<(), ServerError> {
-        server_logic::save::save_world_to_file(&mut self.world, path)
+        server_logic::savegame::save_world_to_file(&mut self.world, path)
             .map_err(|e| ServerError::Config(format!("Save failed: {}", e)))
     }
 
     /// Loads world state from a file.
     pub fn load_world<P: AsRef<std::path::Path>>(&mut self, path: P) -> Result<(), ServerError> {
-        server_logic::save::load_world_from_file(&mut self.world, path)
+        server_logic::savegame::load_world_from_file(&mut self.world, path)
             .map_err(|e| ServerError::Config(format!("Load failed: {}", e)))
     }
 }
