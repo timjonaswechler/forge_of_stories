@@ -42,7 +42,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // Initialize platform base (paths, etc.)
-    let base = crate::app::init::<Wizard>().expect("Initialization went wrong");
+    let base = crate::app::init::<Wizard>(env!("CARGO_PKG_VERSION")).expect("Initialization went wrong");
 
     // Build and run the Wizard TUI
     let mut app = WizardApp::new(base, cli)?;

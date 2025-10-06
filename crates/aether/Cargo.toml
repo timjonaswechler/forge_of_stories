@@ -6,12 +6,13 @@ edition.workspace = true
 
 [dependencies]
 aether_config= {workspace = true, features = ["bevy"]}
-app.workspace = true
+app = {workspace = true, features = ["bevy"]}
 color-eyre.workspace = true
 settings= {workspace = true, features = ["bevy"]}
-server.workspace = true
+server_logic.workspace = true
+# server.workspace = true
 tokio.workspace = true
-bevy = { version = "0.16.1", default-features = false, features = [
+bevy = { version = "0.17.0", default-features = false, features = [
     "std",
     "multi_threaded",
     "bevy_remote",

@@ -1,6 +1,6 @@
 [package]
 name = "paths"
-version = "0.1.0"
+version = "0.2.0"
 edition.workspace = true
 
 
@@ -15,3 +15,4 @@ globset.workspace = true
 anyhow.workspace = true
 serde.workspace = true
 unicase.workspace = true
+chrono.workspace = true

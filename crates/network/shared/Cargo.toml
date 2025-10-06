@@ -1,9 +1,24 @@
 [package]
 name = "network_shared"
-version = "0.1.0"
-edition = "2024"
+version = "0.2.0"
+edition.workspace = true
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
+base64.workspace = true
+bevy-ecs = { package = "bevy_ecs", version = "0.16.1" }
+bincode.workspace = true
+bytes.workspace = true
+futures.workspace = true
+futures-util.workspace = true
+ring.workspace = true
+rustls.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+time.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+quinn.workspace = true
+tracing.workspace = true

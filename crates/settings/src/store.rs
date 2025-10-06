@@ -186,6 +186,7 @@ fn merge_for_settings<T>(
 where
     T: Settings + Default + Serialize + DeserializeOwned,
 {
+    // Validate file version is not from the future
     if let Some(file_version) = file_version {
         if file_version > target_version {
             return Err(SettingsError::Invalid(
@@ -200,7 +201,13 @@ where
         None => JsonValue::Object(default_map.clone()),
     };
 
-    let (working_value, migrated) = if file_version.is_some() {
+    // Only call migrate if file_version exists and is older than target_version
+    let needs_migration = match file_version {
+        Some(fv) if fv < target_version => true,
+        _ => false,
+    };
+
+    let (working_value, migrated) = if needs_migration {
         T::migrate(file_version, target_version, merged_value)?
     } else {
         (merged_value, false)

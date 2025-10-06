@@ -10,10 +10,11 @@ members = [
     "crates/network/client",
     "crates/network/server",
     "crates/network/shared",
+    "crates/server_logic",
     "crates/ui/fate",
-    "crates/ui/illusion",
-    "crates/ui/oracle",
+    "crates/keymap",
     # "crates/ui/wizard",
+    "third_party/steamworks-sys",
 ]
 default-members = ["crates/forge_of_stories"]
 
@@ -29,12 +30,12 @@ app.path = "crates/app"
 client.path = "crates/network/client"
 fate.path = "crates/ui/fate"
 fos.path = "crates/forge_of_stories"
-illusion.path = "crates/ui/illusion"
 network_shared.path = "crates/network/shared"
-oracle.path = "crates/ui/oracle"
 paths.path = "crates/paths"
 settings.path = "crates/settings"
 server.path = "crates/network/server"
+server_logic.path = "crates/server_logic"
+steamworks-sys.path = "third_party/steamworks-sys"
 # wizard.path = "crates/ui/wizard"
 
 
@@ -42,6 +43,8 @@ server.path = "crates/network/server"
 
 anyhow = { version = "1.0.80" }
 axum = { version = "0.8.4", features = ["json", "ws"] }
+base64 = "0.22.1"
+bevy = { version = "0.17.0", default-features = false }
 bincode = { version = "2.0.1", features = ["serde"] }
 bitflags = { version = "2.9.3", features = ["serde"] }
 chrono = "0.4.42"
@@ -49,7 +52,8 @@ clap = { version = "4.5.43", features = ["derive"] }
 color-eyre = "0.6"
 crossterm = "0.29.0"
 dirs = "4.0"
-futures = { version = "0.3.28" }
+futures = "0.3.28"
+futures-util = "0.3.28"
 globset = "0.4"
 log = "0.4.27"
 ratatui = "0.29.0"
@@ -58,8 +62,12 @@ rcgen = { version = "0.14", features = [
     "aws_lc_rs",
 ], default-features = false }
 regex = "1.5"
+ring = "0.17.7"
 rust-embed = { version = "8.4", features = ["include-exclude"] }
 rustls = { version = "0.23", features = ["aws-lc-rs", "log"] }
+rustls-native-certs = "0.7"
+rustls-pemfile = "2.1"
+rustls-platform-verifier = "0.5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 semver = "1"
@@ -72,10 +80,16 @@ time = { version = "0.3.41", features = [
     "serde",
 ] }
 tokio = { version = "1.34", features = ["full"] }
+tokio-util = { version = "0.7.4", features = ["codec"] }
 tracing = "0.1.40"
 tracing-appender = "0.2.3"
 tracing-error = "0.2.0"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "serde"] }
 unicase = "2.6"
 uuid = { version = "1.18.1", features = ["v4"] }
-quinn = { version = "0.11.8", features = ["rustls"] }
+quinn =  "0.11.8"
+quinn-proto = "0.11.8"
+bytes = "1.8.0"
+
+[patch.crates-io]
+steamworks-sys = { path = "third_party/steamworks-sys" }

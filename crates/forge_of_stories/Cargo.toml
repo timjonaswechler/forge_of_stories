@@ -3,15 +3,18 @@ name = "forge_of_stories"
 edition = { workspace = true }
 version = { workspace = true }
 
-
-[[bin]]
-name = "forge_of_stories"
-path = "src/client.rs"
-
-
-[[bin]]
-name = "forge_of_stories_server"
-path = "src/server.rs"
-
+[lib]
+path = "src/lib.rs"
 
 [dependencies]
+app = {workspace = true, features = ["bevy"]}
+bevy = {version = "0.17.0"}
+settings.workspace = true
+paths.workspace = true
+network_shared.workspace = true
+client.workspace = true
+server.workspace = true
+server_logic.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true

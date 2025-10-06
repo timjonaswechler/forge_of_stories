@@ -4,7 +4,7 @@ use anyhow::Result;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::{ops::Range, str, sync::LazyLock};
-use tree_sitter::Query;
+use tree_sitter::{Query, StreamingIterator};
 
 /// Update a JSON text in-place while preserving formatting and comments.
 ///
@@ -73,14 +73,16 @@ pub(crate) fn replace_value_in_json_text<T: AsRef<str>>(
 ) -> (Range<usize>, String) {
     static PAIR_QUERY: LazyLock<Query> = LazyLock::new(|| {
         Query::new(
-            tree_sitter_json::language(),
+            &tree_sitter_json::LANGUAGE.into(),
             "(pair key: (string) @key value: (_) @value)",
         )
         .expect("Failed to create PAIR_QUERY")
     });
 
     let mut parser = tree_sitter::Parser::new();
-    parser.set_language(tree_sitter_json::language()).unwrap();
+    parser
+        .set_language(&tree_sitter_json::LANGUAGE.into())
+        .unwrap();
     let syntax_tree = parser.parse(text, None).unwrap();
 
     let mut cursor = tree_sitter::QueryCursor::new();
@@ -318,7 +320,9 @@ pub(crate) fn replace_top_level_array_value_in_json_text(
     tab_size: usize,
 ) -> (Range<usize>, String) {
     let mut parser = tree_sitter::Parser::new();
-    parser.set_language(tree_sitter_json::language()).unwrap();
+    parser
+        .set_language(&tree_sitter_json::LANGUAGE.into())
+        .unwrap();
 
     let syntax_tree = parser.parse(text, None).unwrap();
 
@@ -411,7 +415,9 @@ pub(crate) fn append_top_level_array_value_in_json_text(
     tab_size: usize,
 ) -> (Range<usize>, String) {
     let mut parser = tree_sitter::Parser::new();
-    parser.set_language(tree_sitter_json::language()).unwrap();
+    parser
+        .set_language(&tree_sitter_json::LANGUAGE.into())
+        .unwrap();
     let syntax_tree = parser.parse(text, None).unwrap();
 
     let mut cursor = syntax_tree.walk();
