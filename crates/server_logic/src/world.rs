@@ -6,6 +6,7 @@
 
 use bevy::color::palettes::css::*;
 use bevy::prelude::*;
+use game_protocol::PlayerShape;
 
 /// Marker component for the ground plane entity.
 #[derive(Component, Debug, Clone, Copy)]
@@ -18,20 +19,6 @@ pub struct Player {
     pub id: u64,
     /// Player's assigned color.
     pub color: Color,
-}
-
-/// Player shape type (for rendering).
-#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum PlayerShape {
-    Cube,
-    Sphere,
-    Capsule,
-}
-
-impl Default for PlayerShape {
-    fn default() -> Self {
-        Self::Capsule
-    }
 }
 
 /// Movement velocity component.

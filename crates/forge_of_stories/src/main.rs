@@ -6,7 +6,7 @@ use crate::server::{EmbeddedServer, ServerMode};
 use app::AppBuilder;
 use bevy::{color::palettes::basic::*, input_focus::InputFocus, log::LogPlugin, prelude::*};
 use client::transport::{ClientTransport, ConnectTarget, QuicClientTransport};
-use network_shared::{TransportCapabilities, channels::ChannelsConfiguration};
+use shared::{TransportCapabilities, channels::ChannelsConfiguration};
 
 /// Game state tracking where we are in the application flow.
 #[derive(States, Debug, Clone, PartialEq, Eq, Hash, Default)]
@@ -332,7 +332,8 @@ fn sync_server_state(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut client_transforms: Query<&mut Transform>,
 ) {
-    use server_logic::world::{Player, PlayerShape, Position};
+    use game_protocol::PlayerShape;
+    use server_logic::world::{Player, Position};
 
     let server_world = server.world_mut();
 
@@ -444,7 +445,7 @@ fn handle_player_input_networked(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut client: ResMut<GameClient>,
 ) {
-    use server_logic::protocol::{GameplayMessage, PlayerInputMessage, channels};
+    use game_protocol::{GameplayMessage, PlayerInputMessage, channels};
 
     // Calculate movement direction from WASD/Arrow keys
     let mut direction = Vec2::ZERO;
@@ -537,8 +538,7 @@ fn button_system(
                                 commands.insert_resource(server);
 
                                 // Connect client to own server via loopback
-                                let channels =
-                                    server_logic::protocol::channels::create_gameplay_channels();
+                                let channels = game_protocol::channels::create_gameplay_channels();
                                 let capabilities = TransportCapabilities {
                                     supports_reliable_streams: true,
                                     supports_unreliable_streams: false,
@@ -812,8 +812,7 @@ fn join_menu_system(
                             let host = parts[0].to_string();
                             if let Ok(port) = parts[1].parse::<u16>() {
                                 // Create QUIC client transport
-                                let channels =
-                                    server_logic::protocol::channels::create_gameplay_channels();
+                                let channels = game_protocol::channels::create_gameplay_channels();
                                 let capabilities = TransportCapabilities {
                                     supports_reliable_streams: true,
                                     supports_unreliable_streams: false,
@@ -978,7 +977,7 @@ fn receive_server_messages(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut remote_players: Query<(Entity, &RemotePlayer, &mut NetworkedTransform)>,
 ) {
-    use server_logic::protocol::{GameplayMessage, PlayerDespawnMessage, PlayerSpawnMessage};
+    use game_protocol::{GameplayMessage, PlayerDespawnMessage, PlayerSpawnMessage};
 
     let Some(client) = client.as_mut() else {
         return; // No client connection
@@ -1007,15 +1006,11 @@ fn receive_server_messages(
 
                 // Choose mesh based on shape
                 let mesh_handle = match shape {
-                    server_logic::world::PlayerShape::Cube => {
-                        meshes.add(Cuboid::new(1.0, 1.0, 1.0))
-                    }
-                    server_logic::world::PlayerShape::Sphere => {
+                    game_protocol::PlayerShape::Cube => meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
+                    game_protocol::PlayerShape::Sphere => {
                         meshes.add(Sphere::new(0.5).mesh().ico(5).unwrap())
                     }
-                    server_logic::world::PlayerShape::Capsule => {
-                        meshes.add(Capsule3d::new(0.4, 1.0))
-                    }
+                    game_protocol::PlayerShape::Capsule => meshes.add(Capsule3d::new(0.4, 1.0)),
                 };
 
                 // Spawn visual entity with networked transform for interpolation

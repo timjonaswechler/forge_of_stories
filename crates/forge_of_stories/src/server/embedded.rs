@@ -10,11 +10,11 @@ use bevy::ecs::prelude::*;
 use bevy::ecs::schedule::Schedule;
 use bevy::ecs::world::World;
 use bevy::time::Time;
-use network_shared::transport::{LoopbackPair, TransportOrchestrator};
-use network_shared::{TransportCapabilities, TransportEvent, channels::ChannelsConfiguration};
 use server::ServerEndpointConfiguration;
 use server::transport::ServerTransport;
 use server::transport::quic::QuicServerTransport;
+use shared::transport::{LoopbackPair, TransportOrchestrator};
+use shared::{TransportCapabilities, TransportEvent, channels::ChannelsConfiguration};
 use tokio::sync::mpsc::UnboundedReceiver;
 use tracing::{debug, info};
 
@@ -62,7 +62,7 @@ pub enum ServerError {
     #[error("Configuration error: {0}")]
     Config(String),
     #[error("Loopback transport error: {0}")]
-    Loopback(#[from] network_shared::transport::LoopbackError),
+    Loopback(#[from] shared::transport::LoopbackError),
 }
 
 /// Embedded server resource that runs in the client process.
@@ -177,7 +177,7 @@ impl EmbeddedServer {
                     .map_err(|e| ServerError::Config(format!("Invalid bind address: {}", e)))?;
 
                 // Create transport with gameplay channels
-                let channels = server_logic::protocol::channels::create_gameplay_channels();
+                let channels = game_protocol::channels::create_gameplay_channels();
                 let capabilities = TransportCapabilities {
                     supports_reliable_streams: true,
                     supports_unreliable_streams: false,
@@ -238,16 +238,18 @@ impl EmbeddedServer {
     /// Sends all queued outgoing messages to clients.
     fn send_outgoing_messages(&mut self) {
         use bytes::Bytes;
+        use game_protocol::channels;
         use server_logic::network::OutgoingMessages;
-        use server_logic::protocol::channels;
 
         let mut outgoing = self.world.resource_mut::<OutgoingMessages>();
         let messages = std::mem::take(&mut outgoing.messages); // Take all messages
         drop(outgoing); // Release resource lock
 
         // Get list of all connected clients from the ConnectedClients resource
-        let connected_clients: Vec<network_shared::ClientId> = {
-            let clients_resource = self.world.resource::<server_logic::network::ConnectedClients>();
+        let connected_clients: Vec<shared::ClientId> = {
+            let clients_resource = self
+                .world
+                .resource::<server_logic::network::ConnectedClients>();
             let clients = clients_resource.clients.clone();
             info!("Connected clients for broadcasting: {:?}", clients);
             clients
@@ -264,7 +266,7 @@ impl EmbeddedServer {
                 }
             };
 
-            let outgoing_msg = network_shared::OutgoingMessage {
+            let outgoing_msg = shared::OutgoingMessage {
                 channel: channels::GAMEPLAY_EVENTS,
                 payload,
             };
@@ -293,11 +295,7 @@ impl EmbeddedServer {
     }
 
     /// Sends a message to a specific client via the appropriate transport.
-    fn send_to_client(
-        &mut self,
-        client_id: network_shared::ClientId,
-        message: network_shared::OutgoingMessage,
-    ) {
+    fn send_to_client(&mut self, client_id: shared::ClientId, message: shared::OutgoingMessage) {
         use server::transport::ServerTransport;
 
         match &mut self.mode {

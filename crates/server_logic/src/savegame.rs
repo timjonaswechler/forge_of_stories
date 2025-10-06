@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tracing::info;
 
-use crate::world::{GroundPlane, Player, PlayerShape, Position, Velocity};
-
+use crate::world::{GroundPlane, Player, Position, Velocity};
+use game_protocol::PlayerShape;
 /// Serializable snapshot of the entire world state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorldSnapshot {
@@ -99,37 +99,33 @@ pub fn extract_world_snapshot(world: &mut World) -> WorldSnapshot {
         });
     }
 
-    info!("Extracted world snapshot: {} players", snapshot.players.len());
+    info!(
+        "Extracted world snapshot: {} players",
+        snapshot.players.len()
+    );
     snapshot
 }
 
 /// Saves a world snapshot to a file (RON format).
-pub fn save_world_to_file<P: AsRef<Path>>(
-    world: &mut World,
-    path: P,
-) -> Result<(), SaveError> {
+pub fn save_world_to_file<P: AsRef<Path>>(world: &mut World, path: P) -> Result<(), SaveError> {
     let snapshot = extract_world_snapshot(world);
 
     let ron_string = ron::ser::to_string_pretty(&snapshot, ron::ser::PrettyConfig::default())
         .map_err(|e| SaveError::Serialization(e.to_string()))?;
 
-    std::fs::write(path.as_ref(), ron_string)
-        .map_err(|e| SaveError::Io(e.to_string()))?;
+    std::fs::write(path.as_ref(), ron_string).map_err(|e| SaveError::Io(e.to_string()))?;
 
     info!("World saved to {}", path.as_ref().display());
     Ok(())
 }
 
 /// Loads a world snapshot from a file and restores it to the world.
-pub fn load_world_from_file<P: AsRef<Path>>(
-    world: &mut World,
-    path: P,
-) -> Result<(), SaveError> {
-    let ron_string = std::fs::read_to_string(path.as_ref())
-        .map_err(|e| SaveError::Io(e.to_string()))?;
+pub fn load_world_from_file<P: AsRef<Path>>(world: &mut World, path: P) -> Result<(), SaveError> {
+    let ron_string =
+        std::fs::read_to_string(path.as_ref()).map_err(|e| SaveError::Io(e.to_string()))?;
 
-    let snapshot: WorldSnapshot = ron::from_str(&ron_string)
-        .map_err(|e| SaveError::Deserialization(e.to_string()))?;
+    let snapshot: WorldSnapshot =
+        ron::from_str(&ron_string).map_err(|e| SaveError::Deserialization(e.to_string()))?;
 
     restore_world_snapshot(world, snapshot)?;
 
@@ -140,10 +136,7 @@ pub fn load_world_from_file<P: AsRef<Path>>(
 /// Restores a world snapshot into the server world.
 ///
 /// This clears all existing players and spawns new ones from the snapshot.
-pub fn restore_world_snapshot(
-    world: &mut World,
-    snapshot: WorldSnapshot,
-) -> Result<(), SaveError> {
+pub fn restore_world_snapshot(world: &mut World, snapshot: WorldSnapshot) -> Result<(), SaveError> {
     // Despawn all existing players
     let player_entities: Vec<_> = world
         .query_filtered::<Entity, With<Player>>()

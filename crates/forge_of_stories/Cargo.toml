@@ -8,10 +8,11 @@ path = "src/lib.rs"
 
 [dependencies]
 app = {workspace = true, features = ["bevy"]}
-bevy = {version = "0.17.0"}
+bevy = { workspace = true, default-features = true }
+game_protocol.workspace = true
 settings.workspace = true
 paths.workspace = true
-network_shared.workspace = true
+shared.workspace = true
 client.workspace = true
 server.workspace = true
 server_logic.workspace = true

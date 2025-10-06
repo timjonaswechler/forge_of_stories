@@ -5,18 +5,17 @@
 //! - Broadcasting gameplay messages to all clients
 //! - Processing client input messages
 
-use bevy::prelude::*;
-use network_shared::{ClientId, TransportEvent};
-use tracing::{debug, info, warn};
-
 use crate::{
     movement::{PlayerInput, PlayerInputQueue},
-    protocol::{
-        GameplayMessage, PlayerDespawnMessage, PlayerSpawnMessage, PlayerStateSnapshot,
-        WorldStateMessage,
-    },
-    world::{Player, PlayerColorAssigner, PlayerShape, Position, Velocity},
+    world::{Player, PlayerColorAssigner, Position, Velocity},
 };
+use bevy::prelude::*;
+use game_protocol::{
+    GameplayMessage, PlayerDespawnMessage, PlayerShape, PlayerSpawnMessage, PlayerStateSnapshot,
+    WorldStateMessage,
+};
+use shared::{ClientId, TransportEvent};
+use tracing::{debug, info, warn};
 
 /// Resource that holds network events from the transport layer.
 ///

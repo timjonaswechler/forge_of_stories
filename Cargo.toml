@@ -7,9 +7,12 @@ members = [
     "crates/paths",
     "crates/settings",
     "crates/app",
-    "crates/network/client",
-    "crates/network/server",
-    "crates/network/shared",
+    "crates/networking/client",
+    "crates/networking/server",
+    "crates/networking/shared",
+    "crates/networking/game_protocol",
+    "crates/networking/embedded_server",
+    "crates/networking/dedicated_server",
     "crates/server_logic",
     "crates/keymap",
     "third_party/steamworks-sys",
@@ -25,12 +28,15 @@ edition = "2024"
 aether.path = "crates/aether"
 aether_config.path = "crates/aether_config"
 app.path = "crates/app"
-client.path = "crates/network/client"
+shared.path = "crates/networking/shared"
+client.path = "crates/networking/client"
+server.path = "crates/networking/server"
+game_protocol.path = "crates/networking/game_protocol"
+embedded_server.path = "crates/networking/embedded_server"
+dedicated_server.path = "crates/networking/dedicated_server"
 fos.path = "crates/forge_of_stories"
-network_shared.path = "crates/network/shared"
 paths.path = "crates/paths"
 settings.path = "crates/settings"
-server.path = "crates/network/server"
 server_logic.path = "crates/server_logic"
 steamworks-sys.path = "third_party/steamworks-sys"
 
@@ -39,7 +45,7 @@ steamworks-sys.path = "third_party/steamworks-sys"
 anyhow = { version = "1.0.80" }
 axum = { version = "0.8.4", features = ["json", "ws"] }
 base64 = "0.22.1"
-bevy = { version = "0.17.0", default-features = false }
+bevy = { version = "0.17.2", default-features = false }
 bincode = { version = "2.0.1", features = ["serde"] }
 bitflags = { version = "2.9.3", features = ["serde"] }
 chrono = "0.4.42"
