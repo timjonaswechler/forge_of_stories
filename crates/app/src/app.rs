@@ -1,7 +1,7 @@
 use paths::PathContext;
+use std::marker::PhantomData;
 #[cfg(debug_assertions)]
 use std::path::PathBuf;
-use std::marker::PhantomData;
 use tracing_subscriber::{
     Layer, filter::LevelFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt,
 };
@@ -96,7 +96,7 @@ impl<A: Application> AppBuilder<A> {
         let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
         #[cfg(debug_assertions)]
-        let level = LevelFilter::DEBUG;
+        let level = LevelFilter::INFO;
 
         #[cfg(not(debug_assertions))]
         let level = LevelFilter::WARN;
@@ -152,7 +152,7 @@ impl<A: Application> AppBuilder<A> {
     ) -> BevyApp<A> {
         let bevy_app = bevy::prelude::App::new();
         let configured_app = configure(bevy_app, &self.context);
-        
+
         BevyApp {
             context: self.context,
             app: configured_app,
@@ -195,7 +195,7 @@ impl<A: Application> BevyApp<A> {
 // ============================================================================
 
 /// Legacy alias for `AppContext`.
-/// 
+///
 /// **Deprecated**: Use `AppContext` directly instead.
 #[deprecated(since = "0.2.0", note = "Use AppContext instead")]
 pub type AppBase = AppContext;

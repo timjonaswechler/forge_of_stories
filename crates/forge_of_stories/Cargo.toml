@@ -12,6 +12,9 @@ bevy = {version = "0.17.0"}
 settings.workspace = true
 paths.workspace = true
 network_shared.workspace = true
+client.workspace = true
+server.workspace = true
 server_logic.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tracing.workspace = true

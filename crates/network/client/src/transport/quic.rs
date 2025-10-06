@@ -70,6 +70,9 @@ impl std::fmt::Debug for QuicClientTransport {
 
 impl QuicClientTransport {
     pub fn new(channels: ChannelsConfiguration, capabilities: TransportCapabilities) -> Self {
+        // Install default crypto provider for rustls if not already set
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
@@ -159,6 +162,9 @@ impl ClientTransport for QuicClientTransport {
 
         let socket = match target {
             ConnectTarget::Quic { host, port } => self.resolve_target(&host, port)?,
+            ConnectTarget::Loopback => {
+                return Err(QuicClientTransportError::InvalidTarget);
+            }
             ConnectTarget::SteamLobby { .. } => {
                 return Err(QuicClientTransportError::InvalidTarget);
             }

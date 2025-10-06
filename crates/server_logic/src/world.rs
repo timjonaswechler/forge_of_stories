@@ -4,7 +4,7 @@
 //! - Ground plane
 //! - Player entities (colored shapes)
 
-use bevy::color::Color;
+use bevy::color::palettes::css::*;
 use bevy::prelude::*;
 
 /// Marker component for the ground plane entity.
@@ -61,14 +61,14 @@ impl Default for PlayerColorAssigner {
     fn default() -> Self {
         Self {
             available_colors: vec![
-                Color::srgb(1.0, 0.2, 0.2), // Red
-                Color::srgb(0.2, 0.5, 1.0), // Blue
-                Color::srgb(0.2, 1.0, 0.2), // Green
-                Color::srgb(1.0, 1.0, 0.2), // Yellow
-                Color::srgb(1.0, 0.5, 0.2), // Orange
-                Color::srgb(0.8, 0.2, 1.0), // Purple
-                Color::srgb(0.2, 1.0, 1.0), // Cyan
-                Color::srgb(1.0, 0.7, 0.8), // Pink
+                RED.into(),     // Red
+                BLUE.into(),    // Blue
+                GREEN.into(),   // Green
+                YELLOW.into(),  // Yellow
+                ORANGE.into(),  // Orange
+                PURPLE.into(),  // Purple
+                MAGENTA.into(), // Magenta
+                PINK.into(),    // Pink
             ],
             next_index: 0,
         }

@@ -11,6 +11,11 @@ use bevy::ecs::schedule::Schedule;
 use bevy::ecs::world::World;
 use bevy::time::Time;
 use network_shared::transport::{LoopbackPair, TransportOrchestrator};
+use network_shared::{TransportCapabilities, channels::ChannelsConfiguration};
+use server::ServerEndpointConfiguration;
+use server::transport::ServerTransport;
+use server::transport::quic::QuicServerTransport;
+use tracing::{debug, info};
 
 /// Configuration for how the embedded server should operate.
 #[derive(Debug, Clone)]
@@ -79,6 +84,9 @@ pub struct EmbeddedServer {
 
     /// Loopback transport pair (only used in Loopback mode).
     loopback: Option<LoopbackPair>,
+
+    /// QUIC server transport (only used in QUIC mode).
+    quic_server: Option<QuicServerTransport>,
 }
 
 impl EmbeddedServer {
@@ -105,6 +113,7 @@ impl EmbeddedServer {
             schedule,
             state: ServerState::Starting,
             loopback,
+            quic_server: None,
         };
 
         // Initialize the server
@@ -116,24 +125,26 @@ impl EmbeddedServer {
     /// Initializes the server world and starts the transport.
     fn initialize(&mut self) -> Result<(), ServerError> {
         // Initialize server world with server logic resources
-        use server_logic::{movement, world_setup, ServerConfig};
+        use server_logic::{ServerConfig, movement, world_setup};
 
         self.world.insert_resource(ServerConfig::default());
-        self.world.insert_resource(movement::PlayerInputQueue::default());
+        self.world
+            .insert_resource(movement::PlayerInputQueue::default());
         self.world
             .insert_resource(Time::<bevy::time::Fixed>::from_hz(20.0));
+        self.world
+            .insert_resource(Time::<bevy::time::Real>::default());
 
         // Run world initialization (normally run at Startup)
         world_setup::initialize_world_direct(&mut self.world);
         world_setup::spawn_world_direct(&mut self.world);
 
         // Add server systems to schedule
-        self.schedule
-            .add_systems((
-                movement::process_player_input,
-                movement::apply_velocity,
-                server_logic::systems::heartbeat_system,
-            ));
+        self.schedule.add_systems((
+            movement::process_player_input,
+            movement::apply_velocity,
+            server_logic::systems::heartbeat_system,
+        ));
 
         // Start the appropriate transport
         match &self.mode {
@@ -144,11 +155,30 @@ impl EmbeddedServer {
                 }
             }
             ServerMode::Quic { bind_address, port } => {
-                // TODO: Initialize QUIC server transport
-                return Err(ServerError::Config(format!(
-                    "QUIC mode not yet implemented (would bind to {}:{})",
-                    bind_address, port
-                )));
+                // Create QUIC server configuration
+                let addr = format!("{}:{}", bind_address, port);
+                let server_config = ServerEndpointConfiguration::from_string(&addr)
+                    .map_err(|e| ServerError::Config(format!("Invalid bind address: {}", e)))?;
+
+                // Create transport with default channels
+                let channels = ChannelsConfiguration::default();
+                let capabilities = TransportCapabilities {
+                    supports_reliable_streams: true,
+                    supports_unreliable_streams: false,
+                    supports_datagrams: false,
+                    max_channels: 8,
+                };
+
+                let mut quic = QuicServerTransport::new(server_config, channels, capabilities);
+
+                // Start the QUIC server
+                let (event_tx, _event_rx) = tokio::sync::mpsc::unbounded_channel();
+                quic.start(event_tx).map_err(|e| {
+                    ServerError::Network(format!("Failed to start QUIC server: {}", e))
+                })?;
+
+                info!("QUIC server started on {}", addr);
+                self.quic_server = Some(quic);
             }
             #[cfg(feature = "steamworks")]
             ServerMode::Steam { .. } => {
@@ -179,7 +209,8 @@ impl EmbeddedServer {
             ServerMode::Loopback => {
                 if let Some(loopback) = &mut self.loopback {
                     // Poll for incoming messages
-                    let _events = loopback.server.poll_events();
+                    let events = loopback.server.poll_events();
+                    debug!("Loopback received events: {:?}", events);
                     // TODO: Process events and update world state
                 }
             }
@@ -238,8 +269,14 @@ impl EmbeddedServer {
                     loopback.server.stop();
                 }
             }
-            _ => {
-                // TODO: Stop QUIC/Steam transport
+            ServerMode::Quic { .. } => {
+                if let Some(quic) = &mut self.quic_server {
+                    quic.stop();
+                }
+            }
+            #[cfg(feature = "steamworks")]
+            ServerMode::Steam { .. } => {
+                // TODO: Stop Steam transport
             }
         }
 
@@ -281,7 +318,11 @@ impl EmbeddedServer {
     ///
     /// In loopback mode, this directly queues the input for the next server tick.
     /// In networked modes, this would send it over the transport.
-    pub fn send_player_input(&mut self, player_id: u64, input: server_logic::movement::PlayerInput) {
+    pub fn send_player_input(
+        &mut self,
+        player_id: u64,
+        input: server_logic::movement::PlayerInput,
+    ) {
         use server_logic::movement::PlayerInputQueue;
 
         if let Some(mut queue) = self.world.get_resource_mut::<PlayerInputQueue>() {
