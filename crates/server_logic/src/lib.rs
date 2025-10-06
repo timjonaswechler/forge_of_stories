@@ -11,6 +11,7 @@
 use bevy::prelude::*;
 
 pub mod movement;
+pub mod network;
 pub mod protocol;
 pub mod savegame;
 pub mod systems;

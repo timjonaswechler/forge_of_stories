@@ -3,11 +3,10 @@
 //! This module defines the messages exchanged between client and server for
 //! multiplayer gameplay (player spawning, movement, state updates).
 //!
-//! Uses `network_shared` transport primitives (Bytes, ChannelId) for actual transmission.
+//! Uses `network_shared` transport primitives and `ClientSideConnection::send_message()`
+//! for serialization and transmission.
 
 use bevy::prelude::*;
-use bytes::Bytes;
-use network_shared::channels::ChannelId;
 use serde::{Deserialize, Serialize};
 
 use crate::world::PlayerShape;
@@ -109,7 +108,11 @@ pub struct SerializableVec3 {
 
 impl From<Vec3> for SerializableVec3 {
     fn from(v: Vec3) -> Self {
-        Self { x: v.x, y: v.y, z: v.z }
+        Self {
+            x: v.x,
+            y: v.y,
+            z: v.z,
+        }
     }
 }
 
@@ -147,35 +150,12 @@ impl From<SerializableColor> for Color {
 }
 
 // ============================================================================
-// Serialization Helpers
-// ============================================================================
-
-impl GameplayMessage {
-    /// Serialize this message to bytes (bincode).
-    pub fn to_bytes(&self) -> Result<Bytes, bincode::Error> {
-        let vec = bincode::serialize(self)?;
-        Ok(Bytes::from(vec))
-    }
-
-    /// Deserialize bytes to a message (bincode).
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, bincode::Error> {
-        bincode::deserialize(bytes)
-    }
-
-    /// Wrap this message for network transmission.
-    pub fn to_network_message(&self, channel: ChannelId) -> Result<network_shared::OutgoingMessage, bincode::Error> {
-        let payload = self.to_bytes()?;
-        Ok(network_shared::OutgoingMessage::new(channel, payload))
-    }
-}
-
-// ============================================================================
 // Channel Configuration
 // ============================================================================
 
 /// Network channel IDs for gameplay messages.
 pub mod channels {
-    use network_shared::channels::ChannelId;
+    use network_shared::channels::{ChannelId, ChannelKind, ChannelsConfiguration};
 
     /// Reliable ordered channel for critical gameplay events (spawn, despawn).
     pub const GAMEPLAY_EVENTS: ChannelId = 0;
@@ -186,33 +166,32 @@ pub mod channels {
     /// Reliable ordered channel for world state updates (server → client).
     /// TODO: Consider unreliable channel for high-frequency updates.
     pub const WORLD_STATE: ChannelId = 2;
+
+    /// Creates the standard channel configuration for gameplay.
+    ///
+    /// This must match the channel IDs defined above.
+    pub fn create_gameplay_channels() -> ChannelsConfiguration {
+        ChannelsConfiguration::from_types(vec![
+            // Channel 0: GAMEPLAY_EVENTS - Critical events like spawn/despawn
+            ChannelKind::OrderedReliable {
+                max_frame_size: 10 * 1024, // 10 KB
+            },
+            // Channel 1: PLAYER_INPUT - Player input from client to server
+            ChannelKind::OrderedReliable {
+                max_frame_size: 1024, // 1 KB (small messages)
+            },
+            // Channel 2: WORLD_STATE - Position/velocity updates
+            ChannelKind::OrderedReliable {
+                max_frame_size: 64 * 1024, // 64 KB (larger for bulk updates)
+            },
+        ])
+        .expect("Failed to create gameplay channels configuration")
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_player_spawn_serialization() {
-        let msg = GameplayMessage::PlayerSpawn(PlayerSpawnMessage {
-            player_id: 42,
-            color: Color::srgb(1.0, 0.0, 0.0).into(),
-            shape: PlayerShape::Capsule,
-            position: Vec3::new(10.0, 5.0, 20.0).into(),
-        });
-
-        let bytes = msg.to_bytes().unwrap();
-        let decoded = GameplayMessage::from_bytes(&bytes).unwrap();
-
-        match decoded {
-            GameplayMessage::PlayerSpawn(event) => {
-                assert_eq!(event.player_id, 42);
-                assert_eq!(event.position.x, 10.0);
-                assert_eq!(event.shape, PlayerShape::Capsule);
-            }
-            _ => panic!("Wrong message type"),
-        }
-    }
 
     #[test]
     fn test_vec3_conversion() {
@@ -238,14 +217,25 @@ mod tests {
     }
 
     #[test]
-    fn test_network_message_wrapping() {
-        let msg = GameplayMessage::PlayerInput(PlayerInputMessage {
+    fn test_message_types() {
+        // Just verify that messages can be constructed
+        let _spawn = GameplayMessage::PlayerSpawn(PlayerSpawnMessage {
+            player_id: 42,
+            color: Color::srgb(1.0, 0.0, 0.0).into(),
+            shape: PlayerShape::Capsule,
+            position: Vec3::new(10.0, 5.0, 20.0).into(),
+        });
+
+        let _input = GameplayMessage::PlayerInput(PlayerInputMessage {
             movement: Vec3::new(1.0, 0.0, 0.0).into(),
             client_tick: 100,
         });
 
-        let network_msg = msg.to_network_message(channels::PLAYER_INPUT).unwrap();
-        assert_eq!(network_msg.channel, channels::PLAYER_INPUT);
-        assert!(!network_msg.payload.is_empty());
+        let _despawn = GameplayMessage::PlayerDespawn(PlayerDespawnMessage { player_id: 42 });
+
+        let _state = GameplayMessage::WorldState(WorldStateMessage {
+            tick: 100,
+            players: vec![],
+        });
     }
 }

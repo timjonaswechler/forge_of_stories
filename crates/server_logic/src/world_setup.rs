@@ -43,18 +43,18 @@ pub fn spawn_world_direct(world: &mut World) {
     let player_color = color_assigner.next_color();
     drop(color_assigner); // Release the borrow
 
-    world.spawn((
-        Player {
-            id: 1,
-            color: player_color,
-        },
-        PlayerShape::Capsule,
-        Position {
-            translation: Vec3::new(0.0, 1.5, 0.0),
-        },
-        Velocity::default(),
-        Name::new("Test Player"),
-    ));
+    // world.spawn((
+    //     Player {
+    //         id: 1,
+    //         color: player_color,
+    //     },
+    //     PlayerShape::Capsule,
+    //     Position {
+    //         translation: Vec3::new(0.0, 1.5, 0.0),
+    //     },
+    //     Velocity::default(),
+    //     Name::new("Test Player"),
+    // ));
 
     info!("Server: World spawned successfully (with test player)");
 }

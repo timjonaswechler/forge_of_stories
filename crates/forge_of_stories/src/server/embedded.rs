@@ -11,10 +11,11 @@ use bevy::ecs::schedule::Schedule;
 use bevy::ecs::world::World;
 use bevy::time::Time;
 use network_shared::transport::{LoopbackPair, TransportOrchestrator};
-use network_shared::{TransportCapabilities, channels::ChannelsConfiguration};
+use network_shared::{TransportCapabilities, TransportEvent, channels::ChannelsConfiguration};
 use server::ServerEndpointConfiguration;
 use server::transport::ServerTransport;
 use server::transport::quic::QuicServerTransport;
+use tokio::sync::mpsc::UnboundedReceiver;
 use tracing::{debug, info};
 
 /// Configuration for how the embedded server should operate.
@@ -87,6 +88,9 @@ pub struct EmbeddedServer {
 
     /// QUIC server transport (only used in QUIC mode).
     quic_server: Option<QuicServerTransport>,
+
+    /// Event receiver for network events (connections, messages, etc.).
+    event_rx: Option<UnboundedReceiver<TransportEvent>>,
 }
 
 impl EmbeddedServer {
@@ -114,6 +118,7 @@ impl EmbeddedServer {
             state: ServerState::Starting,
             loopback,
             quic_server: None,
+            event_rx: None,
         };
 
         // Initialize the server
@@ -125,7 +130,7 @@ impl EmbeddedServer {
     /// Initializes the server world and starts the transport.
     fn initialize(&mut self) -> Result<(), ServerError> {
         // Initialize server world with server logic resources
-        use server_logic::{ServerConfig, movement, world_setup};
+        use server_logic::{ServerConfig, movement, network, world_setup};
 
         self.world.insert_resource(ServerConfig::default());
         self.world
@@ -135,14 +140,24 @@ impl EmbeddedServer {
         self.world
             .insert_resource(Time::<bevy::time::Real>::default());
 
+        // Network resources
+        self.world
+            .insert_resource(network::NetworkEvents::default());
+        self.world
+            .insert_resource(network::OutgoingMessages::default());
+        self.world
+            .insert_resource(network::ConnectedClients::default());
+
         // Run world initialization (normally run at Startup)
         world_setup::initialize_world_direct(&mut self.world);
         world_setup::spawn_world_direct(&mut self.world);
 
         // Add server systems to schedule
         self.schedule.add_systems((
-            movement::process_player_input,
-            movement::apply_velocity,
+            network::process_network_events, // Process incoming connections/messages
+            movement::process_player_input,  // Process player input from queue
+            movement::apply_velocity,        // Apply velocities to positions
+            network::broadcast_world_state,  // Broadcast position updates to clients
             server_logic::systems::heartbeat_system,
         ));
 
@@ -150,8 +165,9 @@ impl EmbeddedServer {
         match &self.mode {
             ServerMode::Loopback => {
                 if let Some(loopback) = &mut self.loopback {
-                    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+                    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
                     loopback.server.start(tx)?;
+                    self.event_rx = Some(rx);
                 }
             }
             ServerMode::Quic { bind_address, port } => {
@@ -160,8 +176,8 @@ impl EmbeddedServer {
                 let server_config = ServerEndpointConfiguration::from_string(&addr)
                     .map_err(|e| ServerError::Config(format!("Invalid bind address: {}", e)))?;
 
-                // Create transport with default channels
-                let channels = ChannelsConfiguration::default();
+                // Create transport with gameplay channels
+                let channels = server_logic::protocol::channels::create_gameplay_channels();
                 let capabilities = TransportCapabilities {
                     supports_reliable_streams: true,
                     supports_unreliable_streams: false,
@@ -172,13 +188,14 @@ impl EmbeddedServer {
                 let mut quic = QuicServerTransport::new(server_config, channels, capabilities);
 
                 // Start the QUIC server
-                let (event_tx, _event_rx) = tokio::sync::mpsc::unbounded_channel();
+                let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
                 quic.start(event_tx).map_err(|e| {
                     ServerError::Network(format!("Failed to start QUIC server: {}", e))
                 })?;
 
                 info!("QUIC server started on {}", addr);
                 self.quic_server = Some(quic);
+                self.event_rx = Some(event_rx);
             }
             #[cfg(feature = "steamworks")]
             ServerMode::Steam { .. } => {
@@ -201,21 +218,106 @@ impl EmbeddedServer {
             return;
         }
 
-        // Run the server schedule
+        // Poll network events and add them to NetworkEvents resource
+        if let Some(event_rx) = &mut self.event_rx {
+            let mut network_events = self
+                .world
+                .resource_mut::<server_logic::network::NetworkEvents>();
+            while let Ok(event) = event_rx.try_recv() {
+                network_events.events.push(event);
+            }
+        }
+
+        // Run the server schedule (includes process_network_events)
         self.schedule.run(&mut self.world);
 
-        // Process network events
-        match &self.mode {
-            ServerMode::Loopback => {
-                if let Some(loopback) = &mut self.loopback {
-                    // Poll for incoming messages
-                    let events = loopback.server.poll_events();
-                    debug!("Loopback received events: {:?}", events);
-                    // TODO: Process events and update world state
+        // Send outgoing messages to all clients
+        self.send_outgoing_messages();
+    }
+
+    /// Sends all queued outgoing messages to clients.
+    fn send_outgoing_messages(&mut self) {
+        use bytes::Bytes;
+        use server_logic::network::OutgoingMessages;
+        use server_logic::protocol::channels;
+
+        let mut outgoing = self.world.resource_mut::<OutgoingMessages>();
+        let messages = std::mem::take(&mut outgoing.messages); // Take all messages
+        drop(outgoing); // Release resource lock
+
+        // Get list of all connected clients from the ConnectedClients resource
+        let connected_clients: Vec<network_shared::ClientId> = {
+            let clients_resource = self.world.resource::<server_logic::network::ConnectedClients>();
+            let clients = clients_resource.clients.clone();
+            info!("Connected clients for broadcasting: {:?}", clients);
+            clients
+        };
+
+        for (target_client, message) in messages {
+            // Serialize the message
+            let payload = match bincode::serde::encode_to_vec(&message, bincode::config::standard())
+            {
+                Ok(bytes) => Bytes::from(bytes),
+                Err(e) => {
+                    debug!("Failed to serialize message: {:?}", e);
+                    continue;
+                }
+            };
+
+            let outgoing_msg = network_shared::OutgoingMessage {
+                channel: channels::GAMEPLAY_EVENTS,
+                payload,
+            };
+
+            // Send to target client(s)
+            match target_client {
+                Some(client_id) => {
+                    // Send to specific client
+                    info!("Sending message to client {}: {:?}", client_id, message);
+                    self.send_to_client(client_id, outgoing_msg);
+                }
+                None => {
+                    // Broadcast to all clients
+                    info!(
+                        "Broadcasting message to {} clients: {:?}",
+                        connected_clients.len(),
+                        message
+                    );
+                    for &client_id in &connected_clients {
+                        info!("  -> Sending to client {}", client_id);
+                        self.send_to_client(client_id, outgoing_msg.clone());
+                    }
                 }
             }
-            _ => {
-                // TODO: Process QUIC/Steam network events
+        }
+    }
+
+    /// Sends a message to a specific client via the appropriate transport.
+    fn send_to_client(
+        &mut self,
+        client_id: network_shared::ClientId,
+        message: network_shared::OutgoingMessage,
+    ) {
+        use server::transport::ServerTransport;
+
+        match &mut self.mode {
+            ServerMode::Loopback => {
+                if let Some(loopback) = &mut self.loopback {
+                    if let Err(e) = loopback.server.send(client_id, message) {
+                        debug!("Failed to send message to client {}: {:?}", client_id, e);
+                    }
+                }
+            }
+            ServerMode::Quic { .. } => {
+                if let Some(quic) = &mut self.quic_server {
+                    if let Err(e) = quic.send(client_id, message) {
+                        debug!("Failed to send message to client {}: {:?}", client_id, e);
+                    }
+                }
+            }
+            #[cfg(feature = "steamworks")]
+            ServerMode::Steam { .. } => {
+                // TODO: Implement Steam transport
             }
         }
     }

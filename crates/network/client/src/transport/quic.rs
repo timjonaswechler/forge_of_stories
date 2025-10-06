@@ -254,6 +254,41 @@ impl ClientTransport for QuicClientTransport {
     }
 }
 
+impl QuicClientTransport {
+    /// Receive a message from the server (convenience method for gameplay code).
+    ///
+    /// This wraps the underlying connection's `receive_message` method.
+    pub fn receive_message<T: serde::de::DeserializeOwned>(
+        &mut self,
+    ) -> Result<Option<(network_shared::channels::ChannelId, T)>, crate::error::ClientMessageReceiveError> {
+        let conn_id = self.connection_id.ok_or_else(|| crate::error::ConnectionClosed)?;
+        let mut guard = self.client.lock().expect("quic client mutex poisoned");
+        let connection = guard
+            .get_connection_mut_by_id(conn_id)
+            .ok_or_else(|| crate::error::ConnectionClosed)?;
+
+        connection.receive_message()
+    }
+
+    /// Send a message to the server (convenience method for gameplay code).
+    ///
+    /// This wraps the underlying connection's `send_message_on` method.
+    pub fn send_message_on<T: serde::Serialize>(
+        &mut self,
+        channel: network_shared::channels::ChannelId,
+        message: T,
+    ) -> Result<(), crate::error::ClientMessageSendError> {
+        let conn_id = self.connection_id.ok_or(crate::error::ClientSendError::ConnectionClosed)?;
+        let mut guard = self.client.lock().expect("quic client mutex poisoned");
+        let connection = guard
+            .get_connection_mut_by_id(conn_id)
+            .ok_or(crate::error::ClientSendError::ConnectionClosed)?;
+
+        connection.send_message_on(channel, message)?;
+        Ok(())
+    }
+}
+
 fn default_certificate_mode() -> CertificateVerificationMode {
     let cert_dir = default_cert_directory();
     if let Err(err) = fs::create_dir_all(&cert_dir) {

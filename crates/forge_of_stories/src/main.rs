@@ -64,6 +64,16 @@ fn main() {
                     .run_if(resource_exists::<EmbeddedServer>),
             )
             .add_systems(
+                Update,
+                (
+                    handle_player_input_networked,
+                    receive_server_messages,
+                    interpolate_remote_players,
+                )
+                    .run_if(in_state(GameState::InGame))
+                    .run_if(resource_exists::<GameClient>),
+            )
+            .add_systems(
                 FixedUpdate,
                 crate::server::embedded::tick_embedded_server
                     .run_if(resource_exists::<EmbeddedServer>),
@@ -307,6 +317,8 @@ struct ServerToClientEntityMap {
 #[derive(Resource)]
 struct GameClient {
     transport: QuicClientTransport,
+    /// Client tick counter for input messages (for lag compensation).
+    tick_counter: u64,
 }
 
 /// System that syncs server world state to client rendering.
@@ -427,6 +439,55 @@ fn handle_player_input(
     server.send_player_input(1, input);
 }
 
+/// System that captures player input and sends it to the server over the network.
+fn handle_player_input_networked(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut client: ResMut<GameClient>,
+) {
+    use server_logic::protocol::{GameplayMessage, PlayerInputMessage, channels};
+
+    // Calculate movement direction from WASD/Arrow keys
+    let mut direction = Vec2::ZERO;
+
+    if keyboard.pressed(KeyCode::KeyW) || keyboard.pressed(KeyCode::ArrowUp) {
+        direction.y += 1.0;
+    }
+    if keyboard.pressed(KeyCode::KeyS) || keyboard.pressed(KeyCode::ArrowDown) {
+        direction.y -= 1.0;
+    }
+    if keyboard.pressed(KeyCode::KeyA) || keyboard.pressed(KeyCode::ArrowLeft) {
+        direction.x -= 1.0;
+    }
+    if keyboard.pressed(KeyCode::KeyD) || keyboard.pressed(KeyCode::ArrowRight) {
+        direction.x += 1.0;
+    }
+
+    // Normalize diagonal movement
+    if direction.length() > 0.01 {
+        direction = direction.normalize();
+    }
+
+    // Convert 2D input to 3D movement (Y-up in Bevy)
+    let movement = Vec3::new(direction.x, 0.0, direction.y);
+
+    // Create input message
+    let message = GameplayMessage::PlayerInput(PlayerInputMessage {
+        movement: movement.into(),
+        client_tick: client.tick_counter,
+    });
+
+    // Increment tick counter
+    client.tick_counter += 1;
+
+    // Send to server
+    if let Err(e) = client
+        .transport
+        .send_message_on(channels::PLAYER_INPUT, message)
+    {
+        warn!("Failed to send player input: {:?}", e);
+    }
+}
+
 fn button_system(
     mut commands: Commands,
     mut input_focus: ResMut<InputFocus>,
@@ -476,7 +537,8 @@ fn button_system(
                                 commands.insert_resource(server);
 
                                 // Connect client to own server via loopback
-                                let channels = ChannelsConfiguration::default();
+                                let channels =
+                                    server_logic::protocol::channels::create_gameplay_channels();
                                 let capabilities = TransportCapabilities {
                                     supports_reliable_streams: true,
                                     supports_unreliable_streams: false,
@@ -496,7 +558,10 @@ fn button_system(
                                 ) {
                                     Ok(_) => {
                                         info!("Host client connected to own server");
-                                        commands.insert_resource(GameClient { transport });
+                                        commands.insert_resource(GameClient {
+                                            transport,
+                                            tick_counter: 0,
+                                        });
                                         next_state.set(GameState::InGame);
                                     }
                                     Err(e) => {
@@ -747,7 +812,8 @@ fn join_menu_system(
                             let host = parts[0].to_string();
                             if let Ok(port) = parts[1].parse::<u16>() {
                                 // Create QUIC client transport
-                                let channels = ChannelsConfiguration::default();
+                                let channels =
+                                    server_logic::protocol::channels::create_gameplay_channels();
                                 let capabilities = TransportCapabilities {
                                     supports_reliable_streams: true,
                                     supports_unreliable_streams: false,
@@ -763,7 +829,10 @@ fn join_menu_system(
                                 {
                                     Ok(_) => {
                                         info!("Connected to server");
-                                        commands.insert_resource(GameClient { transport });
+                                        commands.insert_resource(GameClient {
+                                            transport,
+                                            tick_counter: 0,
+                                        });
                                         next_state.set(GameState::InGame);
                                     }
                                     Err(e) => {
@@ -846,6 +915,162 @@ fn update_join_address_display(
     if join_state.is_changed() {
         for mut text in &mut query {
             **text = join_state.address.clone();
+        }
+    }
+}
+
+/// Component marking a client-rendered remote player entity.
+#[derive(Component)]
+struct RemotePlayer {
+    player_id: u64,
+}
+
+/// Component for interpolating remote player positions smoothly.
+#[derive(Component)]
+struct NetworkedTransform {
+    /// Current interpolated position.
+    current: Vec3,
+    /// Target position from server.
+    target: Vec3,
+    /// Current interpolated velocity (for prediction).
+    velocity: Vec3,
+    /// Interpolation speed (0-1, higher = faster catch-up).
+    interpolation_speed: f32,
+}
+
+/// System that interpolates remote player positions smoothly.
+///
+/// Runs every frame to smoothly move remote players toward their target positions.
+fn interpolate_remote_players(
+    mut query: Query<(&mut Transform, &mut NetworkedTransform), With<RemotePlayer>>,
+    time: Res<Time>,
+) {
+    for (mut transform, mut networked) in &mut query {
+        // Interpolate toward target position
+        let delta = networked.target - networked.current;
+        let distance = delta.length();
+
+        if distance > 0.01 {
+            // Use lerp for smooth movement
+            let interpolation_amount =
+                (networked.interpolation_speed * time.delta_secs() * 60.0).min(1.0);
+            networked.current = networked
+                .current
+                .lerp(networked.target, interpolation_amount);
+
+            // Update visual transform
+            transform.translation = networked.current;
+        } else {
+            // Snap to target if very close
+            networked.current = networked.target;
+            transform.translation = networked.target;
+        }
+    }
+}
+
+/// System that receives network messages from server and renders remote players.
+///
+/// Runs for clients connected via QUIC (not loopback).
+fn receive_server_messages(
+    mut client: Option<ResMut<GameClient>>,
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut remote_players: Query<(Entity, &RemotePlayer, &mut NetworkedTransform)>,
+) {
+    use server_logic::protocol::{GameplayMessage, PlayerDespawnMessage, PlayerSpawnMessage};
+
+    let Some(client) = client.as_mut() else {
+        return; // No client connection
+    };
+
+    // Poll for incoming messages
+    while let Some((_channel, message)) = client
+        .transport
+        .receive_message::<GameplayMessage>()
+        .ok()
+        .flatten()
+    {
+        debug!("Client received message: {:?}", message);
+        match message {
+            GameplayMessage::PlayerSpawn(PlayerSpawnMessage {
+                player_id,
+                color,
+                shape,
+                position,
+            }) => {
+                info!("Client received PlayerSpawn for player {}", player_id);
+
+                // Convert serializable types back to Bevy types
+                let bevy_color: Color = color.into();
+                let bevy_position: Vec3 = position.into();
+
+                // Choose mesh based on shape
+                let mesh_handle = match shape {
+                    server_logic::world::PlayerShape::Cube => {
+                        meshes.add(Cuboid::new(1.0, 1.0, 1.0))
+                    }
+                    server_logic::world::PlayerShape::Sphere => {
+                        meshes.add(Sphere::new(0.5).mesh().ico(5).unwrap())
+                    }
+                    server_logic::world::PlayerShape::Capsule => {
+                        meshes.add(Capsule3d::new(0.4, 1.0))
+                    }
+                };
+
+                // Spawn visual entity with networked transform for interpolation
+                commands.spawn((
+                    Mesh3d(mesh_handle),
+                    MeshMaterial3d(materials.add(bevy_color)),
+                    Transform::from_translation(bevy_position),
+                    RemotePlayer { player_id },
+                    NetworkedTransform {
+                        current: bevy_position,
+                        target: bevy_position,
+                        velocity: Vec3::ZERO,
+                        interpolation_speed: 0.15, // Smooth interpolation
+                    },
+                ));
+
+                info!(
+                    "Spawned remote player {} at {:?} with color {:?}",
+                    player_id, bevy_position, bevy_color
+                );
+            }
+            GameplayMessage::PlayerDespawn(PlayerDespawnMessage { player_id }) => {
+                info!("Client received PlayerDespawn for player {}", player_id);
+
+                // Find and despawn the entity
+                for (entity, remote_player, _) in &remote_players {
+                    if remote_player.player_id == player_id {
+                        commands.entity(entity).despawn();
+                        info!("Despawned remote player {}", player_id);
+                        break;
+                    }
+                }
+            }
+            GameplayMessage::WorldState(state) => {
+                // Update target positions for all remote players
+                for player_state in state.players {
+                    let target_pos: Vec3 = player_state.position.into();
+                    let target_vel: Vec3 = player_state.velocity.into();
+
+                    // Find the corresponding remote player entity
+                    for (entity, remote_player, mut networked_transform) in
+                        remote_players.iter_mut()
+                    {
+                        if remote_player.player_id == player_state.player_id {
+                            networked_transform.target = target_pos;
+                            networked_transform.velocity = target_vel;
+                            break;
+                        }
+                    }
+                }
+            }
+            GameplayMessage::PlayerInput(_input) => {
+                // Server should never send PlayerInput to client
+                warn!("Client received PlayerInput message (unexpected)");
+            }
         }
     }
 }
