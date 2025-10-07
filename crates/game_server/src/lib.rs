@@ -154,6 +154,43 @@ pub enum ServerState {
 }
 
 impl GameServer {
+    /// Internal helper to initialize the server world and schedule.
+    ///
+    /// This sets up all resources, system sets, and systems needed for server gameplay.
+    fn initialize_server(world: &mut World, schedule: &mut Schedule) {
+        // Insert resources
+        world.insert_resource(ServerConfig::default());
+        world.insert_resource(movement::PlayerInputQueue::default());
+        world.insert_resource(world::PlayerColorAssigner::default());
+
+        // Configure system sets for server pipeline
+        schedule.configure_sets(
+            (
+                ServerSet::Input,
+                ServerSet::Simulation,
+                ServerSet::Replication,
+                ServerSet::Output,
+            )
+                .chain(),
+        );
+
+        // World initialization systems
+        schedule.add_systems(world_setup::initialize_world);
+        schedule.add_systems(world_setup::spawn_world.after(world_setup::initialize_world));
+        schedule.add_systems(
+            world_setup::mark_world_initialized
+                .run_if(resource_exists::<world_setup::WorldInitialized>)
+                .in_set(ServerSet::Simulation),
+        );
+
+        // Movement systems
+        schedule.add_systems(movement::process_player_input.in_set(ServerSet::Input));
+        schedule.add_systems(movement::apply_velocity.in_set(ServerSet::Simulation));
+
+        // Server systems
+        schedule.add_systems(systems::heartbeat_system.in_set(ServerSet::Simulation));
+    }
+
     /// Creates a new embedded server instance with QUIC transport.
     ///
     /// Use this when the client application wants to host a game over LAN/WAN.
@@ -169,8 +206,7 @@ impl GameServer {
         let mut world = World::new();
         let mut schedule = Schedule::default();
 
-        // TODO: Initialize server systems, resources, world state
-        // This will be implemented based on the existing ServerLogicPlugin
+        Self::initialize_server(&mut world, &mut schedule);
 
         Self {
             mode: ServerMode::EmbeddedQuic { loopback, external },
@@ -240,8 +276,11 @@ impl GameServer {
             return;
         }
 
-        // TODO: Run the schedule on the world
-        // self.schedule.run(&mut self.world);
+        // Run the server schedule (all gameplay systems)
+        self.schedule.run(&mut self.world);
+
+        // Apply deferred commands (spawning/despawning entities, etc.)
+        self.world.flush();
     }
 
     /// Stops the server gracefully.
@@ -253,7 +292,14 @@ impl GameServer {
     pub fn stop(&mut self) {
         self.state = ServerState::ShuttingDown;
 
-        // TODO: Disconnect clients, cleanup
+        // TODO: Implement proper cleanup:
+        // - Call transport.stop() to disconnect all clients
+        // - Save world state if needed
+        // - Clean up resources
+        // This will be implemented when we integrate transport event handling
+
+        // Clear the world
+        self.world.clear_all();
 
         self.state = ServerState::Stopped;
     }
