@@ -11,15 +11,22 @@
 use bevy::ecs::schedule::Schedule;
 use bevy::ecs::world::World;
 use bevy::prelude::*;
+use server::transport::SteamServerTransport;
 use server::transport::quic::QuicServerTransport;
 use shared::transport::LoopbackServerTransport;
 
 pub mod movement;
 pub mod network;
+pub mod protocol;
 pub mod savegame;
 pub mod systems;
 pub mod world;
 pub mod world_setup;
+
+// Re-export transport types for use in other crates
+#[cfg(feature = "steamworks")]
+pub use server::transport::SteamServerTransport;
+pub use server::transport::quic::QuicServerTransport as QuicTransport;
 
 /// Plugin bundle containing all server-side gameplay systems.
 ///
@@ -47,10 +54,10 @@ impl Plugin for ServerLogicPlugin {
             .configure_sets(
                 FixedUpdate,
                 (
-                    ServerSet::Input,
+                    ServerSet::Receive,
                     ServerSet::Simulation,
                     ServerSet::Replication,
-                    ServerSet::Output,
+                    ServerSet::Transmit,
                 )
                     .chain(),
             )
@@ -69,7 +76,7 @@ impl Plugin for ServerLogicPlugin {
             // Movement systems
             .add_systems(
                 FixedUpdate,
-                movement::process_player_input.in_set(ServerSet::Input),
+                movement::process_player_input.in_set(ServerSet::Receive),
             )
             .add_systems(
                 FixedUpdate,
@@ -109,33 +116,23 @@ pub struct GameServer {
     state: ServerState,
 }
 
+pub enum ExternalTransport {
+    Quic(QuicServerTransport),
+    Steam(SteamServerTransport),
+}
+
 /// Server operational mode defining which transports are active.
 pub enum ServerMode {
     /// Embedded mode: Loopback transport for the host player + QUIC transport for remote clients.
     /// Used when a player hosts a game from the client application via LAN/WAN.
-    EmbeddedQuic {
+    Embedded {
         loopback: LoopbackServerTransport,
-        external: QuicServerTransport,
-    },
-
-    /// Embedded mode: Loopback transport for the host player + Steam transport for remote clients.
-    /// Used when a player hosts a game via Steam.
-    #[cfg(feature = "steamworks")]
-    EmbeddedSteam {
-        loopback: LoopbackServerTransport,
-        external: server::transport::SteamServerTransport,
+        external: Option<ExternalTransport>,
     },
 
     /// Dedicated mode with QUIC: Only QUIC transport, no local player.
     /// Used for standalone dedicated servers accessible via IP:Port.
     DedicatedQuic { external: QuicServerTransport },
-
-    /// Dedicated mode with Steam: Only Steam transport, no local player.
-    /// Used for standalone dedicated servers accessible via Steam.
-    #[cfg(feature = "steamworks")]
-    DedicatedSteam {
-        external: server::transport::SteamServerTransport,
-    },
 }
 
 /// Current lifecycle state of the server.
@@ -166,10 +163,10 @@ impl GameServer {
         // Configure system sets for server pipeline
         schedule.configure_sets(
             (
-                ServerSet::Input,
+                ServerSet::Receive,
                 ServerSet::Simulation,
                 ServerSet::Replication,
-                ServerSet::Output,
+                ServerSet::Transmit,
             )
                 .chain(),
         );
@@ -184,7 +181,7 @@ impl GameServer {
         );
 
         // Movement systems
-        schedule.add_systems(movement::process_player_input.in_set(ServerSet::Input));
+        schedule.add_systems(movement::process_player_input.in_set(ServerSet::Receive));
         schedule.add_systems(movement::apply_velocity.in_set(ServerSet::Simulation));
 
         // Server systems
@@ -199,9 +196,9 @@ impl GameServer {
     /// # Arguments
     /// * `loopback` - Loopback transport for the host player
     /// * `quic` - QUIC transport for remote clients
-    pub fn start_embedded_quic(
+    pub fn start_embedded(
         loopback: LoopbackServerTransport,
-        external: QuicServerTransport,
+        external: Option<ExternalTransport>,
     ) -> Self {
         let mut world = World::new();
         let mut schedule = Schedule::default();
@@ -209,33 +206,7 @@ impl GameServer {
         Self::initialize_server(&mut world, &mut schedule);
 
         Self {
-            mode: ServerMode::EmbeddedQuic { loopback, external },
-            world,
-            schedule,
-            state: ServerState::Starting,
-        }
-    }
-
-    /// Creates a new embedded server instance with Steam transport.
-    ///
-    /// Use this when the client application wants to host a game via Steam.
-    /// The loopback transport handles the local host player, while Steam handles remote clients.
-    ///
-    /// # Arguments
-    /// * `loopback` - Loopback transport for the host player
-    /// * `external` - Steam transport for remote clients
-    #[cfg(feature = "steamworks")]
-    pub fn start_embedded_steam(
-        loopback: LoopbackServerTransport,
-        external: server::transport::SteamServerTransport,
-    ) -> Self {
-        let mut world = World::new();
-        let mut schedule = Schedule::default();
-
-        // TODO: Initialize server systems, resources, world state
-
-        Self {
-            mode: ServerMode::EmbeddedSteam { loopback, external },
+            mode: ServerMode::Embedded { loopback, external },
             world,
             schedule,
             state: ServerState::Starting,
@@ -249,9 +220,9 @@ impl GameServer {
     ///
     /// # Arguments
     /// * `external` - QUIC transport for all clients
-    pub fn start_dedicated_quic(external: QuicServerTransport) -> Self {
-        let mut world = World::new();
-        let mut schedule = Schedule::default();
+    pub fn start_dedicated(external: QuicServerTransport) -> Self {
+        let world = World::new();
+        let schedule = Schedule::default();
 
         // TODO: Initialize server systems, resources, world state
 
@@ -330,13 +301,15 @@ impl GameServer {
 #[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
 pub enum ServerSet {
     /// Process incoming client inputs and commands.
-    Input,
+    Receive,
     /// Run gameplay simulation (physics, AI, game rules).
     Simulation,
     /// Build state snapshots/deltas for clients.
     Replication,
     /// Send state updates to clients.
-    Output,
+    Transmit,
+    /// Control-Plane (Separate)
+    Control,
 }
 
 /// Server configuration resource.

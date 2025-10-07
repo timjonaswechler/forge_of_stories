@@ -8,7 +8,6 @@ members = [
     "crates/networking/client",
     "crates/networking/server",
     "crates/networking/shared",
-    "crates/networking/game_protocol",
     "crates/game_server",
     "crates/keymap",
     "third_party/steamworks-sys",
@@ -25,7 +24,6 @@ app.path = "crates/app"
 shared.path = "crates/networking/shared"
 client.path = "crates/networking/client"
 server.path = "crates/networking/server"
-game_protocol.path = "crates/networking/game_protocol"
 fos.path = "crates/forge_of_stories"
 paths.path = "crates/paths"
 settings.path = "crates/settings"

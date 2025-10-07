@@ -3,13 +3,9 @@ name = "forge_of_stories"
 edition = { workspace = true }
 version = { workspace = true }
 
-[lib]
-path = "src/lib.rs"
-
 [dependencies]
 app = {workspace = true, features = ["bevy"]}
 bevy = { workspace = true, default-features = true }
-game_protocol.workspace = true
 settings.workspace = true
 paths.workspace = true
 shared.workspace = true

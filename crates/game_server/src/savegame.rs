@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tracing::info;
 
+use crate::protocol::PlayerShape;
 use crate::world::{GroundPlane, Player, Position, Velocity};
-use game_protocol::PlayerShape;
 /// Serializable snapshot of the entire world state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorldSnapshot {

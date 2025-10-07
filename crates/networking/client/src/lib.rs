@@ -1,7 +1,7 @@
 use std::{
     collections::{
-        hash_map::{Iter, IterMut},
         HashMap,
+        hash_map::{Iter, IterMut},
     },
     sync::Mutex,
 };
@@ -44,11 +44,7 @@ pub mod steam;
 pub mod transport;
 
 mod error;
-pub use bevy_integration::{
-    QuinnetClientPlugin,
-    SteamClientEventChannel,
-    SteamworksClientPlugin,
-};
+pub use bevy_integration::{QuinnetClientPlugin, SteamClientEventChannel, SteamworksClientPlugin};
 pub use error::*;
 
 /// Default path for the known hosts file
@@ -189,12 +185,12 @@ impl QuinnetClient {
     }
 
     /// Returns an iterator over all connections
-    pub fn connections(&self) -> Iter<ConnectionLocalId, ClientSideConnection> {
+    pub fn connections(&self) -> Iter<'_, ConnectionLocalId, ClientSideConnection> {
         self.connections.iter()
     }
 
     /// Returns an iterator over all connections as muts
-    pub fn connections_mut(&mut self) -> IterMut<ConnectionLocalId, ClientSideConnection> {
+    pub fn connections_mut(&mut self) -> IterMut<'_, ConnectionLocalId, ClientSideConnection> {
         self.connections.iter_mut()
     }
 

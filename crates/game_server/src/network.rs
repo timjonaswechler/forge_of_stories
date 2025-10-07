@@ -5,15 +5,15 @@
 //! - Broadcasting gameplay messages to all clients
 //! - Processing client input messages
 
+use crate::protocol::{
+    GameplayMessage, PlayerDespawnMessage, PlayerShape, PlayerSpawnMessage, PlayerStateSnapshot,
+    WorldStateMessage,
+};
 use crate::{
     movement::{PlayerInput, PlayerInputQueue},
     world::{Player, PlayerColorAssigner, Position, Velocity},
 };
 use bevy::prelude::*;
-use game_protocol::{
-    GameplayMessage, PlayerDespawnMessage, PlayerShape, PlayerSpawnMessage, PlayerStateSnapshot,
-    WorldStateMessage,
-};
 use shared::{ClientId, TransportEvent};
 use tracing::{debug, error, info, warn};
 

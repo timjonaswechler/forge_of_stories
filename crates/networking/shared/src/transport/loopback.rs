@@ -30,6 +30,9 @@ pub enum LoopbackError {
 ///
 /// Creates bidirectional in-memory channels for zero-latency communication
 /// between client and server running in the same process.
+///
+/// Note: This struct is not Clone because the underlying channels (UnboundedReceiver)
+/// cannot be cloned. You must use Arc or other sharing mechanisms if needed.
 pub struct LoopbackPair {
     pub client: LoopbackClientTransport,
     pub server: LoopbackServerTransport,
