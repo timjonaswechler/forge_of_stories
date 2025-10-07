@@ -1,8 +1,6 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/aether",
-    "crates/aether_config",
     "crates/forge_of_stories",
     "crates/paths",
     "crates/settings",
@@ -11,9 +9,7 @@ members = [
     "crates/networking/server",
     "crates/networking/shared",
     "crates/networking/game_protocol",
-    "crates/networking/embedded_server",
-    "crates/networking/dedicated_server",
-    "crates/server_logic",
+    "crates/game_server",
     "crates/keymap",
     "third_party/steamworks-sys",
 ]
@@ -25,19 +21,15 @@ edition = "2024"
 
 
 [workspace.dependencies]
-aether.path = "crates/aether"
-aether_config.path = "crates/aether_config"
 app.path = "crates/app"
 shared.path = "crates/networking/shared"
 client.path = "crates/networking/client"
 server.path = "crates/networking/server"
 game_protocol.path = "crates/networking/game_protocol"
-embedded_server.path = "crates/networking/embedded_server"
-dedicated_server.path = "crates/networking/dedicated_server"
 fos.path = "crates/forge_of_stories"
 paths.path = "crates/paths"
 settings.path = "crates/settings"
-server_logic.path = "crates/server_logic"
+game_server.path = "crates/game_server"
 steamworks-sys.path = "third_party/steamworks-sys"
 
 #

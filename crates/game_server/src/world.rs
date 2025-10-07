@@ -6,7 +6,6 @@
 
 use bevy::color::palettes::css::*;
 use bevy::prelude::*;
-use game_protocol::PlayerShape;
 
 /// Marker component for the ground plane entity.
 #[derive(Component, Debug, Clone, Copy)]

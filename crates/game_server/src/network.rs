@@ -15,7 +15,7 @@ use game_protocol::{
     WorldStateMessage,
 };
 use shared::{ClientId, TransportEvent};
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 /// Resource that holds network events from the transport layer.
 ///

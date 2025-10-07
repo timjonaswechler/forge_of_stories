@@ -1,5 +1,5 @@
 [package]
-name = "server_logic"
+name = "game_server"
 version = "0.1.0"
 edition.workspace = true
 description = "Shared server-side game logic for Forge of Stories"
@@ -14,6 +14,7 @@ bevy = { version = "0.17.0", default-features = false, features = [
 ] }
 game_protocol.workspace = true
 shared.workspace = true
+server.workspace = true
 tracing.workspace = true
 serde = { version = "1.0", features = ["derive"] }
 ron = "0.8"
