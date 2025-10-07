@@ -213,6 +213,44 @@ impl GameServer {
         }
     }
 
+    /// Adds an external transport (QUIC or Steam) to an embedded server.
+    ///
+    /// This allows the host to open their server to remote players.
+    /// Only works on Embedded mode servers.
+    pub fn add_external(mut self, external: ExternalTransport) -> Self {
+        match self.mode {
+            ServerMode::Embedded { loopback, .. } => {
+                self.mode = ServerMode::Embedded {
+                    loopback,
+                    external: Some(external),
+                };
+            }
+            ServerMode::DedicatedQuic { .. } => {
+                tracing::warn!("Cannot add external transport to dedicated server");
+            }
+        }
+        self
+    }
+
+    /// Removes the external transport from an embedded server.
+    ///
+    /// This closes the server to remote players, keeping only the loopback connection.
+    /// All external clients will be disconnected.
+    pub fn remove_external(&mut self) {
+        match &mut self.mode {
+            ServerMode::Embedded { external, .. } => {
+                if external.is_some() {
+                    tracing::error!("Disconnect all clients over the closing connection first");
+                    // TODO: Properly disconnect all external clients before removing transport
+                }
+                *external = None;
+            }
+            ServerMode::DedicatedQuic { .. } => {
+                tracing::warn!("Cannot remove external transport from dedicated server");
+            }
+        }
+    }
+
     /// Creates a new dedicated server instance with QUIC transport.
     ///
     /// Use this for standalone dedicated servers accessible via IP:Port.

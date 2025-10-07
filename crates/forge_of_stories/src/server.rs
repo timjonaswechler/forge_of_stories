@@ -153,6 +153,10 @@ impl EmbeddedServer {
             loopback_client: Some(host),
         })
     }
+    /// Stops external transport
+    pub fn stop_external(&mut self) {
+        self.server.remove_external();
+    }
 
     /// Advances the server simulation by one tick.
     ///
@@ -163,7 +167,7 @@ impl EmbeddedServer {
 
     /// Stops the server gracefully.
     pub fn stop(&mut self) {
-        info!("Stopping embedded server");
+        self.server.remove_external();
         self.server.stop();
     }
 
