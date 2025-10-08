@@ -15,6 +15,7 @@ use crate::{
 };
 use bevy::prelude::*;
 use shared::{ClientId, TransportEvent};
+use std::collections::HashSet;
 use tracing::{debug, error, info, warn};
 
 /// Resource that holds network events from the transport layer.
@@ -39,7 +40,7 @@ pub struct OutgoingMessages {
 /// Updated immediately when clients connect/disconnect (before Commands are applied).
 #[derive(Resource, Default)]
 pub struct ConnectedClients {
-    pub clients: Vec<ClientId>,
+    pub clients: HashSet<ClientId>,
 }
 
 /// System that processes incoming network events (connections, disconnections).
@@ -69,7 +70,7 @@ pub fn process_network_events(
                 );
 
                 // Add to connected clients list immediately (before Commands are applied)
-                connected_clients.clients.push(client);
+                connected_clients.clients.insert(client);
                 info!("Connected clients now: {:?}", connected_clients.clients);
 
                 // First, send all existing players to the new client BEFORE spawning
