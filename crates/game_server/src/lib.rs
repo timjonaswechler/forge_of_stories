@@ -26,6 +26,7 @@ use uuid::Uuid;
 /// The host player always uses this client ID (UUID with all zeros)
 pub const HOST_CLIENT_ID: ClientId = Uuid::nil();
 
+mod error;
 pub mod movement;
 pub mod network;
 pub mod protocol;
@@ -82,7 +83,7 @@ pub struct ServerHandle {
 }
 
 /// Atomic version of ServerState for thread-safe access.
-struct AtomicServerState {
+pub struct AtomicServerState {
     state: std::sync::atomic::AtomicU8,
 }
 
@@ -140,7 +141,13 @@ impl ServerHandle {
 
         // Spawn the server thread
         let thread_handle = thread::spawn(move || {
-            let mut server = GameServer::new_from_mode(mode);
+            let mut server = match GameServer::new_from_mode(mode) {
+                Ok(server) => server,
+                Err(err) => {
+                    error!("Failed to start embedded server: {:?}", err);
+                    return;
+                }
+            };
             server.run(command_rx, state_clone);
         });
 
@@ -169,7 +176,13 @@ impl ServerHandle {
 
         // Spawn the server thread
         let thread_handle = thread::spawn(move || {
-            let mut server = GameServer::new_from_mode(mode);
+            let mut server = match GameServer::new_from_mode(mode) {
+                Ok(server) => server,
+                Err(err) => {
+                    error!("Failed to start dedicated server: {:?}", err);
+                    return;
+                }
+            };
             server.run(command_rx, state_clone);
         });
 
@@ -440,7 +453,7 @@ impl GameServer {
     ///
     /// This is an internal method used by ServerHandle to create the server instance
     /// in the server thread. Takes ownership of the transports.
-    fn new_from_mode(mode: ServerMode) -> Self {
+    fn new_from_mode(mode: ServerMode) -> Result<Self, error::ServerError> {
         let mut world = World::new();
         let mut schedule = Schedule::default();
 
@@ -477,8 +490,6 @@ impl GameServer {
                         ExternalTransport::Quic(quic) => {
                             if let Err(e) = quic.start(event_tx.clone()) {
                                 tracing::error!("Failed to start QUIC transport: {:?}", e);
-                                // Return error instead of continuing
-                                panic!("Failed to start QUIC transport: {:?}", e);
                             } else {
                                 tracing::info!("QUIC transport started successfully");
                             }
@@ -501,12 +512,12 @@ impl GameServer {
             }
         }
 
-        Self {
+        Ok(Self {
             mode,
             world,
             schedule,
             state: ServerState::Starting,
-        }
+        })
     }
 
     /// Adds an external transport (QUIC or Steam) to an embedded server.
