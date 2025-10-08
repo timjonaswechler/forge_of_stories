@@ -260,8 +260,11 @@ impl QuicClientTransport {
     /// This wraps the underlying connection's `receive_message` method.
     pub fn receive_message<T: serde::de::DeserializeOwned>(
         &mut self,
-    ) -> Result<Option<(shared::channels::ChannelId, T)>, crate::error::ClientMessageReceiveError> {
-        let conn_id = self.connection_id.ok_or_else(|| crate::error::ConnectionClosed)?;
+    ) -> Result<Option<(shared::channels::ChannelId, T)>, crate::error::ClientMessageReceiveError>
+    {
+        let conn_id = self
+            .connection_id
+            .ok_or_else(|| crate::error::ConnectionClosed)?;
         let mut guard = self.client.lock().expect("quic client mutex poisoned");
         let connection = guard
             .get_connection_mut_by_id(conn_id)
@@ -278,7 +281,9 @@ impl QuicClientTransport {
         channel: shared::channels::ChannelId,
         message: T,
     ) -> Result<(), crate::error::ClientMessageSendError> {
-        let conn_id = self.connection_id.ok_or(crate::error::ClientSendError::ConnectionClosed)?;
+        let conn_id = self
+            .connection_id
+            .ok_or(crate::error::ClientSendError::ConnectionClosed)?;
         let mut guard = self.client.lock().expect("quic client mutex poisoned");
         let connection = guard
             .get_connection_mut_by_id(conn_id)
