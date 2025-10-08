@@ -160,6 +160,11 @@ impl PathContext {
         self.project_root().join("keybinding.json")
     }
 
+    /// Returns the data directory path: `<studio>/<project_id>/data/`
+    pub fn data_dir(&self) -> PathBuf {
+        self.project_root().join("data")
+    }
+
     /// Returns the servers file path: `<studio>/<project_id>/<app_id>.servers.json`
     pub fn servers_file(&self) -> PathBuf {
         self.project_root()
@@ -219,6 +224,7 @@ impl PathContext {
         let dirs = vec![
             self.project_root(),
             self.versions_dir(),
+            self.data_dir(),
             self.saves_dir(),
             self.mods_dir(),
             self.assets_dir(),

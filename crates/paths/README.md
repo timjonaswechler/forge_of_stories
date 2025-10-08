@@ -55,6 +55,7 @@ The crate organizes paths in a hierarchical structure:
     └── <project_id>/
         ├── <app_id>.settings.json
         ├── keybinding.json
+        ├── data/
         ├── <app_id>.servers.json
         ├── versions/
         │   └── <app_id>.<version>
