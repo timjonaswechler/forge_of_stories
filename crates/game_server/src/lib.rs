@@ -21,6 +21,7 @@ use server::transport::quic::QuicServerTransport;
 use server::transport::{ServerTransport, SteamServerTransport};
 use shared::ClientId;
 use shared::transport::{LoopbackClientTransport, LoopbackServerTransport};
+use tracing::error;
 use uuid::Uuid;
 
 /// The host player always uses this client ID (UUID with all zeros)
@@ -743,121 +744,133 @@ impl GameServer {
             .map(|cc| cc.clients.clone())
             .unwrap_or_default();
 
-        // Now send messages without borrowing world
+        // Group messages: broadcasts vs unicasts
+        let mut broadcasts = Vec::new();
+        let mut unicasts = Vec::new();
+
         for (target_client, message) in messages {
-            // Serialize the message
+            match target_client {
+                None => broadcasts.push(message),
+                Some(client_id) => unicasts.push((client_id, message)),
+            }
+        }
+
+        // Process broadcasts: serialize once, then Arc-share via Bytes
+        for message in broadcasts {
             let payload = match bincode::serde::encode_to_vec(&message, bincode::config::standard())
             {
                 Ok(bytes) => bytes::Bytes::from(bytes),
                 Err(e) => {
-                    tracing::error!("Failed to serialize message: {:?}", e);
+                    tracing::error!("Failed to serialize broadcast message: {:?}", e);
                     continue;
                 }
             };
-
-            // Determine which channel to use (for now, use channel 0)
 
             let out_msg = shared::OutgoingMessage {
                 channel: message.channel(),
                 payload: payload.clone(),
             };
 
-            // Log what we're sending
-            if let Some(target) = target_client {
-                tracing::debug!(
-                    "Sending message to client {} on channel {}, {} bytes",
-                    target,
-                    message.channel(),
-                    payload.len()
-                );
-            } else {
-                tracing::debug!(
-                    "Broadcasting message to all clients on channel {}, {} bytes",
-                    message.channel(),
-                    payload.len()
-                );
-            }
+            tracing::debug!(
+                "Broadcasting message to {} clients on channel {}, {} bytes",
+                connected_client_ids.len(),
+                message.channel(),
+                payload.len()
+            );
 
-            // Send to target client(s)
+            // Send to all clients (Bytes::clone is cheap, Arc-based)
             match &mut self.mode {
                 ServerMode::Embedded { loopback, external } => {
-                    if let Some(client_id) = target_client {
-                        // Send to specific client
-                        // Check if it's the loopback client (host)
-                        if client_id == HOST_CLIENT_ID {
-                            if let Err(e) = loopback.send(client_id, out_msg.clone()) {
-                                tracing::warn!(
-                                    "Failed to send to loopback client {}: {:?}",
-                                    client_id,
-                                    e
-                                );
-                            }
-                        } else {
-                            // Send via external transport
-                            if let Some(ext) = external {
+                    // Send to loopback client (host)
+                    if let Err(e) = loopback.send(HOST_CLIENT_ID, out_msg.clone()) {
+                        tracing::warn!("Failed to broadcast to loopback client: {:?}", e);
+                    }
+                    // Send to all external clients
+                    if let Some(ext) = external {
+                        for &client_id in &connected_client_ids {
+                            if client_id != HOST_CLIENT_ID {
                                 let send_result = match ext {
                                     ExternalTransport::Quic(quic) => {
                                         quic.send(client_id, out_msg.clone())
                                     }
-                                    ExternalTransport::Steam(_steam) => {
-                                        tracing::warn!("Steam transport not yet implemented");
-                                        continue;
-                                    }
+                                    ExternalTransport::Steam(_steam) => continue,
                                 };
                                 if let Err(e) = send_result {
                                     tracing::warn!(
-                                        "Failed to send to external client {}: {:?}",
+                                        "Failed to broadcast to client {}: {:?}",
                                         client_id,
                                         e
                                     );
                                 }
                             }
                         }
-                    } else {
-                        // Broadcast to all clients
-                        // Send to loopback client (host)
-                        if let Err(e) = loopback.send(HOST_CLIENT_ID, out_msg.clone()) {
-                            tracing::warn!("Failed to broadcast to loopback client: {:?}", e);
-                        }
-                        // Send to all external clients
-                        if let Some(ext) = external {
-                            for &client_id in &connected_client_ids {
-                                if client_id != HOST_CLIENT_ID {
-                                    // Skip loopback client (host)
-                                    let send_result = match ext {
-                                        ExternalTransport::Quic(quic) => {
-                                            quic.send(client_id, out_msg.clone())
-                                        }
-                                        ExternalTransport::Steam(_steam) => continue,
-                                    };
-                                    if let Err(e) = send_result {
-                                        tracing::warn!(
-                                            "Failed to broadcast to client {}: {:?}",
-                                            client_id,
-                                            e
-                                        );
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
                 ServerMode::DedicatedQuic { external } => {
-                    if let Some(client_id) = target_client {
-                        if let Err(e) = external.send(client_id, out_msg) {
-                            tracing::warn!("Failed to send to client {}: {:?}", client_id, e);
+                    for &client_id in &connected_client_ids {
+                        if let Err(e) = external.send(client_id, out_msg.clone()) {
+                            tracing::warn!("Failed to broadcast to client {}: {:?}", client_id, e);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Process unicasts: serialize individually
+        for (client_id, message) in unicasts {
+            let payload = match bincode::serde::encode_to_vec(&message, bincode::config::standard())
+            {
+                Ok(bytes) => bytes::Bytes::from(bytes),
+                Err(e) => {
+                    tracing::error!("Failed to serialize unicast message: {:?}", e);
+                    continue;
+                }
+            };
+
+            let out_msg = shared::OutgoingMessage {
+                channel: message.channel(),
+                payload,
+            };
+
+            tracing::debug!(
+                "Sending message to client {} on channel {}, {} bytes",
+                client_id,
+                message.channel(),
+                out_msg.payload.len()
+            );
+
+            match &mut self.mode {
+                ServerMode::Embedded { loopback, external } => {
+                    if client_id == HOST_CLIENT_ID {
+                        if let Err(e) = loopback.send(client_id, out_msg) {
+                            tracing::warn!(
+                                "Failed to send to loopback client {}: {:?}",
+                                client_id,
+                                e
+                            );
                         }
                     } else {
-                        // Broadcast to all clients
-                        for &client_id in &connected_client_ids {
-                            if let Err(e) = external.send(client_id, out_msg.clone()) {
+                        if let Some(ext) = external {
+                            let send_result = match ext {
+                                ExternalTransport::Quic(quic) => quic.send(client_id, out_msg),
+                                ExternalTransport::Steam(_steam) => {
+                                    tracing::warn!("Steam transport not yet implemented");
+                                    continue;
+                                }
+                            };
+                            if let Err(e) = send_result {
                                 tracing::warn!(
-                                    "Failed to broadcast to client {}: {:?}",
+                                    "Failed to send to external client {}: {:?}",
                                     client_id,
                                     e
                                 );
                             }
                         }
+                    }
+                }
+                ServerMode::DedicatedQuic { external } => {
+                    if let Err(e) = external.send(client_id, out_msg) {
+                        tracing::warn!("Failed to send to client {}: {:?}", client_id, e);
                     }
                 }
             }
