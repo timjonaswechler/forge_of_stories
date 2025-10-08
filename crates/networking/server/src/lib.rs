@@ -156,7 +156,7 @@ pub(crate) enum ServerSyncMessage {
 pub struct ServerSideConnection {
     connection_handle: InternalConnectionRef,
 
-    channels: Vec<Option<Channel>>,
+    channels: HashMap<ChannelId, Channel>,
     bytes_from_client_recv: mpsc::Receiver<(ChannelId, Bytes)>,
     close_sender: broadcast::Sender<CloseReason>,
 
@@ -184,7 +184,7 @@ impl ServerSideConnection {
             to_connection_send,
             to_channels_send,
             from_channels_recv,
-            channels: Vec::new(),
+            channels: HashMap::new(),
             received_bytes_count: 0,
             sent_bytes_count: 0,
         }
@@ -194,13 +194,9 @@ impl ServerSideConnection {
     /// Before trully closing, the channel will wait for all buffered messages to be properly sent according to the channel type.
     /// Can fail if the [ChannelId] is unknown, or if the channel is already closed.
     pub(crate) fn close_channel(&mut self, channel_id: ChannelId) -> Result<(), ChannelCloseError> {
-        if (channel_id as usize) < self.channels.len() {
-            match self.channels[channel_id as usize].take() {
-                Some(channel) => channel.close(),
-                None => Err(ChannelCloseError::ChannelAlreadyClosed),
-            }
-        } else {
-            Err(ChannelCloseError::InvalidChannelId(channel_id))
+        match self.channels.remove(&channel_id) {
+            Some(channel) => channel.close(),
+            None => Err(ChannelCloseError::ChannelAlreadyClosed),
         }
     }
 
@@ -241,14 +237,8 @@ impl ServerSideConnection {
     }
 
     pub(crate) fn register_connection_channel(&mut self, channel: Channel) {
-        let channel_index = channel.id() as usize;
-        if channel_index < self.channels.len() {
-            self.channels[channel_index] = Some(channel);
-        } else {
-            self.channels
-                .extend((self.channels.len()..channel_index).map(|_| None));
-            self.channels.push(Some(channel));
-        }
+        let channel_id = channel.id();
+        self.channels.insert(channel_id, channel);
     }
 
     /// Signal the connection to closes all its background tasks. Before trully closing, the connection will wait for all buffered messages in all its opened channels to be properly sent according to their respective channel type.
@@ -791,13 +781,12 @@ impl Endpoint {
         channel_id: ChannelId,
         payload: Bytes,
     ) -> Result<(), ServerSendError> {
-        match client_connection.channels.get(channel_id as usize) {
-            Some(Some(channel)) => {
+        match client_connection.channels.get(&channel_id) {
+            Some(channel) => {
                 client_connection.sent_bytes_count += payload.len();
                 Ok(channel.send_payload(payload)?)
             }
-            Some(None) => return Err(ServerSendError::ChannelClosed),
-            None => return Err(ServerSendError::InvalidChannelId(channel_id)),
+            None => Err(ServerSendError::InvalidChannelId(channel_id)),
         }
     }
 
