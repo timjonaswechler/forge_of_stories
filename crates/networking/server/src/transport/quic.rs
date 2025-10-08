@@ -48,6 +48,7 @@ pub enum QuicServerTransportError {
 
 /// Quinn-based server transport that wraps the Quinnet server implementation
 /// behind the shared transport trait.
+
 pub struct QuicServerTransport {
     runtime: Runtime,
     server: Arc<Mutex<QuinnetServer>>,

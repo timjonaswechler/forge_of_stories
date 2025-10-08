@@ -21,7 +21,8 @@ thiserror = "2.0"
 bincode.workspace = true
 tokio = { version = "1", features = ["sync"] }
 bytes = "1.5"
-uuid.workspace = true
+uuid = { workspace = true, features = ["serde"] }
+crossbeam = "0.8.4"
 
 [dev-dependencies]
 tempfile = "3.10"

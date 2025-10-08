@@ -1,264 +1,147 @@
-//! Embedded server implementation for client-hosted gameplay.
+//! Bevy integration for the GameServer running in a separate thread.
 //!
-//! The `EmbeddedServer` is a thin wrapper around `GameServer` that manages
-//! the server lifecycle within the client process. This enables:
-//! - Singleplayer mode (loopback transport, zero network overhead)
-//! - Multiplayer hosting (QUIC or Steam transport)
-//! - Shared server logic with dedicated server
-//! Embedded server module for client-hosted gameplay.
+//! This module provides helper functions and systems to integrate the thread-based
+//! GameServer with the Bevy app. It handles:
+//! - Starting the server in Singleplayer or Multiplayer mode
+//! - Managing the server lifecycle via ServerHandle
+//! - Extracting the loopback client for the host player
 
-use bevy::ecs::prelude::*;
-use game_server::{GameServer, ServerState};
-use server::ServerEndpointConfiguration;
-use server::transport::quic::QuicServerTransport;
-use shared::transport::{
-    LoopbackClientTransport, LoopbackPair, LoopbackServerTransport, TransportOrchestrator,
-};
-use tracing::{debug, info};
+use bevy::prelude::*;
+use game_server::{ExternalTransport, ServerHandle, ServerModeInfo};
+use shared::transport::{LoopbackClientTransport, TransportOrchestrator};
 
-/// Configuration for how the embedded server should operate.
-#[derive(Debug, Clone)]
-pub enum ServerMode {
-    /// In-memory loopback (singleplayer, no network).
-    Loopback,
-    /// QUIC transport (LAN/WAN multiplayer).
-    Quic { bind_address: String, port: u16 },
-    /// Steam P2P transport (Steam friends multiplayer).
-    Steam {
-        lobby_name: String,
-        max_players: u32,
-        is_public: bool,
-    },
-}
-
-/// Error types for embedded server operations.
-#[derive(Debug, thiserror::Error)]
-pub enum ServerError {
-    #[error("Server is not in the correct state: expected {expected:?}, got {actual:?}")]
-    InvalidState {
-        expected: ServerState,
-        actual: ServerState,
-    },
-    #[error("Network error: {0}")]
-    Network(String),
-    #[error("Configuration error: {0}")]
-    Config(String),
-    #[error("Loopback transport error: {0}")]
-    Loopback(#[from] shared::transport::LoopbackError),
-    #[error("QUIC transport error: {0}")]
-    QuicTransport(String),
-}
-
-/// Embedded server resource that runs in the client process.
+/// Resource containing the loopback client transport for the host player.
 ///
-/// This is a thin wrapper around `GameServer` that provides a simpler
-/// API for client-hosted gameplay.
+/// This is inserted into the Bevy app after starting an embedded server,
+/// allowing the host to communicate with their own server.
 #[derive(Resource)]
-pub struct EmbeddedServer {
-    /// The underlying game server
-    server: GameServer,
+pub struct LoopbackClient(pub LoopbackClientTransport);
 
-    /// Server operational mode
-    mode: ServerMode,
-
-    /// Loopback client transport (for host player connection)
-    /// We only store the client side since the server side is owned by GameServer
-    loopback_client: Option<shared::transport::LoopbackClientTransport>,
-}
-
-impl EmbeddedServer {
-    /// Creates a new embedded server with the specified mode.
-    ///
-    /// # Arguments
-    /// * `mode` - The server mode (Loopback, QUIC, or Steam)
-    ///
-    /// # Returns
-    /// A new `EmbeddedServer` ready to be started.
-    pub fn new(mode: ServerMode) -> Result<Self, ServerError> {
-        match &mode {
-            ServerMode::Loopback => Self::new_loopback(),
-            ServerMode::Quic { bind_address, port } => Self::new_quic(bind_address.clone(), *port),
-            ServerMode::Steam { .. } => {
-                // TODO: Implement Steam transport
-                Err(ServerError::Config(
-                    "Steam transport not yet implemented".into(),
-                ))
-            }
-        }
-    }
-
-    /// Creates a new embedded server in loopback-only mode (singleplayer).
-    fn new_loopback() -> Result<Self, ServerError> {
-        info!("Creating embedded server in loopback mode (singleplayer)");
-
-        // Create loopback transport pair and destructure it
-        let loopback_pair = TransportOrchestrator::create_loopback_pair();
-        let LoopbackPair {
-            client: host,
-            server: loopback_server,
-        } = loopback_pair;
-
-        // Create GameServer in embedded mode with the server side
-        let game_server = GameServer::start_embedded(loopback_server, None);
-
-        Ok(Self {
-            server: game_server,
-            mode: ServerMode::Loopback,
-            loopback_client: Some(host),
-        })
-    }
-
-    /// Creates a new embedded server with QUIC transport (LAN/WAN multiplayer).
-    fn new_quic(bind_address: String, port: u16) -> Result<Self, ServerError> {
-        info!(
-            "Creating embedded server with QUIC transport on {}:{}",
-            bind_address, port
-        );
-
-        // Create loopback transport for the host player
-        let loopback_pair = TransportOrchestrator::create_loopback_pair();
-        let LoopbackPair {
-            client: host,
-            server: loopback_server,
-        } = loopback_pair;
-
-        // Create QUIC transport for remote clients
-        let endpoint_config =
-            ServerEndpointConfiguration::from_string(&format!("{}:{}", bind_address, port))
-                .map_err(|e| ServerError::QuicTransport(format!("Invalid bind address: {}", e)))?;
-
-        // Create channel configuration for gameplay
-        let channels = game_server::protocol::channels::create_gameplay_channels();
-
-        // Create transport capabilities (QUIC supports all features)
-        let capabilities = shared::TransportCapabilities::new(
-            true, // reliable_streams
-            true, // unreliable_streams
-            true, // datagrams
-            8,    // max_channels
-        );
-
-        let quic = game_server::ExternalTransport::Quic(game_server::QuicTransport::new(
-            endpoint_config,
-            channels,
-            capabilities,
-        ));
-
-        // Create GameServer in embedded mode
-        let server = GameServer::start_embedded(loopback_server, Some(quic));
-
-        Ok(Self {
-            server,
-            mode: ServerMode::Quic { bind_address, port },
-            loopback_client: Some(host),
-        })
-    }
-    /// Stops external transport
-    pub fn stop_external(&mut self) {
-        self.server.remove_external();
-    }
-
-    /// Advances the server simulation by one tick.
-    ///
-    /// This should be called at a fixed rate (e.g., 20 TPS).
-    pub fn tick(&mut self) {
-        self.server.tick();
-    }
-
-    /// Stops the server gracefully.
-    pub fn stop(&mut self) {
-        self.server.remove_external();
-        self.server.stop();
-    }
-
-    /// Returns the current server state.
-    pub fn state(&self) -> ServerState {
-        self.server.state()
-    }
-
-    /// Returns the server mode.
-    pub fn mode(&self) -> &ServerMode {
-        &self.mode
-    }
-
-    /// Takes ownership of the loopback client (for host player connection).
-    ///
-    /// This is used when hosting a LAN game - the host uses the loopback client
-    /// to communicate with their own server without network overhead.
-    pub fn take_loopback_client(&mut self) -> Option<LoopbackClientTransport> {
-        self.loopback_client.take()
-    }
-
-    /// Returns a reference to the server world (for inspection/debugging).
-    pub fn world(&self) -> &bevy::ecs::world::World {
-        self.server.world()
-    }
-
-    /// Returns a mutable reference to the server world.
-    pub fn world_mut(&mut self) -> &mut bevy::ecs::world::World {
-        self.server.world_mut()
-    }
-
-    /// Pauses the server (singleplayer only).
-    ///
-    /// This prevents the server from processing ticks until resumed.
-    pub fn pause(&mut self) {
-        // TODO: Implement pause logic in GameServer
-        debug!("Pause requested (not yet implemented)");
-    }
-
-    /// Resumes the server after being paused.
-    pub fn resume(&mut self) {
-        // TODO: Implement resume logic in GameServer
-        debug!("Resume requested (not yet implemented)");
-    }
-
-    /// Sends player input to the server.
-    ///
-    /// This enqueues the input to be processed on the next server tick.
-    pub fn send_player_input(
-        &mut self,
-        player_id: shared::ClientId,
-        input: game_server::movement::PlayerInput,
-    ) {
-        use game_server::movement::PlayerInputQueue;
-
-        // Get or insert the input queue
-        if let Some(mut queue) = self
-            .server
-            .world_mut()
-            .get_resource_mut::<PlayerInputQueue>()
-        {
-            queue.inputs.insert(player_id, input);
-        }
-    }
-
-    /// Loads a world from file.
-    pub fn load_world(&mut self, path: &std::path::Path) -> Result<(), ServerError> {
-        use game_server::savegame::load_world_from_file;
-
-        load_world_from_file(self.server.world_mut(), path)
-            .map_err(|e| ServerError::Config(format!("Failed to load world: {}", e)))?;
-
-        info!("Loaded world from {:?}", path);
-        Ok(())
-    }
-
-    /// Saves the world to file.
-    pub fn save_world(&mut self, path: &std::path::Path) -> Result<(), ServerError> {
-        use game_server::savegame::save_world_to_file;
-
-        save_world_to_file(self.server.world_mut(), path)
-            .map_err(|e| ServerError::Config(format!("Failed to save world: {}", e)))?;
-
-        info!("Saved world to {:?}", path);
-        Ok(())
-    }
-}
-
-/// System function to tick the embedded server.
+/// Starts an embedded server in Singleplayer mode.
 ///
-/// Add this to your Bevy app's FixedUpdate schedule to automatically tick the server.
-pub fn tick_embedded_server(mut server: ResMut<EmbeddedServer>) {
-    server.tick();
+/// This creates a GameServer with only loopback transport (no network overhead).
+/// The server runs in a separate thread at 20 TPS.
+///
+/// # Returns
+/// A tuple of (ServerHandle, LoopbackClient) to insert as Bevy resources.
+pub fn start_singleplayer_server() -> (ServerHandle, LoopbackClient) {
+    info!("Starting embedded server in Singleplayer mode");
+
+    // Create loopback transport pair
+    let loopback_pair = TransportOrchestrator::create_loopback_pair();
+
+    // Start the server with only loopback transport
+    let mut handle = ServerHandle::start_embedded(
+        loopback_pair.client,
+        loopback_pair.server,
+        None, // No external transport
+    );
+
+    // Extract the loopback client for the host player
+    let loopback_client = handle
+        .take_loopback_client()
+        .expect("Loopback client should be available");
+
+    (handle, LoopbackClient(loopback_client))
+}
+
+/// Starts an embedded server in LAN/WAN multiplayer mode.
+///
+/// This creates a GameServer with loopback transport for the host player
+/// and QUIC transport for remote clients.
+///
+/// # Arguments
+/// * `bind_address` - The address to bind the QUIC server to (e.g., "0.0.0.0:7777")
+///
+/// # Returns
+/// A tuple of (ServerHandle, LoopbackClient) to insert as Bevy resources.
+pub fn start_multiplayer_server(
+    bind_address: &str,
+) -> Result<(ServerHandle, LoopbackClient), String> {
+    info!(
+        "Starting embedded server in Multiplayer mode on {}",
+        bind_address
+    );
+
+    // Create loopback transport pair for the host
+    let loopback_pair = TransportOrchestrator::create_loopback_pair();
+
+    // Create QUIC transport for remote clients
+    let endpoint_config = server::ServerEndpointConfiguration::from_string(bind_address)
+        .map_err(|e| format!("Invalid bind address: {}", e))?;
+
+    let channels = game_server::protocol::channels::create_gameplay_channels();
+
+    let capabilities = shared::TransportCapabilities::new(
+        true, // reliable_streams
+        true, // unreliable_streams
+        true, // datagrams
+        8,    // max_channels
+    );
+
+    let quic = game_server::QuicTransport::new(endpoint_config, channels, capabilities);
+    let external = ExternalTransport::Quic(quic);
+
+    // Start the server with loopback + QUIC
+    let mut handle =
+        ServerHandle::start_embedded(loopback_pair.client, loopback_pair.server, Some(external));
+
+    // Extract the loopback client for the host player
+    let loopback_client = handle
+        .take_loopback_client()
+        .expect("Loopback client should be available");
+
+    Ok((handle, LoopbackClient(loopback_client)))
+}
+
+/// System that monitors the server state and logs changes.
+///
+/// Add this to your app for debugging server lifecycle.
+pub fn monitor_server_state(handle: Option<Res<ServerHandle>>) {
+    if let Some(handle) = handle {
+        let state = handle.state();
+        debug!("Server state: {:?}", state);
+    }
+}
+
+/// System to gracefully shutdown the server when the app exits.
+pub fn shutdown_server(mut commands: Commands, handle: Option<Res<ServerHandle>>) {
+    if let Some(handle) = handle {
+        info!("Shutting down server...");
+        handle.shutdown();
+        commands.remove_resource::<ServerHandle>();
+    }
+}
+
+/// Example: System to open the server to LAN.
+///
+/// This can be called from a UI button or hotkey to dynamically open
+/// a singleplayer game to multiplayer.
+pub fn open_to_lan(server_handle: Res<ServerHandle>) {
+    info!("Opening server to LAN on port 7777...");
+
+    // Create QUIC transport configuration
+    let endpoint_config = match server::ServerEndpointConfiguration::from_string("0.0.0.0:7777") {
+        Ok(config) => config,
+        Err(e) => {
+            error!("Failed to create endpoint config: {}", e);
+            return;
+        }
+    };
+
+    let channels = game_server::protocol::channels::create_gameplay_channels();
+    let capabilities = shared::TransportCapabilities::new(
+        true, // reliable_streams
+        true, // unreliable_streams
+        true, // datagrams
+        8,    // max_channels
+    );
+
+    let quic = game_server::QuicTransport::new(endpoint_config, channels, capabilities);
+
+    if let Err(e) = server_handle.add_external(ExternalTransport::Quic(quic)) {
+        error!("Failed to add external transport: {}", e);
+    } else {
+        info!("Server successfully opened to LAN!");
+    }
 }

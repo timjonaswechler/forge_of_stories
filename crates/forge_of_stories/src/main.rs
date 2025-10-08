@@ -2,12 +2,13 @@ mod fos_app;
 mod server;
 
 use crate::fos_app::FOSApp;
-use crate::server::{EmbeddedServer, ServerMode};
+use crate::server::{LoopbackClient, start_multiplayer_server, start_singleplayer_server};
 use app::AppBuilder;
 use bevy::asset::uuid;
 use bevy::{color::palettes::basic::*, input_focus::InputFocus, log::LogPlugin, prelude::*};
 use client::transport::{ClientTransport, ConnectTarget, QuicClientTransport};
-use shared::{TransportCapabilities, channels::ChannelsConfiguration};
+use game_server::ServerHandle;
+use shared::TransportCapabilities;
 
 /// Game state tracking where we are in the application flow.
 #[derive(States, Debug, Clone, PartialEq, Eq, Hash, Default)]
@@ -21,11 +22,9 @@ enum GameState {
 fn main() {
     let mut app = AppBuilder::<FOSApp>::new(env!("CARGO_PKG_VERSION"))
         .expect("Failed to initialize application")
-        .build_with_bevy(|mut app, _ctx| {
+        .build_with_bevy(|mut app, ctx| {
             // Insert save path as resource (in current directory for now)
-            let save_path = std::env::current_dir()
-                .unwrap_or_default()
-                .join("world.save.ron");
+            let save_path = ctx.path_context().saves_dir().join("world.save.ron");
             app.insert_resource(SavePath(save_path));
             app.add_plugins(
                 DefaultPlugins
@@ -58,20 +57,20 @@ fn main() {
             )
             .add_systems(OnExit(GameState::JoinMenu), cleanup::<JoinMenuUI>)
             .add_systems(OnEnter(GameState::InGame), enter_game)
-            .add_systems(
-                Update,
-                (handle_player_input_host, sync_server_state)
-                    .run_if(in_state(GameState::InGame))
-                    .run_if(resource_exists::<EmbeddedServer>)
-                    .run_if(resource_exists::<LoopbackClient>),
-            )
-            .add_systems(
-                Update,
-                (handle_player_input, sync_server_state)
-                    .run_if(in_state(GameState::InGame))
-                    .run_if(resource_exists::<EmbeddedServer>)
-                    .run_if(not(resource_exists::<LoopbackClient>)),
-            )
+            // .add_systems(
+            //     Update,
+            //     (handle_player_input_host, sync_server_state)
+            //         .run_if(in_state(GameState::InGame))
+            //         .run_if(resource_exists::<EmbeddedServer>)
+            //         .run_if(resource_exists::<LoopbackClient>),
+            // )
+            // .add_systems(
+            //     Update,
+            //     (handle_player_input, sync_server_state)
+            //         .run_if(in_state(GameState::InGame))
+            //         .run_if(resource_exists::<EmbeddedServer>)
+            //         .run_if(not(resource_exists::<LoopbackClient>)),
+            // )
             .add_systems(
                 Update,
                 (
@@ -81,10 +80,6 @@ fn main() {
                 )
                     .run_if(in_state(GameState::InGame))
                     .run_if(resource_exists::<GameClient>),
-            )
-            .add_systems(
-                FixedUpdate,
-                crate::server::tick_embedded_server.run_if(resource_exists::<EmbeddedServer>),
             );
             app
         });
@@ -239,15 +234,13 @@ enum MenuAction {
 /// System that runs when entering the InGame state
 fn enter_game(
     mut commands: Commands,
-    server: Option<Res<EmbeddedServer>>,
+    server: Option<Res<ServerHandle>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let (server_mode_text, entity_count) = if let Some(server) = server.as_ref() {
-        info!("Entered game state! Server mode: {:?}", server.mode());
-        let count = server.world().entities().len();
-        info!("Server world has {} entities", count);
-        (Some(server.mode().clone()), count)
+    let (server_state_text, _entity_count) = if let Some(server) = server.as_ref() {
+        info!("Entered game state! Server state: {:?}", server.state());
+        (Some(format!("{:?}", server.state())), 0)
     } else {
         info!("Entered game state as client (no server)");
         (None, 0)
@@ -272,23 +265,9 @@ fn enter_game(
     ));
 
     // Spawn in-game UI with server info
-    let ui_text = if let Some(mode) = server_mode_text {
-        match mode {
-            ServerMode::Loopback => {
-                format!("Singleplayer\nEntities: {}", entity_count)
-            }
-            ServerMode::Quic { port, .. } => {
-                // Get local IP address for LAN hosting
-                let local_ip = get_local_ip().unwrap_or_else(|| "Unknown".to_string());
-                format!(
-                    "Hosting LAN Game\nServer: {}:{}\nEntities: {}\n\nShare this IP with other players!",
-                    local_ip, port, entity_count
-                )
-            }
-            ServerMode::Steam { .. } => {
-                format!("Steam Multiplayer\nEntities: {}", entity_count)
-            }
-        }
+    let ui_text = if let Some(mode) = server_state_text {
+        // TODO: Determine server mode from ServerHandle
+        format!("Game Running\nServer: {:?}", mode)
     } else {
         // Client-only mode (joined someone else's server)
         "Connected to Server\n\nPlaying as client".to_string()
@@ -328,25 +307,28 @@ struct GameClient {
     tick_counter: u64,
 }
 
-/// Loopback client transport for host player in LAN games.
-#[derive(Resource)]
-struct LoopbackClient(shared::transport::LoopbackClientTransport);
-
 /// System that syncs server world state to client rendering.
 ///
-/// Runs every frame, reads server entities and spawns/updates corresponding client entities.
+/// NOTE: This system is currently disabled because ServerHandle doesn't expose
+/// direct world access. We need to implement a proper state synchronization
+/// mechanism via the transport layer instead.
+///
+/// TODO: Remove this function or refactor to use network messages
+#[allow(dead_code)]
 fn sync_server_state(
-    mut commands: Commands,
-    mut server: ResMut<EmbeddedServer>,
-    mut entity_map: ResMut<ServerToClientEntityMap>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut client_transforms: Query<&mut Transform>,
+    _commands: Commands,
+    _entity_map: ResMut<ServerToClientEntityMap>,
+    _meshes: ResMut<Assets<Mesh>>,
+    _materials: ResMut<Assets<StandardMaterial>>,
+    _client_transforms: Query<&mut Transform>,
 ) {
+    // NOTE: ServerHandle doesn't expose world access anymore
+    // This code is disabled and needs refactoring to use network messages
+    /*
     use game_server::protocol::PlayerShape;
     use game_server::world::{Player, Position};
 
-    let server_world = server.world_mut();
+    let server_world = server_handle.world_mut();
 
     // Sync players
     for (server_entity, (player, position, shape)) in server_world
@@ -366,8 +348,7 @@ fn sync_server_state(
             // Spawn new client entity for this player
             let mesh = match shape {
                 PlayerShape::Cube => meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
-                PlayerShape::Sphere => meshes.add(Sphere::new(0.5).mesh().ico(5).unwrap()),
-                PlayerShape::Capsule => meshes.add(Capsule3d::new(0.3, 1.0)),
+                PlayerShape::Capsule => meshes.add(Capsule3d::new(0.5, 1.0)),
             };
 
             let client_entity = commands
@@ -388,6 +369,7 @@ fn sync_server_state(
             );
         }
     }
+    */
 }
 
 /// Marker component for client-side player rendering.
@@ -402,27 +384,30 @@ struct SavePath(std::path::PathBuf);
 
 /// System that captures player input for the host player (uses loopback).
 /// The host player is always client ID 1.
+/// Handles player input for the host player using loopback transport.
+///
+/// NOTE: This system is currently disabled because we need to refactor it
+/// to send input via the LoopbackClient transport instead of directly
+/// accessing the server world.
+///
+/// TODO: Refactor to use loopback.send() for player input
+#[allow(dead_code)]
 fn handle_player_input_host(
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mut server: ResMut<EmbeddedServer>,
+    _keyboard: Res<ButtonInput<KeyCode>>,
     _loopback: Res<LoopbackClient>,
-    save_path: Res<SavePath>,
+    _save_path: Res<SavePath>,
 ) {
+    // NOTE: This code is disabled and needs refactoring to send input via loopback transport
+    /*
     use game_server::movement::PlayerInput;
 
     // Handle save/load hotkeys
     if keyboard.just_pressed(KeyCode::F5) {
-        match server.save_world(&save_path.0) {
-            Ok(_) => info!("World saved to {:?}", save_path.0),
-            Err(e) => error!("Failed to save world: {}", e),
-        }
+        // TODO: Implement save via server command
     }
 
     if keyboard.just_pressed(KeyCode::F9) {
-        match server.load_world(&save_path.0) {
-            Ok(_) => info!("World loaded from {:?}", save_path.0),
-            Err(e) => error!("Failed to load world: {}", e),
-        }
+        // TODO: Implement load via server command
     }
 
     // Calculate movement direction from WASD/Arrow keys
@@ -451,29 +436,29 @@ fn handle_player_input_host(
     // Send input to server (host player uses HOST_CLIENT_ID)
     let input = PlayerInput { direction, jump };
     server.send_player_input(game_server::HOST_CLIENT_ID, input);
+    */
 }
 
 /// System that captures player input and sends it to the server (singleplayer).
-fn handle_player_input(
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mut server: ResMut<EmbeddedServer>,
-    save_path: Res<SavePath>,
-) {
+/// Handles player input for non-host players.
+///
+/// NOTE: This system is currently disabled because we need to refactor it
+/// to send input via the appropriate client transport.
+///
+/// TODO: Refactor to use client transport for player input
+#[allow(dead_code)]
+fn handle_player_input(_keyboard: Res<ButtonInput<KeyCode>>, _save_path: Res<SavePath>) {
+    // NOTE: This code is disabled and needs refactoring to send input via client transport
+    /*
     use game_server::movement::PlayerInput;
 
     // Handle save/load hotkeys
     if keyboard.just_pressed(KeyCode::F5) {
-        match server.save_world(&save_path.0) {
-            Ok(_) => info!("World saved to {:?}", save_path.0),
-            Err(e) => error!("Failed to save world: {}", e),
-        }
+        // TODO: Implement save via server command
     }
 
     if keyboard.just_pressed(KeyCode::F9) {
-        match server.load_world(&save_path.0) {
-            Ok(_) => info!("World loaded from {:?}", save_path.0),
-            Err(e) => error!("Failed to load world: {}", e),
-        }
+        // TODO: Implement load via server command
     }
 
     // Calculate movement direction from WASD/Arrow keys
@@ -502,6 +487,7 @@ fn handle_player_input(
     // Send input to server (singleplayer also uses HOST_CLIENT_ID)
     let input = PlayerInput { direction, jump };
     server.send_player_input(game_server::HOST_CLIENT_ID, input);
+    */
 }
 
 /// System that captures player input and sends it to the server over the network.
@@ -578,37 +564,21 @@ fn button_system(
                 match action {
                     MenuAction::Singleplayer => {
                         info!("Starting singleplayer game...");
-                        match EmbeddedServer::new(ServerMode::Loopback) {
-                            Ok(server) => {
-                                info!("Embedded server started successfully");
-                                commands.insert_resource(server);
-                                next_state.set(GameState::InGame);
-                            }
-                            Err(e) => {
-                                error!("Failed to start embedded server: {}", e);
-                            }
-                        }
+                        let (server_handle, loopback_client) = start_singleplayer_server();
+                        info!("Embedded server started successfully in separate thread");
+                        commands.insert_resource(server_handle);
+                        commands.insert_resource(loopback_client);
+                        next_state.set(GameState::InGame);
                     }
                     MenuAction::HostLAN => {
                         info!("Hosting LAN game...");
                         // TODO: Show server config UI (P6.2)
                         // For now, use default settings
-                        match EmbeddedServer::new(ServerMode::Quic {
-                            bind_address: "0.0.0.0".to_string(),
-                            port: 7777,
-                        }) {
-                            Ok(mut server) => {
-                                info!("LAN server started on port 7777");
-
-                                // Take the loopback client for the host player
-                                if let Some(loopback_client) = server.take_loopback_client() {
-                                    info!("Host player using loopback transport");
-                                    commands.insert_resource(LoopbackClient(loopback_client));
-                                } else {
-                                    error!("Failed to get loopback client from server");
-                                }
-
-                                commands.insert_resource(server);
+                        match start_multiplayer_server("0.0.0.0:7777") {
+                            Ok((server_handle, loopback_client)) => {
+                                info!("LAN server started on port 7777 in separate thread");
+                                commands.insert_resource(server_handle);
+                                commands.insert_resource(loopback_client);
                                 next_state.set(GameState::InGame);
                             }
                             Err(e) => {
@@ -1054,11 +1024,8 @@ fn receive_server_messages(
                             game_server::protocol::PlayerShape::Cube => {
                                 meshes.add(Cuboid::new(1.0, 1.0, 1.0))
                             }
-                            game_server::protocol::PlayerShape::Sphere => {
-                                meshes.add(Sphere::new(0.5).mesh().ico(5).unwrap())
-                            }
                             game_server::protocol::PlayerShape::Capsule => {
-                                meshes.add(Capsule3d::new(0.4, 1.0))
+                                meshes.add(Capsule3d::new(0.5, 1.0))
                             }
                         };
 

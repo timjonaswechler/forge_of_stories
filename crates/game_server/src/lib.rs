@@ -8,13 +8,19 @@
 //! By centralizing server logic here, we ensure both deployment modes run identical
 //! gameplay code, preventing desync and reducing maintenance overhead.
 
+use std::collections::HashSet;
+use std::sync::Arc;
+use std::sync::atomic::Ordering;
+use std::thread::{self, JoinHandle};
+use std::time::Duration;
+
 use bevy::ecs::schedule::Schedule;
 use bevy::ecs::world::World;
 use bevy::prelude::*;
 use server::transport::quic::QuicServerTransport;
 use server::transport::{ServerTransport, SteamServerTransport};
 use shared::ClientId;
-use shared::transport::LoopbackServerTransport;
+use shared::transport::{LoopbackClientTransport, LoopbackServerTransport};
 use uuid::Uuid;
 
 /// The host player always uses this client ID (UUID with all zeros)
@@ -33,65 +39,219 @@ pub mod world_setup;
 pub use server::transport::SteamServerTransport;
 pub use server::transport::quic::QuicServerTransport as QuicTransport;
 
-/// Plugin bundle containing all server-side gameplay systems.
-///
-/// This should be added to any Bevy App that needs to run server logic,
-/// whether it's a dedicated server or an embedded server.
-///
-/// # Example
-/// ```no_run
-/// use bevy::prelude::*;
-/// use game_server::ServerLogicPlugin;
-///
-/// App::new()
-///     .add_plugins(ServerLogicPlugin)
-///     .run();
-/// ```
-pub struct ServerLogicPlugin;
+// ==============================================================================
+// Server Control & Commands
+// ==============================================================================
 
-impl Plugin for ServerLogicPlugin {
-    fn build(&self, app: &mut App) {
-        app
-            // Add server tick rate configuration
-            .insert_resource(ServerConfig::default())
-            .insert_resource(movement::PlayerInputQueue::default())
-            // Configure system sets for server pipeline
-            .configure_sets(
-                FixedUpdate,
-                (
-                    ServerSet::Receive,
-                    ServerSet::Simulation,
-                    ServerSet::Replication,
-                    ServerSet::Transmit,
-                )
-                    .chain(),
-            )
-            // World initialization (runs once at startup)
-            .add_systems(Startup, world_setup::initialize_world)
-            .add_systems(
-                Startup,
-                world_setup::spawn_world.after(world_setup::initialize_world),
-            )
-            .add_systems(
-                FixedUpdate,
-                world_setup::mark_world_initialized
-                    .run_if(resource_exists::<world_setup::WorldInitialized>)
-                    .in_set(ServerSet::Simulation),
-            )
-            // Movement systems
-            .add_systems(
-                FixedUpdate,
-                movement::process_player_input.in_set(ServerSet::Receive),
-            )
-            .add_systems(
-                FixedUpdate,
-                movement::apply_velocity.in_set(ServerSet::Simulation),
-            )
-            // Server systems
-            .add_systems(
-                FixedUpdate,
-                systems::heartbeat_system.in_set(ServerSet::Simulation),
-            );
+/// Commands that can be sent to the server thread.
+#[derive(Debug)]
+pub enum ServerCommand {
+    /// Stop the server gracefully
+    Shutdown,
+    /// Pause the server (singleplayer only)
+    Pause,
+    /// Resume the server after pausing
+    Resume,
+    /// Dynamisch External Transport hinzufügen
+    AddExternal(ExternalTransport),
+    /// External Transport entfernen
+    RemoveExternal,
+}
+
+/// Handle to control a running server thread.
+///
+/// This is the interface between the Bevy app and the GameServer running in its own thread.
+/// It provides methods to start, stop, and communicate with the server.
+#[derive(Resource)]
+pub struct ServerHandle {
+    /// Thread handle for the server (None if not running)
+    thread_handle: Option<JoinHandle<()>>,
+
+    /// Channel to send commands to the server thread
+    command_tx: crossbeam::channel::Sender<ServerCommand>,
+
+    /// Loopback client transport for the host player
+    /// This is taken out and inserted into the Bevy app
+    loopback_client: Option<LoopbackClientTransport>,
+
+    /// Current server state (shared with thread via Arc)
+    state: Arc<AtomicServerState>,
+
+    /// Server mode information (without owning transports)
+    mode_info: ServerModeInfo,
+}
+
+/// Atomic version of ServerState for thread-safe access.
+struct AtomicServerState {
+    state: std::sync::atomic::AtomicU8,
+}
+
+impl AtomicServerState {
+    fn new(state: ServerState) -> Self {
+        Self {
+            state: std::sync::atomic::AtomicU8::new(state as u8),
+        }
+    }
+
+    fn load(&self) -> ServerState {
+        match self.state.load(Ordering::Relaxed) {
+            0 => ServerState::Starting,
+            1 => ServerState::Running,
+            2 => ServerState::Paused,
+            3 => ServerState::ShuttingDown,
+            4 => ServerState::Stopped,
+            _ => ServerState::Stopped,
+        }
+    }
+
+    fn store(&self, state: ServerState) {
+        self.state.store(state as u8, Ordering::Relaxed);
+    }
+}
+
+impl ServerHandle {
+    /// Starts a new embedded server in a separate thread.
+    ///
+    /// # Arguments
+    /// * `loopback` - Loopback transport for the host player
+    /// * `external` - Optional external transport (QUIC or Steam) for remote clients
+    ///
+    /// # Returns
+    /// A `ServerHandle` to control the server thread, with the loopback client transport available.
+    pub fn start_embedded(
+        loopback_client: LoopbackClientTransport,
+        loopback_server: LoopbackServerTransport,
+        external: Option<ExternalTransport>,
+    ) -> Self {
+        let (command_tx, command_rx) = crossbeam::channel::unbounded();
+        let state = Arc::new(AtomicServerState::new(ServerState::Starting));
+        let state_clone = state.clone();
+
+        let mode_info = if external.is_some() {
+            ServerModeInfo::Multiplayer
+        } else {
+            ServerModeInfo::Singleplayer
+        };
+
+        let mode = ServerMode::Embedded {
+            loopback: loopback_server,
+            external,
+        };
+
+        // Spawn the server thread
+        let thread_handle = thread::spawn(move || {
+            let mut server = GameServer::new_from_mode(mode);
+            server.run(command_rx, state_clone);
+        });
+
+        Self {
+            thread_handle: Some(thread_handle),
+            command_tx,
+            loopback_client: Some(loopback_client),
+            state,
+            mode_info,
+        }
+    }
+
+    /// Starts a new dedicated server in a separate thread.
+    ///
+    /// # Arguments
+    /// * `external` - QUIC transport for all clients
+    ///
+    /// # Returns
+    /// A `ServerHandle` to control the server thread.
+    pub fn start_dedicated(external: QuicServerTransport) -> Self {
+        let (command_tx, command_rx) = crossbeam::channel::unbounded();
+        let state = Arc::new(AtomicServerState::new(ServerState::Starting));
+        let state_clone = state.clone();
+
+        let mode = ServerMode::DedicatedQuic { external };
+
+        // Spawn the server thread
+        let thread_handle = thread::spawn(move || {
+            let mut server = GameServer::new_from_mode(mode);
+            server.run(command_rx, state_clone);
+        });
+
+        Self {
+            thread_handle: Some(thread_handle),
+            command_tx,
+            loopback_client: None,
+            state,
+            mode_info: ServerModeInfo::Dedicated,
+        }
+    }
+
+    /// Takes the loopback client transport (for use by the host player).
+    ///
+    /// This should be called once after starting an embedded server to connect the
+    /// host player to the server via the loopback transport.
+    pub fn take_loopback_client(&mut self) -> Option<LoopbackClientTransport> {
+        self.loopback_client.take()
+    }
+
+    // In ServerHandle
+    /// Adds an external transport (QUIC or Steam) to the server.
+    ///
+    /// This allows opening a singleplayer game to LAN/WAN multiplayer.
+    pub fn add_external(&self, external: ExternalTransport) -> Result<(), String> {
+        self.command_tx
+            .send(ServerCommand::AddExternal(external))
+            .map_err(|e| format!("Failed to send AddExternal command: {}", e))
+    }
+
+    /// Removes the external transport from the server.
+    ///
+    /// This closes the server to remote players, keeping only local connections.
+    pub fn remove_external(&self) -> Result<(), String> {
+        self.command_tx
+            .send(ServerCommand::RemoveExternal)
+            .map_err(|e| format!("Failed to send RemoveExternal command: {}", e))
+    }
+
+    /// Returns the current server state.
+    pub fn state(&self) -> ServerState {
+        self.state.load()
+    }
+
+    /// Sends a shutdown command to the server thread.
+    pub fn shutdown(&self) {
+        let _ = self.command_tx.send(ServerCommand::Shutdown);
+    }
+
+    /// Pauses the server (singleplayer only).
+    pub fn pause(&self) {
+        let _ = self.command_tx.send(ServerCommand::Pause);
+    }
+
+    /// Resumes the server after pausing.
+    pub fn resume(&self) {
+        let _ = self.command_tx.send(ServerCommand::Resume);
+    }
+
+    /// Waits for the server thread to finish (blocking).
+    ///
+    /// This should be called during shutdown to ensure clean termination.
+    pub fn join(mut self) -> Result<(), String> {
+        if let Some(handle) = self.thread_handle.take() {
+            handle
+                .join()
+                .map_err(|_| "Server thread panicked".to_string())
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl Drop for ServerHandle {
+    fn drop(&mut self) {
+        // Send shutdown command if the thread is still running
+        let _ = self.command_tx.send(ServerCommand::Shutdown);
+
+        // Wait for thread to finish (with timeout)
+        if let Some(handle) = self.thread_handle.take() {
+            let _ = handle.join();
+        }
     }
 }
 
@@ -99,11 +259,15 @@ impl Plugin for ServerLogicPlugin {
 // GameServer - Unified Server Implementation
 // ==============================================================================
 
-/// Resource holding the transport event receiver channel.
+/// Resource holding the transport event receiver and sender channels.
 ///
-/// The GameServer polls this in tick() to receive events from all transports.
+/// The GameServer polls the receiver in tick() to receive events from all transports.
+/// The sender is used when dynamically adding new transports at runtime.
 #[derive(Resource)]
-struct TransportEventReceiver(tokio::sync::mpsc::UnboundedReceiver<shared::TransportEvent>);
+struct TransportEventChannel {
+    receiver: tokio::sync::mpsc::UnboundedReceiver<shared::TransportEvent>,
+    sender: tokio::sync::mpsc::UnboundedSender<shared::TransportEvent>,
+}
 
 /// Unified game server implementation that can run in different modes.
 ///
@@ -127,6 +291,7 @@ pub struct GameServer {
     state: ServerState,
 }
 
+#[derive(Debug)]
 pub enum ExternalTransport {
     Quic(QuicServerTransport),
     Steam(SteamServerTransport),
@@ -146,20 +311,84 @@ pub enum ServerMode {
     DedicatedQuic { external: QuicServerTransport },
 }
 
+/// Information about the server mode (without owning transports).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ServerModeInfo {
+    /// Singleplayer (loopback only)
+    Singleplayer,
+    /// LAN/WAN multiplayer (loopback + external)
+    Multiplayer,
+    /// Dedicated server
+    Dedicated,
+}
+
 /// Current lifecycle state of the server.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum ServerState {
     /// Server is initializing
-    Starting,
+    Starting = 0,
     /// Server is running and processing ticks
-    Running,
+    Running = 1,
     /// Server is paused (embedded singleplayer only)
-    Paused,
+    Paused = 2,
     /// Server is shutting down gracefully
-    ShuttingDown,
+    ShuttingDown = 3,
     /// Server has stopped
-    Stopped,
+    Stopped = 4,
 }
+
+// ==============================================================================
+// Server Configuration & Resources
+// ==============================================================================
+
+/// System sets for server execution pipeline.
+///
+/// These run in `FixedUpdate` at a fixed tick rate (default: 20 TPS).
+#[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
+pub enum ServerSet {
+    /// Process incoming client inputs and commands.
+    Receive,
+    /// Run gameplay simulation (physics, AI, game rules).
+    Simulation,
+    /// Build state snapshots/deltas for clients.
+    Replication,
+    /// Send state updates to clients.
+    Transmit,
+    /// Control-Plane (Separate)
+    Control,
+}
+
+/// Server configuration resource.
+#[derive(Resource, Debug, Clone)]
+pub struct ServerConfig {
+    /// Target ticks per second (TPS).
+    pub tick_rate: f64,
+    /// Maximum number of connected clients.
+    pub max_clients: u32,
+}
+
+impl Default for ServerConfig {
+    fn default() -> Self {
+        Self {
+            tick_rate: 20.0,
+            max_clients: 16,
+        }
+    }
+}
+
+/// Server statistics resource (optional, for monitoring).
+#[derive(Resource, Debug, Default)]
+pub struct ServerStats {
+    /// Total number of ticks processed.
+    pub total_ticks: u64,
+    /// Number of currently connected clients.
+    pub connected_clients: u32,
+}
+
+// ==============================================================================
+// Server Configuration & Resources
+// ==============================================================================
 
 impl GameServer {
     /// Internal helper to initialize the server world and schedule.
@@ -207,18 +436,11 @@ impl GameServer {
         schedule.add_systems(systems::heartbeat_system.in_set(ServerSet::Simulation));
     }
 
-    /// Creates a new embedded server instance with QUIC transport.
+    /// Creates a new GameServer from a ServerMode.
     ///
-    /// Use this when the client application wants to host a game over LAN/WAN.
-    /// The loopback transport handles the local host player, while QUIC handles remote clients.
-    ///
-    /// # Arguments
-    /// * `loopback` - Loopback transport for the host player
-    /// * `quic` - QUIC transport for remote clients
-    pub fn start_embedded(
-        mut loopback: LoopbackServerTransport,
-        mut external: Option<ExternalTransport>,
-    ) -> Self {
+    /// This is an internal method used by ServerHandle to create the server instance
+    /// in the server thread. Takes ownership of the transports.
+    fn new_from_mode(mode: ServerMode) -> Self {
         let mut world = World::new();
         let mut schedule = Schedule::default();
 
@@ -227,59 +449,63 @@ impl GameServer {
         // Create a channel for transport events
         let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
 
-        // Store the event receiver in a resource so we can poll it in tick()
-        world.insert_resource(TransportEventReceiver(event_rx));
+        // Store the event receiver and sender in a resource
+        world.insert_resource(TransportEventChannel {
+            receiver: event_rx,
+            sender: event_tx.clone(),
+        });
 
-        // Start the loopback transport ONLY if we have external transport (LAN mode)
-        // In singleplayer, we don't start it because we inject the event manually
-        let is_singleplayer = external.is_none();
-        if !is_singleplayer {
-            if let Err(e) = loopback.start(event_tx.clone()) {
-                tracing::error!("Failed to start loopback transport: {:?}", e);
-            } else {
-                tracing::info!("Started loopback transport for LAN host");
-            }
-        }
-
-        // Start external transport if present
-        if let Some(ref mut ext) = external {
-            match ext {
-                ExternalTransport::Quic(quic) => {
-                    if let Err(e) = quic.start(event_tx.clone()) {
-                        tracing::error!("Failed to start QUIC transport: {:?}", e);
-                        // Return error instead of continuing
-                        panic!("Failed to start QUIC transport: {:?}", e);
+        // Start transports based on mode
+        let mut mode = mode; // Make it mutable
+        match &mut mode {
+            ServerMode::Embedded { loopback, external } => {
+                // Always start the loopback transport for the host player
+                if let Err(e) = loopback.start(event_tx.clone()) {
+                    tracing::error!("Failed to start loopback transport: {:?}", e);
+                } else {
+                    let mode_str = if external.is_some() {
+                        "multiplayer"
                     } else {
-                        tracing::info!("QUIC transport started successfully");
+                        "singleplayer"
+                    };
+                    tracing::info!("Started loopback transport for {} host", mode_str);
+                }
+
+                // Start external transport if present
+                if let Some(ext) = external {
+                    match ext {
+                        ExternalTransport::Quic(quic) => {
+                            if let Err(e) = quic.start(event_tx.clone()) {
+                                tracing::error!("Failed to start QUIC transport: {:?}", e);
+                                // Return error instead of continuing
+                                panic!("Failed to start QUIC transport: {:?}", e);
+                            } else {
+                                tracing::info!("QUIC transport started successfully");
+                            }
+                        }
+                        ExternalTransport::Steam(_steam) => {
+                            tracing::error!("Steam transport not yet implemented");
+                        }
                     }
                 }
-                ExternalTransport::Steam(_steam) => {
-                    tracing::error!("Steam transport not yet implemented");
+
+                tracing::info!("GameServer starting in Embedded mode");
+            }
+            ServerMode::DedicatedQuic { external } => {
+                if let Err(e) = external.start(event_tx.clone()) {
+                    tracing::error!("Failed to start QUIC transport: {:?}", e);
+                    panic!("Failed to start QUIC transport: {:?}", e);
+                } else {
+                    tracing::info!("Dedicated QUIC server started successfully");
                 }
             }
         }
 
-        // In singleplayer mode (no external transport), inject a PeerConnected event
-        // for the loopback client since there's no actual network connection
-        if external.is_none() {
-            if let Some(mut events) = world.get_resource_mut::<network::NetworkEvents>() {
-                events.events.push(shared::TransportEvent::PeerConnected {
-                    client: HOST_CLIENT_ID,
-                });
-                tracing::info!(
-                    "Injected PeerConnected event for singleplayer loopback client (ID: {})",
-                    HOST_CLIENT_ID
-                );
-            }
-        }
-
-        tracing::info!("GameServer starting in Embedded mode");
-
         Self {
-            mode: ServerMode::Embedded { loopback, external },
+            mode,
             world,
             schedule,
-            state: ServerState::Running, // Start in Running state immediately
+            state: ServerState::Starting,
         }
     }
 
@@ -321,27 +547,128 @@ impl GameServer {
         }
     }
 
-    /// Creates a new dedicated server instance with QUIC transport.
+    /// Main server loop that runs in a separate thread.
     ///
-    /// Use this for standalone dedicated servers accessible via IP:Port.
-    /// No local player, only remote clients via QUIC.
+    /// This function runs the server at a fixed tick rate (20 TPS) and processes commands
+    /// from the command channel.
     ///
     /// # Arguments
-    /// * `external` - QUIC transport for all clients
-    pub fn start_dedicated(external: QuicServerTransport) -> Self {
-        let mut world = World::new();
-        let mut schedule = Schedule::default();
+    /// * `command_rx` - Receiver for server commands
+    /// * `state` - Shared atomic state for thread-safe state updates
+    pub fn run(
+        &mut self,
+        command_rx: crossbeam::channel::Receiver<ServerCommand>,
+        state: Arc<AtomicServerState>,
+    ) {
+        tracing::info!("GameServer thread started");
 
-        Self::initialize_server(&mut world, &mut schedule);
+        // Update state to Running
+        self.state = ServerState::Running;
+        state.store(ServerState::Running);
 
-        tracing::info!("GameServer starting in Dedicated mode");
+        // Target tick duration (20 TPS = 50ms per tick)
+        let tick_duration = Duration::from_millis(50);
 
-        Self {
-            mode: ServerMode::DedicatedQuic { external },
-            world,
-            schedule,
-            state: ServerState::Running, // Start in Running state immediately
+        loop {
+            let tick_start = std::time::Instant::now();
+
+            // Process commands from the control channel
+            match command_rx.try_recv() {
+                Ok(ServerCommand::Shutdown) => {
+                    tracing::info!("Shutdown command received");
+                    self.stop();
+                    state.store(ServerState::Stopped);
+                    break;
+                }
+                Ok(ServerCommand::Pause) => {
+                    tracing::info!("Pause command received");
+                    self.state = ServerState::Paused;
+                    state.store(ServerState::Paused);
+                }
+                Ok(ServerCommand::Resume) => {
+                    tracing::info!("Resume command received");
+                    self.state = ServerState::Running;
+                    state.store(ServerState::Running);
+                }
+                Ok(ServerCommand::AddExternal(mut transport)) => {
+                    tracing::info!("AddExternal command received");
+                    if let ServerMode::Embedded { external, .. } = &mut self.mode {
+                        if external.is_some() {
+                            tracing::warn!("External transport already exists, replacing it");
+                        }
+
+                        // Get event channel sender for the transport
+                        if let Some(event_channel) =
+                            self.world.get_resource::<TransportEventChannel>()
+                        {
+                            let event_tx = event_channel.sender.clone();
+
+                            // Start the transport
+                            match &mut transport {
+                                ExternalTransport::Quic(quic) => {
+                                    if let Err(e) = quic.start(event_tx) {
+                                        tracing::error!("Failed to start QUIC transport: {:?}", e);
+                                        return; // Don't set external if start failed
+                                    }
+                                    tracing::info!("QUIC transport started successfully");
+                                }
+                                ExternalTransport::Steam(_steam) => {
+                                    tracing::error!("Steam transport not yet implemented");
+                                    return;
+                                }
+                            }
+                        }
+
+                        *external = Some(transport);
+                        tracing::info!("External transport added and started");
+                    } else {
+                        tracing::error!("Cannot add external transport to dedicated server");
+                    }
+                }
+                Ok(ServerCommand::RemoveExternal) => {
+                    tracing::info!("RemoveExternal command received");
+                    if let ServerMode::Embedded { external, .. } = &mut self.mode {
+                        if external.is_some() {
+                            // TODO: Properly disconnect all external clients before removing
+                            *external = None;
+                            tracing::info!("External transport removed");
+                        } else {
+                            tracing::warn!("No external transport to remove");
+                        }
+                    } else {
+                        tracing::error!("Cannot remove external transport from dedicated server");
+                    }
+                }
+                Err(crossbeam::channel::TryRecvError::Empty) => {
+                    // No command, continue
+                }
+                Err(crossbeam::channel::TryRecvError::Disconnected) => {
+                    tracing::warn!("Command channel disconnected, shutting down");
+                    self.stop();
+                    state.store(ServerState::Stopped);
+                    break;
+                }
+            }
+
+            // Only tick if running
+            if self.state == ServerState::Running {
+                self.tick();
+            }
+
+            // Sleep for the remaining tick time
+            let tick_elapsed = tick_start.elapsed();
+            if tick_elapsed < tick_duration {
+                std::thread::sleep(tick_duration - tick_elapsed);
+            } else {
+                tracing::warn!(
+                    "Server tick took longer than target duration: {:?} > {:?}",
+                    tick_elapsed,
+                    tick_duration
+                );
+            }
         }
+
+        tracing::info!("GameServer thread stopped");
     }
 
     /// Advances the server simulation by one tick.
@@ -359,9 +686,9 @@ impl GameServer {
 
         // Poll transport events and add them to NetworkEvents
         let mut incoming_events = Vec::new();
-        if let Some(mut event_receiver) = self.world.get_resource_mut::<TransportEventReceiver>() {
+        if let Some(mut event_channel) = self.world.get_resource_mut::<TransportEventChannel>() {
             // Drain all available events from the transport channel
-            while let Ok(event) = event_receiver.0.try_recv() {
+            while let Ok(event) = event_channel.receiver.try_recv() {
                 incoming_events.push(event);
             }
         }
@@ -399,7 +726,7 @@ impl GameServer {
             Vec::new()
         };
 
-        let connected_client_ids: Vec<Uuid> = self
+        let connected_client_ids: HashSet<Uuid> = self
             .world
             .get_resource::<network::ConnectedClients>()
             .map(|cc| cc.clients.clone())
@@ -562,68 +889,23 @@ impl GameServer {
     pub fn world_mut(&mut self) -> &mut World {
         &mut self.world
     }
-}
 
-// ==============================================================================
-// Server Configuration & Resources
-// ==============================================================================
-
-/// System sets for server execution pipeline.
-///
-/// These run in `FixedUpdate` at a fixed tick rate (default: 20 TPS).
-#[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
-pub enum ServerSet {
-    /// Process incoming client inputs and commands.
-    Receive,
-    /// Run gameplay simulation (physics, AI, game rules).
-    Simulation,
-    /// Build state snapshots/deltas for clients.
-    Replication,
-    /// Send state updates to clients.
-    Transmit,
-    /// Control-Plane (Separate)
-    Control,
-}
-
-/// Server configuration resource.
-#[derive(Resource, Debug, Clone)]
-pub struct ServerConfig {
-    /// Target ticks per second (TPS).
-    pub tick_rate: f64,
-    /// Maximum number of connected clients.
-    pub max_clients: u32,
-}
-
-impl Default for ServerConfig {
-    fn default() -> Self {
-        Self {
-            tick_rate: 20.0,
-            max_clients: 16,
-        }
+    /// Pauses the server (internal, called by run loop).
+    fn pause(&mut self) {
+        self.state = ServerState::Paused;
+        tracing::info!("Server paused");
     }
-}
 
-/// Server statistics resource (optional, for monitoring).
-#[derive(Resource, Debug, Default)]
-pub struct ServerStats {
-    /// Total number of ticks processed.
-    pub total_ticks: u64,
-    /// Number of currently connected clients.
-    pub connected_clients: u32,
+    /// Resumes the server (internal, called by run loop).
+    fn resume(&mut self) {
+        self.state = ServerState::Running;
+        tracing::info!("Server resumed");
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_server_plugin_builds() {
-        let mut app = App::new();
-        app.add_plugins(ServerLogicPlugin);
-
-        // Verify config resource exists
-        assert!(app.world().contains_resource::<ServerConfig>());
-    }
 
     #[test]
     fn test_server_config_defaults() {
