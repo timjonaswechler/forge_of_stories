@@ -745,10 +745,9 @@ impl GameServer {
             };
 
             // Determine which channel to use (for now, use channel 0)
-            let channel = 0;
 
             let out_msg = shared::OutgoingMessage {
-                channel,
+                channel: message.channel(),
                 payload: payload.clone(),
             };
 
@@ -757,13 +756,13 @@ impl GameServer {
                 tracing::debug!(
                     "Sending message to client {} on channel {}, {} bytes",
                     target,
-                    channel,
+                    message.channel(),
                     payload.len()
                 );
             } else {
                 tracing::debug!(
                     "Broadcasting message to all clients on channel {}, {} bytes",
-                    channel,
+                    message.channel(),
                     payload.len()
                 );
             }

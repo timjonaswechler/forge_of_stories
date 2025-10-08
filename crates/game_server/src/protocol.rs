@@ -8,6 +8,7 @@
 
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
+use shared::channels::ChannelId;
 
 // ============================================================================
 // Shared Game Types
@@ -109,6 +110,21 @@ pub enum GameplayMessage {
 
     // Client → Server
     PlayerInput(PlayerInputMessage),
+}
+
+impl GameplayMessage {
+    pub const CHANNELS: [(ChannelId, &'static str); 3] = [
+        (channels::GAMEPLAY_EVENTS, "PlayerSpawn|PlayerDespawn"),
+        (channels::PLAYER_INPUT, "PlayerInput"),
+        (channels::WORLD_STATE, "WorldState"),
+    ];
+    pub fn channel(&self) -> ChannelId {
+        match self {
+            Self::PlayerSpawn(_) | Self::PlayerDespawn(_) => channels::GAMEPLAY_EVENTS,
+            Self::PlayerInput(_) => channels::PLAYER_INPUT,
+            Self::WorldState(_) => channels::WORLD_STATE,
+        }
+    }
 }
 
 // ============================================================================
