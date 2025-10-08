@@ -48,7 +48,6 @@ pub struct PlayerData {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum PlayerShapeData {
     Cube,
-    Sphere,
     Capsule,
 }
 
@@ -56,7 +55,6 @@ impl From<PlayerShape> for PlayerShapeData {
     fn from(shape: PlayerShape) -> Self {
         match shape {
             PlayerShape::Cube => PlayerShapeData::Cube,
-            PlayerShape::Sphere => PlayerShapeData::Sphere,
             PlayerShape::Capsule => PlayerShapeData::Capsule,
         }
     }
@@ -66,7 +64,6 @@ impl From<PlayerShapeData> for PlayerShape {
     fn from(data: PlayerShapeData) -> Self {
         match data {
             PlayerShapeData::Cube => PlayerShape::Cube,
-            PlayerShapeData::Sphere => PlayerShape::Sphere,
             PlayerShapeData::Capsule => PlayerShape::Capsule,
         }
     }

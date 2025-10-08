@@ -19,7 +19,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PlayerShape {
     Cube,
-    Sphere,
     Capsule,
 }
 
