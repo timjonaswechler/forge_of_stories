@@ -13,6 +13,8 @@ use bytes::Bytes;
 use quinn::{ClientConfig, Endpoint, crypto::rustls::QuicClientConfig};
 use quinn_proto::ConnectionStats;
 
+use rustls_platform_verifier::BuilderVerifierExt;
+use serde::Deserialize;
 use shared::{
     ClientId, DEFAULT_INTERNAL_MESSAGES_CHANNEL_SIZE, DEFAULT_KILL_MESSAGE_QUEUE_SIZE,
     DEFAULT_MESSAGE_QUEUE_SIZE, DEFAULT_QCHANNEL_MESSAGES_CHANNEL_SIZE, InternalConnectionRef,
@@ -23,8 +25,6 @@ use shared::{
     },
     error::{AsyncChannelError, ChannelCloseError, ChannelCreationError},
 };
-use rustls_platform_verifier::BuilderVerifierExt;
-use serde::Deserialize;
 use tokio::{
     runtime,
     sync::{
@@ -48,7 +48,7 @@ use super::{
 };
 
 /// Alias type for a local id of a connection
-pub type ConnectionLocalId = u64;
+pub type ConnectionLocalId = uuid::Uuid;
 
 /// Connection event raised when the client just connected to the server. Raised in the CoreStage::PreUpdate stage.
 #[derive(Event, Debug, Copy, Clone)]

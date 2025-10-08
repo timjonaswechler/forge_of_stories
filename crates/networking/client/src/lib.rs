@@ -1,24 +1,3 @@
-use std::{
-    collections::{
-        HashMap,
-        hash_map::{Iter, IterMut},
-    },
-    sync::Mutex,
-};
-
-use ::bevy::prelude::*;
-
-use tokio::{
-    runtime::{self},
-    sync::oneshot,
-};
-
-use shared::{
-    AsyncRuntime, ClientId, InternalConnectionRef,
-    channels::{ChannelAsyncMessage, ChannelsConfiguration},
-    error::AsyncChannelError,
-};
-
 use self::{
     certificate::{
         CertConnectionAbortEvent, CertInteractionEvent, CertTrustUpdateEvent, CertVerificationInfo,
@@ -30,6 +9,24 @@ use self::{
         async_connection_task, create_async_channels,
     },
 };
+use ::bevy::prelude::*;
+use shared::{
+    AsyncRuntime, ClientId, InternalConnectionRef,
+    channels::{ChannelAsyncMessage, ChannelsConfiguration},
+    error::AsyncChannelError,
+};
+use std::{
+    collections::{
+        HashMap,
+        hash_map::{Iter, IterMut},
+    },
+    sync::Mutex,
+};
+use tokio::{
+    runtime::{self},
+    sync::oneshot,
+};
+use uuid::Uuid;
 
 /// Bevy integration helpers (plugins, event channels)
 #[path = "bevy.rs"]
@@ -112,7 +109,7 @@ impl QuinnetClient {
         Self {
             connections: HashMap::new(),
             runtime: runtime_handle,
-            connection_local_id_gen: 0,
+            connection_local_id_gen: Uuid::new_v4(),
             default_connection_id: None,
         }
     }
@@ -204,8 +201,7 @@ impl QuinnetClient {
         channels_config: ChannelsConfiguration,
     ) -> Result<ConnectionLocalId, AsyncChannelError> {
         // Generate a local connection id
-        let local_id = self.connection_local_id_gen;
-        self.connection_local_id_gen += 1;
+        let local_id = Uuid::new_v4();
 
         let (
             bytes_from_server_send,

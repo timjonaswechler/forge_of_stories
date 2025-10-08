@@ -181,9 +181,12 @@ impl EmbeddedServer {
         &self.mode
     }
 
-    /// Returns a reference to the loopback pair (for host player connection).
-    pub fn loopback_client(&self) -> Option<&LoopbackClientTransport> {
-        self.loopback_client.as_ref()
+    /// Takes ownership of the loopback client (for host player connection).
+    ///
+    /// This is used when hosting a LAN game - the host uses the loopback client
+    /// to communicate with their own server without network overhead.
+    pub fn take_loopback_client(&mut self) -> Option<LoopbackClientTransport> {
+        self.loopback_client.take()
     }
 
     /// Returns a reference to the server world (for inspection/debugging).
@@ -213,7 +216,11 @@ impl EmbeddedServer {
     /// Sends player input to the server.
     ///
     /// This enqueues the input to be processed on the next server tick.
-    pub fn send_player_input(&mut self, player_id: u64, input: game_server::movement::PlayerInput) {
+    pub fn send_player_input(
+        &mut self,
+        player_id: shared::ClientId,
+        input: game_server::movement::PlayerInput,
+    ) {
         use game_server::movement::PlayerInputQueue;
 
         // Get or insert the input queue

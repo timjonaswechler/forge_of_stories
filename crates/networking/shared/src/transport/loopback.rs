@@ -295,6 +295,8 @@ mod tests {
 
     #[test]
     fn test_client_to_server_message() {
+        use uuid::uuid;
+
         let mut pair = LoopbackPair::new();
 
         // Setup event channels
@@ -319,7 +321,7 @@ mod tests {
             payload,
         } = &server_events[0]
         {
-            assert_eq!(*client, 0);
+            assert_eq!(*client, uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8"));
             assert_eq!(*channel, 0);
             assert_eq!(payload.as_ref(), b"Hello Server");
         } else {
@@ -329,6 +331,7 @@ mod tests {
 
     #[test]
     fn test_server_to_client_message() {
+        use uuid::uuid;
         let mut pair = LoopbackPair::new();
 
         let (client_event_tx, mut _client_event_rx) = unbounded_channel();
@@ -339,7 +342,9 @@ mod tests {
 
         // Send message from server to client
         let msg = OutgoingMessage::new(0, Bytes::from("Hello Client"));
-        pair.server.send(0, msg.clone()).unwrap();
+        pair.server
+            .send(uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8"), msg.clone())
+            .unwrap();
 
         // Client should receive the message
         let client_events = pair.client.poll_events();
@@ -355,6 +360,7 @@ mod tests {
 
     #[test]
     fn test_bidirectional_communication() {
+        use uuid::uuid;
         let mut pair = LoopbackPair::new();
 
         let (client_event_tx, mut _client_event_rx) = unbounded_channel();
@@ -371,7 +377,7 @@ mod tests {
 
             pair.server
                 .send(
-                    0,
+                    uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8"),
                     OutgoingMessage::new(0, Bytes::from(format!("S2C {}", i))),
                 )
                 .unwrap();

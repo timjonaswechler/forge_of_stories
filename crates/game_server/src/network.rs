@@ -57,7 +57,16 @@ pub fn process_network_events(
     for event in events.events.drain(..) {
         match event {
             TransportEvent::PeerConnected { client } => {
-                info!("Client {} connected, spawning player", client);
+                // Log which transport this client is using
+                let transport_type = if client == crate::HOST_CLIENT_ID {
+                    "loopback (host)"
+                } else {
+                    "QUIC (remote)"
+                };
+                info!(
+                    "Client {} connected via {}, spawning player",
+                    client, transport_type
+                );
 
                 // Add to connected clients list immediately (before Commands are applied)
                 connected_clients.clients.push(client);

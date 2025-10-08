@@ -1,6 +1,7 @@
 //! Player movement and physics systems.
 
 use bevy::prelude::*;
+use shared::ClientId;
 
 use crate::world::{Position, Velocity};
 
@@ -16,19 +17,16 @@ pub struct PlayerInput {
     pub jump: bool,
 }
 
-/// Resource storing pending player inputs (keyed by player ID).
+/// Resource storing pending player inputs (keyed by player/client ID).
 #[derive(Resource, Default)]
 pub struct PlayerInputQueue {
-    pub inputs: std::collections::HashMap<u64, PlayerInput>,
+    pub inputs: std::collections::HashMap<ClientId, PlayerInput>,
 }
 
 /// System that applies velocity to position (simple integration).
 ///
 /// Runs in the Simulation phase of the server tick.
-pub fn apply_velocity(
-    mut query: Query<(&mut Position, &Velocity)>,
-    time: Res<Time<Fixed>>,
-) {
+pub fn apply_velocity(mut query: Query<(&mut Position, &Velocity)>, time: Res<Time<Fixed>>) {
     for (mut pos, vel) in &mut query {
         pos.translation += vel.linear * time.delta_secs();
     }
@@ -68,6 +66,7 @@ pub fn process_player_input(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uuid::uuid;
 
     #[test]
     fn test_velocity_integration() {
@@ -77,8 +76,12 @@ mod tests {
 
         // Spawn an entity with position and velocity
         app.world_mut().spawn((
-            Position { translation: Vec3::ZERO },
-            Velocity { linear: Vec3::new(1.0, 0.0, 0.0) },
+            Position {
+                translation: Vec3::ZERO,
+            },
+            Velocity {
+                linear: Vec3::new(1.0, 0.0, 0.0),
+            },
         ));
 
         // Test passes if the system is valid
@@ -91,22 +94,28 @@ mod tests {
         let mut app = App::new();
         app.insert_resource(PlayerInputQueue::default());
 
-        let entity = app.world_mut().spawn((
-            Player {
-                id: 1,
-                color: Color::WHITE,
-            },
-            Velocity::default(),
-        )).id();
+        let entity = app
+            .world_mut()
+            .spawn((
+                Player {
+                    id: uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8"),
+                    color: Color::WHITE,
+                },
+                Velocity::default(),
+            ))
+            .id();
 
         // Queue an input
-        app.world_mut().resource_mut::<PlayerInputQueue>().inputs.insert(
-            1,
-            PlayerInput {
-                direction: Vec2::new(1.0, 0.0),
-                jump: false,
-            },
-        );
+        app.world_mut()
+            .resource_mut::<PlayerInputQueue>()
+            .inputs
+            .insert(
+                uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8"),
+                PlayerInput {
+                    direction: Vec2::new(1.0, 0.0),
+                    jump: false,
+                },
+            );
 
         app.add_systems(Update, process_player_input);
         app.update();

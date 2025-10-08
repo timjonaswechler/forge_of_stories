@@ -15,7 +15,7 @@ pub struct GroundPlane;
 #[derive(Component, Debug, Clone)]
 pub struct Player {
     /// Unique player ID (matches ClientId from networking).
-    pub id: u64,
+    pub id: uuid::Uuid,
     /// Player's assigned color.
     pub color: Color,
 }

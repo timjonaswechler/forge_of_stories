@@ -11,9 +11,14 @@
 use bevy::ecs::schedule::Schedule;
 use bevy::ecs::world::World;
 use bevy::prelude::*;
-use server::transport::SteamServerTransport;
 use server::transport::quic::QuicServerTransport;
+use server::transport::{ServerTransport, SteamServerTransport};
+use shared::ClientId;
 use shared::transport::LoopbackServerTransport;
+use uuid::Uuid;
+
+/// The host player always uses this client ID (UUID with all zeros)
+pub const HOST_CLIENT_ID: ClientId = Uuid::nil();
 
 pub mod movement;
 pub mod network;
@@ -94,6 +99,12 @@ impl Plugin for ServerLogicPlugin {
 // GameServer - Unified Server Implementation
 // ==============================================================================
 
+/// Resource holding the transport event receiver channel.
+///
+/// The GameServer polls this in tick() to receive events from all transports.
+#[derive(Resource)]
+struct TransportEventReceiver(tokio::sync::mpsc::UnboundedReceiver<shared::TransportEvent>);
+
 /// Unified game server implementation that can run in different modes.
 ///
 /// This is the core server that handles all gameplay logic, physics, and state management.
@@ -155,10 +166,23 @@ impl GameServer {
     ///
     /// This sets up all resources, system sets, and systems needed for server gameplay.
     fn initialize_server(world: &mut World, schedule: &mut Schedule) {
-        // Insert resources
+        // Insert Bevy core resources
+        world.insert_resource(Time::<Fixed>::from_hz(20.0)); // 20 TPS server tick rate
+        world.insert_resource(Time::<Real>::default());
+
+        // Insert game resources
         world.insert_resource(ServerConfig::default());
         world.insert_resource(movement::PlayerInputQueue::default());
         world.insert_resource(world::PlayerColorAssigner::default());
+
+        // Insert network resources
+        world.insert_resource(network::NetworkEvents::default());
+        world.insert_resource(network::OutgoingMessages::default());
+        world.insert_resource(network::ConnectedClients::default());
+
+        // Initialize world directly (spawn ground, etc.)
+        world_setup::initialize_world_direct(world);
+        world_setup::spawn_world_direct(world);
 
         // Configure system sets for server pipeline
         schedule.configure_sets(
@@ -171,14 +195,9 @@ impl GameServer {
                 .chain(),
         );
 
-        // World initialization systems
-        schedule.add_systems(world_setup::initialize_world);
-        schedule.add_systems(world_setup::spawn_world.after(world_setup::initialize_world));
-        schedule.add_systems(
-            world_setup::mark_world_initialized
-                .run_if(resource_exists::<world_setup::WorldInitialized>)
-                .in_set(ServerSet::Simulation),
-        );
+        // Network systems
+        schedule.add_systems(network::process_network_events.in_set(ServerSet::Receive));
+        schedule.add_systems(network::broadcast_world_state.in_set(ServerSet::Replication));
 
         // Movement systems
         schedule.add_systems(movement::process_player_input.in_set(ServerSet::Receive));
@@ -197,19 +216,70 @@ impl GameServer {
     /// * `loopback` - Loopback transport for the host player
     /// * `quic` - QUIC transport for remote clients
     pub fn start_embedded(
-        loopback: LoopbackServerTransport,
-        external: Option<ExternalTransport>,
+        mut loopback: LoopbackServerTransport,
+        mut external: Option<ExternalTransport>,
     ) -> Self {
         let mut world = World::new();
         let mut schedule = Schedule::default();
 
         Self::initialize_server(&mut world, &mut schedule);
 
+        // Create a channel for transport events
+        let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
+
+        // Store the event receiver in a resource so we can poll it in tick()
+        world.insert_resource(TransportEventReceiver(event_rx));
+
+        // Start the loopback transport ONLY if we have external transport (LAN mode)
+        // In singleplayer, we don't start it because we inject the event manually
+        let is_singleplayer = external.is_none();
+        if !is_singleplayer {
+            if let Err(e) = loopback.start(event_tx.clone()) {
+                tracing::error!("Failed to start loopback transport: {:?}", e);
+            } else {
+                tracing::info!("Started loopback transport for LAN host");
+            }
+        }
+
+        // Start external transport if present
+        if let Some(ref mut ext) = external {
+            match ext {
+                ExternalTransport::Quic(quic) => {
+                    if let Err(e) = quic.start(event_tx.clone()) {
+                        tracing::error!("Failed to start QUIC transport: {:?}", e);
+                        // Return error instead of continuing
+                        panic!("Failed to start QUIC transport: {:?}", e);
+                    } else {
+                        tracing::info!("QUIC transport started successfully");
+                    }
+                }
+                ExternalTransport::Steam(_steam) => {
+                    tracing::error!("Steam transport not yet implemented");
+                }
+            }
+        }
+
+        // In singleplayer mode (no external transport), inject a PeerConnected event
+        // for the loopback client since there's no actual network connection
+        if external.is_none() {
+            if let Some(mut events) = world.get_resource_mut::<network::NetworkEvents>() {
+                events.events.push(shared::TransportEvent::PeerConnected {
+                    client: HOST_CLIENT_ID,
+                });
+                tracing::info!(
+                    "Injected PeerConnected event for singleplayer loopback client (ID: {})",
+                    HOST_CLIENT_ID
+                );
+            }
+        }
+
+        tracing::info!("GameServer starting in Embedded mode");
+
         Self {
             mode: ServerMode::Embedded { loopback, external },
             world,
             schedule,
-            state: ServerState::Starting,
+            state: ServerState::Running, // Start in Running state immediately
         }
     }
 
@@ -259,16 +329,18 @@ impl GameServer {
     /// # Arguments
     /// * `external` - QUIC transport for all clients
     pub fn start_dedicated(external: QuicServerTransport) -> Self {
-        let world = World::new();
-        let schedule = Schedule::default();
+        let mut world = World::new();
+        let mut schedule = Schedule::default();
 
-        // TODO: Initialize server systems, resources, world state
+        Self::initialize_server(&mut world, &mut schedule);
+
+        tracing::info!("GameServer starting in Dedicated mode");
 
         Self {
             mode: ServerMode::DedicatedQuic { external },
             world,
             schedule,
-            state: ServerState::Starting,
+            state: ServerState::Running, // Start in Running state immediately
         }
     }
 
@@ -285,11 +357,174 @@ impl GameServer {
             return;
         }
 
+        // Poll transport events and add them to NetworkEvents
+        let mut incoming_events = Vec::new();
+        if let Some(mut event_receiver) = self.world.get_resource_mut::<TransportEventReceiver>() {
+            // Drain all available events from the transport channel
+            while let Ok(event) = event_receiver.0.try_recv() {
+                incoming_events.push(event);
+            }
+        }
+        // Add events to NetworkEvents
+        if !incoming_events.is_empty() {
+            if let Some(mut network_events) =
+                self.world.get_resource_mut::<network::NetworkEvents>()
+            {
+                network_events.events.extend(incoming_events);
+            }
+        }
+
+        // Update time resources
+        if let Some(mut time_fixed) = self.world.get_resource_mut::<Time<Fixed>>() {
+            let timestep = time_fixed.timestep();
+            time_fixed.advance_by(timestep);
+        }
+        if let Some(mut time_real) = self.world.get_resource_mut::<Time<Real>>() {
+            time_real.update();
+        }
+
         // Run the server schedule (all gameplay systems)
         self.schedule.run(&mut self.world);
 
         // Apply deferred commands (spawning/despawning entities, etc.)
         self.world.flush();
+
+        // Send outgoing messages to clients
+        // First, extract messages and connected clients list
+        let messages: Vec<_> = if let Some(mut outgoing) =
+            self.world.get_resource_mut::<network::OutgoingMessages>()
+        {
+            outgoing.messages.drain(..).collect()
+        } else {
+            Vec::new()
+        };
+
+        let connected_client_ids: Vec<Uuid> = self
+            .world
+            .get_resource::<network::ConnectedClients>()
+            .map(|cc| cc.clients.clone())
+            .unwrap_or_default();
+
+        // Now send messages without borrowing world
+        for (target_client, message) in messages {
+            // Serialize the message
+            let payload = match bincode::serde::encode_to_vec(&message, bincode::config::standard())
+            {
+                Ok(bytes) => bytes::Bytes::from(bytes),
+                Err(e) => {
+                    tracing::error!("Failed to serialize message: {:?}", e);
+                    continue;
+                }
+            };
+
+            // Determine which channel to use (for now, use channel 0)
+            let channel = 0;
+
+            let out_msg = shared::OutgoingMessage {
+                channel,
+                payload: payload.clone(),
+            };
+
+            // Log what we're sending
+            if let Some(target) = target_client {
+                tracing::debug!(
+                    "Sending message to client {} on channel {}, {} bytes",
+                    target,
+                    channel,
+                    payload.len()
+                );
+            } else {
+                tracing::debug!(
+                    "Broadcasting message to all clients on channel {}, {} bytes",
+                    channel,
+                    payload.len()
+                );
+            }
+
+            // Send to target client(s)
+            match &mut self.mode {
+                ServerMode::Embedded { loopback, external } => {
+                    if let Some(client_id) = target_client {
+                        // Send to specific client
+                        // Check if it's the loopback client (host)
+                        if client_id == HOST_CLIENT_ID {
+                            if let Err(e) = loopback.send(client_id, out_msg.clone()) {
+                                tracing::warn!(
+                                    "Failed to send to loopback client {}: {:?}",
+                                    client_id,
+                                    e
+                                );
+                            }
+                        } else {
+                            // Send via external transport
+                            if let Some(ext) = external {
+                                let send_result = match ext {
+                                    ExternalTransport::Quic(quic) => {
+                                        quic.send(client_id, out_msg.clone())
+                                    }
+                                    ExternalTransport::Steam(_steam) => {
+                                        tracing::warn!("Steam transport not yet implemented");
+                                        continue;
+                                    }
+                                };
+                                if let Err(e) = send_result {
+                                    tracing::warn!(
+                                        "Failed to send to external client {}: {:?}",
+                                        client_id,
+                                        e
+                                    );
+                                }
+                            }
+                        }
+                    } else {
+                        // Broadcast to all clients
+                        // Send to loopback client (host)
+                        if let Err(e) = loopback.send(HOST_CLIENT_ID, out_msg.clone()) {
+                            tracing::warn!("Failed to broadcast to loopback client: {:?}", e);
+                        }
+                        // Send to all external clients
+                        if let Some(ext) = external {
+                            for &client_id in &connected_client_ids {
+                                if client_id != HOST_CLIENT_ID {
+                                    // Skip loopback client (host)
+                                    let send_result = match ext {
+                                        ExternalTransport::Quic(quic) => {
+                                            quic.send(client_id, out_msg.clone())
+                                        }
+                                        ExternalTransport::Steam(_steam) => continue,
+                                    };
+                                    if let Err(e) = send_result {
+                                        tracing::warn!(
+                                            "Failed to broadcast to client {}: {:?}",
+                                            client_id,
+                                            e
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                ServerMode::DedicatedQuic { external } => {
+                    if let Some(client_id) = target_client {
+                        if let Err(e) = external.send(client_id, out_msg) {
+                            tracing::warn!("Failed to send to client {}: {:?}", client_id, e);
+                        }
+                    } else {
+                        // Broadcast to all clients
+                        for &client_id in &connected_client_ids {
+                            if let Err(e) = external.send(client_id, out_msg.clone()) {
+                                tracing::warn!(
+                                    "Failed to broadcast to client {}: {:?}",
+                                    client_id,
+                                    e
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Stops the server gracefully.

@@ -1,4 +1,3 @@
-use tracing::trace;
 use bytes::Bytes;
 use quinn::VarInt;
 use std::fmt::Debug;
@@ -6,6 +5,7 @@ use tokio::sync::{
     broadcast,
     mpsc::{self, error::TrySendError},
 };
+use tracing::trace;
 
 use crate::channels::{
     reliable::send::{ordered_reliable_channel_task, unordered_reliable_channel_task},
@@ -290,7 +290,7 @@ pub async fn send_channels_tasks_spawner(
 
 pub fn spawn_recv_channels_tasks(
     connection_handle: quinn::Connection,
-    connection_id: u64,
+    connection_id: uuid::Uuid,
     close_recv: broadcast::Receiver<CloseReason>,
     bytes_incoming_send: mpsc::Sender<(ChannelId, Bytes)>,
 ) {

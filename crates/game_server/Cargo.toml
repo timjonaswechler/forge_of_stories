@@ -5,7 +5,7 @@ edition.workspace = true
 description = "Shared server-side game logic for Forge of Stories"
 
 [dependencies]
-bevy = { version = "0.17.0", default-features = false, features = [
+bevy = { version = "0.17.2", default-features = false, features = [
     "std",
     "multi_threaded",
     "bevy_state",
@@ -19,6 +19,9 @@ serde = { version = "1.0", features = ["derive"] }
 ron = "0.8"
 thiserror = "2.0"
 bincode.workspace = true
+tokio = { version = "1", features = ["sync"] }
+bytes = "1.5"
+uuid.workspace = true
 
 [dev-dependencies]
 tempfile = "3.10"

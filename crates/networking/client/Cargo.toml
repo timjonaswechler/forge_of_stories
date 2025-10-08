@@ -37,3 +37,4 @@ tracing.workspace = true
 quinn.workspace = true
 quinn-proto.workspace = true
 dirs.workspace = true
+uuid.workspace = true

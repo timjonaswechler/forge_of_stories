@@ -44,7 +44,7 @@ pub const DEFAULT_QCHANNEL_MESSAGES_CHANNEL_SIZE: usize = 2 * MAX_CHANNEL_COUNT;
 pub const DEFAULT_KILL_MESSAGE_QUEUE_SIZE: usize = 10;
 
 /// Represents the id of a client on the server.
-pub type ClientId = u64;
+pub type ClientId = uuid::Uuid;
 pub const CLIENT_ID_LEN: usize = size_of::<ClientId>();
 
 /// Async runtime newtype wrapping the tokio runtime handle. used by both quinnet client and server's async back-ends.

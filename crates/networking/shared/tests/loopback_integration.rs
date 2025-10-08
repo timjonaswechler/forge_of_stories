@@ -10,6 +10,8 @@ use tokio::sync::mpsc::unbounded_channel;
 
 #[test]
 fn test_loopback_client_server_same_process() {
+    use uuid::uuid;
+
     // Create loopback pair
     let mut pair = LoopbackPair::new();
 
@@ -29,9 +31,10 @@ fn test_loopback_client_server_same_process() {
     ));
 
     let server_peer_connected = server_event_rx.try_recv().unwrap();
+    let expected_uuid = uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8");
     assert!(matches!(
         server_peer_connected,
-        TransportEvent::PeerConnected { client: 0 }
+        TransportEvent::PeerConnected { client } if client == expected_uuid
     ));
 
     // Client sends message to server
@@ -48,7 +51,7 @@ fn test_loopback_client_server_same_process() {
         payload,
     } = &server_events[0]
     {
-        assert_eq!(*client, 0);
+        assert_eq!(*client, uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8"));
         assert_eq!(*channel, 0);
         assert_eq!(payload.as_ref(), b"Client Hello");
 
@@ -73,6 +76,7 @@ fn test_loopback_client_server_same_process() {
 
 #[test]
 fn test_loopback_multiple_messages() {
+    use uuid::uuid;
     let mut pair = LoopbackPair::new();
 
     let (client_event_tx, mut _client_event_rx) = unbounded_channel();
@@ -90,7 +94,7 @@ fn test_loopback_multiple_messages() {
 
         pair.server
             .send(
-                0,
+                uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8"),
                 OutgoingMessage::new(0, Bytes::from(format!("S2C {}", i))),
             )
             .unwrap();
@@ -156,6 +160,7 @@ fn test_loopback_disconnect_lifecycle() {
 
 #[test]
 fn test_loopback_server_disconnect() {
+    use uuid::uuid;
     let mut pair = LoopbackPair::new();
 
     let (client_event_tx, mut _client_event_rx) = unbounded_channel();
@@ -168,14 +173,20 @@ fn test_loopback_server_disconnect() {
     let _ = server_event_rx.try_recv();
 
     // Server disconnects the client
-    pair.server.disconnect(0, DisconnectReason::Kicked).unwrap();
+    pair.server
+        .disconnect(
+            uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8"),
+            DisconnectReason::Kicked,
+        )
+        .unwrap();
 
     // Verify server emitted disconnect event
     let server_disconnect = server_event_rx.try_recv().unwrap();
+    let matching_uuid = uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8");
     assert!(matches!(
         server_disconnect,
         TransportEvent::PeerDisconnected {
-            client: 0,
+            client: matching_uuid,
             reason: DisconnectReason::Kicked
         }
     ));
@@ -192,7 +203,7 @@ fn test_loopback_no_network_io() {
     //
     // For this test, we simply verify that the transport works without
     // binding to any network interface.
-
+    use uuid::uuid;
     let mut pair = LoopbackPair::new();
     let (client_event_tx, mut _client_event_rx) = unbounded_channel();
     let (server_event_tx, mut _server_event_rx) = unbounded_channel();
@@ -217,6 +228,7 @@ fn test_loopback_no_network_io() {
 
 #[test]
 fn test_loopback_datagram_support() {
+    use uuid::uuid;
     let mut pair = LoopbackPair::new();
 
     let (client_event_tx, mut _client_event_rx) = unbounded_channel();
@@ -234,7 +246,10 @@ fn test_loopback_datagram_support() {
         .unwrap();
 
     pair.server
-        .send_datagram(0, Bytes::from("server datagram"))
+        .send_datagram(
+            uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8"),
+            Bytes::from("server datagram"),
+        )
         .unwrap();
 
     // Server receives client datagrams

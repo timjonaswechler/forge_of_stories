@@ -37,7 +37,7 @@ impl Default for WorldSnapshot {
 /// Serializable player entity data.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlayerData {
-    pub id: u64,
+    pub id: uuid::Uuid,
     pub color: [f32; 4], // RGBA
     pub shape: PlayerShapeData,
     pub position: [f32; 3], // XYZ
@@ -192,12 +192,14 @@ mod tests {
 
     #[test]
     fn test_extract_and_restore_snapshot() {
+        use uuid::uuid;
+
         let mut world = World::new();
 
         // Spawn a test player
         world.spawn((
             Player {
-                id: 1,
+                id: uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8"),
                 color: Color::srgb(1.0, 0.0, 0.0),
             },
             PlayerShape::Capsule,
@@ -212,7 +214,10 @@ mod tests {
         // Extract snapshot
         let snapshot = extract_world_snapshot(&mut world);
         assert_eq!(snapshot.players.len(), 1);
-        assert_eq!(snapshot.players[0].id, 1);
+        assert_eq!(
+            snapshot.players[0].id,
+            uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8")
+        );
         assert_eq!(snapshot.players[0].position, [1.0, 2.0, 3.0]);
 
         // Clear world
@@ -236,13 +241,14 @@ mod tests {
     fn test_save_and_load_file() {
         use std::fs;
         use tempfile::NamedTempFile;
+        use uuid::uuid;
 
         let mut world = World::new();
 
         // Spawn test player
         world.spawn((
             Player {
-                id: 42,
+                id: uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8"),
                 color: Color::srgb(0.5, 0.5, 1.0),
             },
             PlayerShape::Cube,
@@ -277,6 +283,6 @@ mod tests {
 
         // Verify loaded
         let player = world.query::<&Player>().iter(&world).next().unwrap();
-        assert_eq!(player.id, 42);
+        assert_eq!(player.id, uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8"));
     }
 }

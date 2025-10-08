@@ -1,9 +1,11 @@
 use paths::PathContext;
+use std::fs::File;
 use std::marker::PhantomData;
 #[cfg(debug_assertions)]
 use std::path::PathBuf;
 use tracing_subscriber::{
-    Layer, filter::LevelFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt,
+    Layer, filter, filter::LevelFilter, filter::filter_fn, fmt, layer::SubscriberExt,
+    util::SubscriberInitExt,
 };
 
 pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
@@ -100,17 +102,34 @@ impl<A: Application> AppBuilder<A> {
 
         #[cfg(not(debug_assertions))]
         let level = LevelFilter::WARN;
+        // metrics
+        let metrics_file = File::create("metrics.log").unwrap();
+        let metrics_layer = fmt::Layer::default()
+            .with_writer(metrics_file)
+            .with_ansi(false)
+            .with_filter(filter::filter_fn(|metadata| {
+                metadata.target().starts_with("metrics")
+            }));
 
         // Separate layer: file (non-blocking) + console (stdout)
         let file_layer = fmt::Layer::default()
             .with_target(false)
+            .with_ansi(false)
             .with_writer(non_blocking)
-            .with_filter(level);
+            .with_filter(filter_fn(move |metadata| {
+                // Nur nicht-metrics Events auf passendem Level
+                metadata.level() <= &level && !metadata.target().starts_with("metrics")
+            }));
 
-        let console_layer = fmt::Layer::default().with_target(false).with_filter(level);
+        let console_layer = fmt::Layer::default()
+            .with_target(false)
+            .with_filter(filter_fn(move |metadata| {
+                metadata.level() <= &level && !metadata.target().starts_with("metrics")
+            }));
 
         tracing_subscriber::registry()
             .with(file_layer)
+            .with(metrics_layer)
             .with(console_layer)
             .init();
 

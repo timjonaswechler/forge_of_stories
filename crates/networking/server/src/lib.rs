@@ -6,8 +6,10 @@ use std::{
 
 use crate::certificate::{CertificateRetrievalMode, ServerCertificate, retrieve_certificate};
 use ::bevy::prelude::*;
-use tracing::{error, info, trace};
 use bytes::Bytes;
+use quinn::{Endpoint as QuinnEndpoint, EndpointConfig, ServerConfig, default_runtime};
+use quinn_proto::ConnectionStats;
+use serde::Deserialize;
 use shared::{
     AsyncRuntime, ClientId, DEFAULT_INTERNAL_MESSAGES_CHANNEL_SIZE, DEFAULT_KEEP_ALIVE_INTERVAL_S,
     DEFAULT_KILL_MESSAGE_QUEUE_SIZE, DEFAULT_MESSAGE_QUEUE_SIZE,
@@ -19,9 +21,6 @@ use shared::{
     },
     error::{AsyncChannelError, ChannelCloseError, ChannelCreationError},
 };
-use quinn::{Endpoint as QuinnEndpoint, EndpointConfig, ServerConfig, default_runtime};
-use quinn_proto::ConnectionStats;
-use serde::Deserialize;
 use tokio::{
     runtime,
     sync::{
@@ -32,13 +31,11 @@ use tokio::{
         },
     },
 };
+use tracing::{error, info, trace};
+use uuid::Uuid;
 
 mod error;
-pub use bevy_integration::{
-    QuinnetServerPlugin,
-    SteamServerEventChannel,
-    SteamworksServerPlugin,
-};
+pub use bevy_integration::{QuinnetServerPlugin, SteamServerEventChannel, SteamworksServerPlugin};
 pub use error::*;
 
 /// Bevy integration helpers (plugins, event channels)
@@ -353,7 +350,7 @@ impl Endpoint {
     ) -> Self {
         Self {
             clients: HashMap::new(),
-            client_id_gen: 0,
+            client_id_gen: Uuid::new_v4(),
             opened_channels: HashMap::new(),
             default_channel: None,
             available_channel_ids: (0..255).collect(),
@@ -1030,8 +1027,7 @@ impl Endpoint {
             };
         }
 
-        self.client_id_gen += 1;
-        let client_id = self.client_id_gen;
+        let client_id = Uuid::new_v4();
 
         match connection
             .to_connection_send

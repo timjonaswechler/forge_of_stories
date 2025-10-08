@@ -24,7 +24,6 @@ pub fn heartbeat_system(
 
     let now = time_real.elapsed();
 
-    // First tick - initialize timing
     if state.start_time.is_none() {
         state.start_time = Some(now);
         state.last_tick = Some(now);
@@ -33,7 +32,6 @@ pub fn heartbeat_system(
         return;
     }
 
-    // Calculate actual delta since last tick
     let last_tick = state.last_tick.unwrap();
     let real_delta = now.saturating_sub(last_tick);
     let real_ms = real_delta.as_secs_f64() * 1000.0;
@@ -41,24 +39,25 @@ pub fn heartbeat_system(
     state.tick_count += 1;
     state.last_tick = Some(now);
 
-    // Log every 100 ticks (at 20 TPS = every 5 seconds)
-    if state.tick_count % 100 == 0 {
-        let elapsed = now - state.start_time.unwrap();
-        let uptime_secs = elapsed.as_secs_f64();
+    let uptime_secs = (now - state.start_time.unwrap()).as_secs_f64();
 
+    // Sende strukturierte Metrik-Events mit Target "metrics::heartbeat"
+    tracing::info!(
+        target: "metrics::heartbeat",
+        tick = state.tick_count,
+        target_ms,
+        actual_ms = real_ms,
+        uptime_secs
+    );
+
+    // Optional weiterhin lesbare Logs in höheren Leveln ausgeben, z.B. alle 100 Ticks
+    if state.tick_count % 100 == 0 {
         tracing::info!(
             "Server tick #{} | target: {:.2}ms | actual: {:.2}ms | uptime: {:.1}s",
             state.tick_count,
             target_ms,
             real_ms,
             uptime_secs
-        );
-    } else {
-        tracing::trace!(
-            "Server tick #{} | target: {:.2}ms | actual: {:.2}ms",
-            state.tick_count,
-            target_ms,
-            real_ms
         );
     }
 }

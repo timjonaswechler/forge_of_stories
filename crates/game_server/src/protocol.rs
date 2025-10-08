@@ -40,7 +40,7 @@ impl Default for PlayerShape {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlayerSpawnMessage {
     /// Unique player ID (matches ClientId from networking).
-    pub player_id: u64,
+    pub player_id: uuid::Uuid,
     /// Player's assigned color.
     pub color: SerializableColor,
     /// Player's shape type.
@@ -55,7 +55,7 @@ pub struct PlayerSpawnMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlayerDespawnMessage {
     /// Player ID that left.
-    pub player_id: u64,
+    pub player_id: uuid::Uuid,
 }
 
 /// Bulk state update for all entities in the world.
@@ -73,7 +73,7 @@ pub struct WorldStateMessage {
 /// Individual player state (position, velocity).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlayerStateSnapshot {
-    pub player_id: u64,
+    pub player_id: uuid::Uuid,
     pub position: SerializableVec3,
     pub velocity: SerializableVec3,
 }
@@ -236,9 +236,10 @@ mod tests {
 
     #[test]
     fn test_message_types() {
+        use uuid::uuid;
         // Just verify that messages can be constructed
         let _spawn = GameplayMessage::PlayerSpawn(PlayerSpawnMessage {
-            player_id: 42,
+            player_id: uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8"),
             color: Color::srgb(1.0, 0.0, 0.0).into(),
             shape: PlayerShape::Capsule,
             position: Vec3::new(10.0, 5.0, 20.0).into(),
@@ -249,7 +250,9 @@ mod tests {
             client_tick: 100,
         });
 
-        let _despawn = GameplayMessage::PlayerDespawn(PlayerDespawnMessage { player_id: 42 });
+        let _despawn = GameplayMessage::PlayerDespawn(PlayerDespawnMessage {
+            player_id: uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8"),
+        });
 
         let _state = GameplayMessage::WorldState(WorldStateMessage {
             tick: 100,

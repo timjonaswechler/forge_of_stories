@@ -37,11 +37,10 @@ pub fn spawn_world_direct(world: &mut World) {
         Name::new("Ground Plane"),
     ));
 
-    // Spawn a test player (for development/demo)
-    let color_assigner = world.resource_mut::<PlayerColorAssigner>();
-    drop(color_assigner); // Release the borrow
+    // Note: Players are spawned when clients connect, not during world initialization
+    // The client will trigger a connection event which spawns the player
 
-    info!("Server: World spawned successfully (with test player)");
+    info!("Server: World spawned successfully");
 }
 
 /// System that spawns the initial world (ground plane).
