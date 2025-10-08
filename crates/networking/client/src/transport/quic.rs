@@ -290,27 +290,13 @@ impl QuicClientTransport {
 }
 
 fn default_certificate_mode() -> CertificateVerificationMode {
-    let cert_dir = default_cert_directory();
-    if let Err(err) = fs::create_dir_all(&cert_dir) {
-        warn!(
-            "failed to create certificate directory {}: {}",
-            cert_dir.display(),
-            err
-        );
-    }
-
+    // TODO: Implement certificate directory creation and default certificate mode
+    let cert_dir = dirs::data_dir().expect("data directory not found");
     let hosts_file = cert_dir.join("known_hosts");
     CertificateVerificationMode::TrustOnFirstUse(TrustOnFirstUseConfig {
         known_hosts: KnownHosts::HostsFile(hosts_file.to_string_lossy().into_owned()),
         ..TrustOnFirstUseConfig::default()
     })
-}
-
-fn default_cert_directory() -> PathBuf {
-    let base = dirs::config_dir()
-        .or_else(|| dirs::data_dir())
-        .unwrap_or_else(|| PathBuf::from("."));
-    base.join("Forge_of_Stories").join("network").join("certs")
 }
 
 fn drain_client_messages(

@@ -301,15 +301,8 @@ fn forward_server_async_message(
 }
 
 fn default_certificate_mode(config: &ServerEndpointConfiguration) -> CertificateRetrievalMode {
-    let cert_dir = default_cert_directory();
-    if let Err(err) = fs::create_dir_all(&cert_dir) {
-        warn!(
-            "failed to create certificate directory {}: {}",
-            cert_dir.display(),
-            err
-        );
-    }
-
+    // TODO: Implement certificate directory creation and default certificate mode
+    let cert_dir = dirs::data_dir().expect("data directory not found");
     let cert_file = cert_dir.join("server.pem");
     let key_file = cert_dir.join("server.key");
     let hostname = match config.local_bind_addr().ip() {
@@ -324,11 +317,4 @@ fn default_certificate_mode(config: &ServerEndpointConfiguration) -> Certificate
         server_hostname: hostname,
         save_on_disk: true,
     }
-}
-
-fn default_cert_directory() -> PathBuf {
-    let base = dirs::config_dir()
-        .or_else(|| dirs::data_dir())
-        .unwrap_or_else(|| PathBuf::from("."));
-    base.join("Forge_of_Stories").join("network").join("certs")
 }
