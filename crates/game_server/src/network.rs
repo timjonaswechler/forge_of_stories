@@ -6,8 +6,7 @@
 //! - Processing client input messages
 
 use crate::protocol::{
-    GameplayMessage, PlayerDespawnMessage, PlayerShape, PlayerSpawnMessage, PlayerStateSnapshot,
-    WorldStateMessage,
+    GameplayMessage, PlayerShape, PlayerSpawnMessage, PlayerStateSnapshot, WorldStateMessage,
 };
 use crate::{
     movement::{PlayerInput, PlayerInputQueue},

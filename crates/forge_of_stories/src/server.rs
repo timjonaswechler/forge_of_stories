@@ -7,7 +7,7 @@
 //! - Extracting the loopback client for the host player
 
 use bevy::prelude::*;
-use game_server::{ExternalTransport, ServerHandle, ServerModeInfo};
+use game_server::{ExternalTransport, ServerHandle};
 use shared::transport::{LoopbackClientTransport, TransportOrchestrator};
 
 /// Resource containing the loopback client transport for the host player.
@@ -79,7 +79,13 @@ pub fn start_multiplayer_server(
         8,    // max_channels
     );
 
-    let quic = game_server::QuicTransport::new(endpoint_config, channels, capabilities);
+    let quic = match game_server::QuicTransport::new(endpoint_config, channels, capabilities) {
+        Ok(quic) => quic,
+        Err(e) => {
+            error!("Failed to create QUIC transport: {}", e);
+            return Err(format!("Failed to create QUIC transport: {e}"));
+        }
+    };
     let external = ExternalTransport::Quic(quic);
 
     // Start the server with loopback + QUIC
@@ -137,7 +143,13 @@ pub fn open_to_lan(server_handle: Res<ServerHandle>) {
         8,    // max_channels
     );
 
-    let quic = game_server::QuicTransport::new(endpoint_config, channels, capabilities);
+    let quic = match game_server::QuicTransport::new(endpoint_config, channels, capabilities) {
+        Ok(quic) => quic,
+        Err(e) => {
+            error!("Failed to create QUIC transport: {}", e);
+            return;
+        }
+    };
 
     if let Err(e) = server_handle.add_external(ExternalTransport::Quic(quic)) {
         error!("Failed to add external transport: {}", e);

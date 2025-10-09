@@ -6,9 +6,9 @@ use std::{
 
 use shared::steam::{SteamAuthTicket, SteamDiscoveryEvent, SteamLobbyId, SteamLobbySummary};
 use steamworks::{
+    Client, ClientManager,
     matchmaking::LobbyId,
     user::{AuthSessionTicketResponse, AuthTicket},
-    Client, ClientManager,
 };
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -182,11 +182,7 @@ fn lobby_member_limit(lobby: LobbyId) -> Option<u32> {
     let limit = unsafe {
         steamworks::sys::SteamAPI_ISteamMatchmaking_GetLobbyMemberLimit(interface, lobby.0)
     };
-    if limit <= 0 {
-        None
-    } else {
-        Some(limit as u32)
-    }
+    if limit <= 0 { None } else { Some(limit as u32) }
 }
 
 fn lobby_metadata(lobby: LobbyId) -> Result<BTreeMap<String, String>, SteamTransportError> {

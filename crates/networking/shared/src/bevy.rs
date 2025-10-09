@@ -1,8 +1,8 @@
 use bevy_ecs::prelude::*;
 
 use crate::{
-    steam::{SteamAuthTicket, SteamDiscoveryEvent},
     ClientId,
+    steam::{SteamAuthTicket, SteamDiscoveryEvent},
 };
 
 /// Client-side Steam discovery updates surfaced to gameplay.

@@ -3,9 +3,9 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use shared::{steam::SteamAuthTicket, ClientId, TransportEvent};
+use shared::{ClientId, TransportEvent, steam::SteamAuthTicket};
 use steamworks::{
-    server::AuthSessionError, server::ValidateAuthTicketResponse, Server, ServerManager, SteamId,
+    Server, ServerManager, SteamId, server::AuthSessionError, server::ValidateAuthTicketResponse,
 };
 use tokio::sync::mpsc::UnboundedSender;
 

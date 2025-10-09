@@ -835,10 +835,7 @@ fn join_menu_system(
                                 let mut transport =
                                     QuicClientTransport::new(channels, capabilities);
 
-                                let (event_tx, _event_rx) = tokio::sync::mpsc::unbounded_channel();
-                                match transport
-                                    .connect(ConnectTarget::Quic { host, port }, event_tx)
-                                {
+                                match transport.connect(ConnectTarget::Quic { host, port }) {
                                     Ok(_) => {
                                         info!("Connected to server");
                                         commands.insert_resource(GameClient {

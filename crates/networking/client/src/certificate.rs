@@ -16,8 +16,8 @@ use tokio::sync::{mpsc, oneshot};
 use shared::{certificate::CertificateFingerprint, error::AsyncChannelError};
 
 use super::{
-    CertificateInteractionError, ClientAsyncMessage, ConnectionLocalId, InvalidHostFile,
-    DEFAULT_KNOWN_HOSTS_FILE,
+    CertificateInteractionError, ClientAsyncMessage, ConnectionLocalId, DEFAULT_KNOWN_HOSTS_FILE,
+    InvalidHostFile,
 };
 
 /// Default certificate behavior is to abort the connection

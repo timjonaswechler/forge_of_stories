@@ -1,14 +1,14 @@
 use std::sync::{Arc, Mutex};
 
 use bevy::prelude::*;
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
 use shared::{
-    bevy::{SteamServerAuthEvent, SteamServerErrorEvent},
     QuinnetSyncUpdate, TransportEvent,
+    bevy::{SteamServerAuthEvent, SteamServerErrorEvent},
 };
 
-use crate::{update_sync_server, ConnectionEvent, ConnectionLostEvent, QuinnetServer};
+use crate::{ConnectionEvent, ConnectionLostEvent, QuinnetServer, update_sync_server};
 
 #[derive(Resource)]
 pub struct SteamServerEventChannel {

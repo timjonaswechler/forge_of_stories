@@ -1,65 +1,34 @@
 use std::{
     collections::HashSet,
-    fs,
     net::IpAddr,
-    path::PathBuf,
     sync::{Arc, Mutex},
-    time::Duration,
 };
 
-use bevy::log::{error, trace, warn};
-use bytes::Bytes;
+use bevy::log::{error, trace};
+use shared::transport::{ServerTransport, TransportPayload, TransportResult};
 use shared::{
-    ClientId, DisconnectReason, OutgoingMessage, TransportCapabilities, TransportEvent,
+    ClientId, DisconnectReason, TransportCapabilities, TransportError, TransportEvent,
     channels::{ChannelAsyncMessage, ChannelId, ChannelKind, ChannelsConfiguration},
 };
-use tokio::{
-    runtime::Runtime,
-    sync::{mpsc::UnboundedSender, oneshot},
-    task::JoinHandle,
-    time::sleep,
-};
+use tokio::runtime::Runtime;
 
-use super::ServerTransport;
 use crate::{
     QuinnetServer, ServerAsyncMessage, ServerEndpointConfiguration,
     certificate::CertificateRetrievalMode,
-    error::{
-        EndpointAlreadyClosed, EndpointStartError, ServerDisconnectError, ServerReceiveError,
-        ServerSendError,
-    },
+    error::{EndpointAlreadyClosed, EndpointStartError, ServerReceiveError, ServerSendError},
 };
-
-#[derive(thiserror::Error, Debug)]
-pub enum QuicServerTransportError {
-    #[error("quic server transport already started")]
-    AlreadyStarted,
-    #[error("quic server transport not started")]
-    NotStarted,
-    #[error("endpoint start error: {0}")]
-    Start(#[from] EndpointStartError),
-    #[error("send error: {0}")]
-    Send(#[from] ServerSendError),
-    #[error("disconnect error: {0}")]
-    Disconnect(#[from] ServerDisconnectError),
-    #[error("datagrams are not supported by the quic transport yet")]
-    DatagramsUnsupported,
-}
 
 /// Quinn-based server transport that wraps the Quinnet server implementation
 /// behind the shared transport trait.
-
 pub struct QuicServerTransport {
-    runtime: Runtime,
+    _runtime: Runtime,
     server: Arc<Mutex<QuinnetServer>>,
     endpoint_config: ServerEndpointConfiguration,
     cert_mode: CertificateRetrievalMode,
     channels: ChannelsConfiguration,
     capabilities: TransportCapabilities,
     datagram_channel: Option<ChannelId>,
-    event_sender: Option<UnboundedSender<TransportEvent>>,
-    shutdown_tx: Option<oneshot::Sender<()>>,
-    event_task: Option<JoinHandle<()>>,
+    started: bool,
 }
 
 impl std::fmt::Debug for QuicServerTransport {
@@ -67,6 +36,7 @@ impl std::fmt::Debug for QuicServerTransport {
         f.debug_struct("QuicServerTransport")
             .field("endpoint_config", &self.endpoint_config)
             .field("capabilities", &self.capabilities)
+            .field("started", &self.started)
             .finish()
     }
 }
@@ -76,11 +46,15 @@ impl QuicServerTransport {
         endpoint_config: ServerEndpointConfiguration,
         channels: ChannelsConfiguration,
         capabilities: TransportCapabilities,
-    ) -> Self {
+    ) -> TransportResult<Self> {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
-            .expect("failed to build tokio runtime for quic server transport");
+            .map_err(|err| {
+                TransportError::Other(format!(
+                    "failed to build tokio runtime for quic server: {err}"
+                ))
+            })?;
         let server = QuinnetServer::new(runtime.handle().clone());
 
         let cert_mode = default_certificate_mode(&endpoint_config);
@@ -97,194 +71,218 @@ impl QuicServerTransport {
                 }
             });
 
-        Self {
-            runtime,
+        Ok(Self {
+            _runtime: runtime,
             server: Arc::new(Mutex::new(server)),
             endpoint_config,
             cert_mode,
             channels,
             capabilities,
             datagram_channel,
-            event_sender: None,
-            shutdown_tx: None,
-            event_task: None,
-        }
+            started: false,
+        })
     }
 
-    fn spawn_event_task(&mut self, events: UnboundedSender<TransportEvent>) -> oneshot::Sender<()> {
-        let (shutdown_tx, mut shutdown_rx) = oneshot::channel();
-        let server = Arc::clone(&self.server);
+    fn ensure_started(&mut self) -> TransportResult<()> {
+        if self.started {
+            return Ok(());
+        }
 
-        let handle = self.runtime.spawn(async move {
-            loop {
-                {
-                    let mut guard = match server.lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => poisoned.into_inner(),
-                    };
-                    if let Some(endpoint) = guard.get_endpoint_mut() {
-                        while let Some(message) = endpoint.try_recv_async_message() {
-                            forward_server_async_message(endpoint, message, &events);
-                        }
+        {
+            let mut guard = self
+                .server
+                .lock()
+                .map_err(|_| TransportError::Other("quic server mutex poisoned".into()))?;
+            guard
+                .start_endpoint(
+                    self.endpoint_config.clone(),
+                    self.cert_mode.clone(),
+                    self.channels.clone(),
+                )
+                .map_err(map_endpoint_error)?;
+        }
 
-                        let mut lost_clients = HashSet::new();
-                        endpoint.poll_channel_messages(|client_id, message| {
-                            if matches!(message, ChannelAsyncMessage::LostConnection) {
-                                lost_clients.insert(client_id);
+        self.started = true;
+        Ok(())
+    }
+
+    fn with_endpoint<F, R>(&mut self, f: F) -> TransportResult<R>
+    where
+        F: FnOnce(&mut crate::Endpoint) -> TransportResult<R>,
+    {
+        let mut guard = self
+            .server
+            .lock()
+            .map_err(|_| TransportError::Other("quic server mutex poisoned".into()))?;
+        let endpoint = guard.get_endpoint_mut().ok_or(TransportError::NotReady)?;
+        f(endpoint)
+    }
+
+    fn collect_events(&mut self, output: &mut Vec<TransportEvent>) -> TransportResult<()> {
+        self.ensure_started()?;
+        self.with_endpoint(|endpoint| {
+            while let Some(message) = endpoint.try_recv_async_message() {
+                handle_async_message(endpoint, message, output);
+            }
+
+            let mut lost_clients = HashSet::new();
+            endpoint.poll_channel_messages(|client_id, message| {
+                if matches!(message, ChannelAsyncMessage::LostConnection) {
+                    lost_clients.insert(client_id);
+                }
+            });
+            for client_id in lost_clients {
+                endpoint.try_disconnect_client(client_id);
+                output.push(TransportEvent::PeerDisconnected {
+                    client: client_id,
+                    reason: DisconnectReason::TransportError,
+                });
+            }
+
+            let client_ids = endpoint.clients();
+            for client_id in client_ids {
+                loop {
+                    match endpoint.receive_payload_from(client_id) {
+                        Ok(Some((channel_id, payload))) => {
+                            if matches!(
+                                endpoint.channel_kind(channel_id),
+                                Some(ChannelKind::Unreliable)
+                            ) {
+                                output.push(TransportEvent::Datagram {
+                                    client: client_id,
+                                    payload,
+                                });
+                            } else {
+                                output.push(TransportEvent::Message {
+                                    client: client_id,
+                                    channel: channel_id,
+                                    payload,
+                                });
                             }
-                        });
-                        for client_id in lost_clients.into_iter() {
-                            endpoint.try_disconnect_client(client_id);
-                            let _ = events.send(TransportEvent::PeerDisconnected {
+                        }
+                        Ok(None) => break,
+                        Err(ServerReceiveError::ConnectionClosed) => {
+                            endpoint.try_disconnect_closed_client(client_id);
+                            output.push(TransportEvent::PeerDisconnected {
                                 client: client_id,
                                 reason: DisconnectReason::TransportError,
                             });
+                            break;
                         }
-
-                        let client_ids = endpoint.clients();
-                        for client_id in client_ids {
-                            loop {
-                                match endpoint.receive_payload_from(client_id) {
-                                    Ok(Some((channel_id, payload))) => {
-                                        if matches!(
-                                            endpoint.channel_kind(channel_id),
-                                            Some(ChannelKind::Unreliable)
-                                        ) {
-                                            let _ = events.send(TransportEvent::Datagram {
-                                                client: client_id,
-                                                payload,
-                                            });
-                                        } else {
-                                            let _ = events.send(TransportEvent::Message {
-                                                client: client_id,
-                                                channel: channel_id,
-                                                payload,
-                                            });
-                                        }
-                                    }
-                                    Ok(None) => break,
-                                    Err(ServerReceiveError::ConnectionClosed) => {
-                                        endpoint.try_disconnect_closed_client(client_id);
-                                        let _ = events.send(TransportEvent::PeerDisconnected {
-                                            client: client_id,
-                                            reason: DisconnectReason::TransportError,
-                                        });
-                                        break;
-                                    }
-                                    Err(ServerReceiveError::UnknownClient(_)) => break,
-                                }
-                            }
-                        }
+                        Err(ServerReceiveError::UnknownClient(_)) => break,
                     }
                 }
+            }
+            Ok(())
+        })
+    }
 
-                tokio::select! {
-                    _ = sleep(Duration::from_millis(16)) => {},
-                    _ = &mut shutdown_rx => break,
+    fn send_payload(
+        endpoint: &mut crate::Endpoint,
+        client: ClientId,
+        payload: TransportPayload,
+        datagram_channel: Option<ChannelId>,
+    ) -> TransportResult<()> {
+        match payload {
+            TransportPayload::Message { channel, payload } => endpoint
+                .send_payload_on(client, channel, payload)
+                .map_err(map_send_error),
+            TransportPayload::Datagram { payload } => {
+                let channel = datagram_channel.ok_or(TransportError::InvalidConfig(
+                    "quic transport missing unreliable channel",
+                ))?;
+                endpoint
+                    .send_payload_on(client, channel, payload)
+                    .map_err(map_send_error)
+            }
+        }
+    }
+
+    /// Returns the advertised capabilities for this transport instance.
+    pub fn capabilities(&self) -> TransportCapabilities {
+        self.capabilities
+    }
+
+    /// Stops the underlying Quinn endpoint. Primarily used for tests.
+    pub fn shutdown(&mut self) {
+        if let Ok(mut guard) = self.server.lock() {
+            if let Err(err) = guard.stop_endpoint() {
+                if matches!(err, EndpointAlreadyClosed) {
+                    trace!("quic endpoint already closed");
                 }
             }
-        });
-
-        self.event_task = Some(handle);
-        shutdown_tx
+        }
+        self.started = false;
     }
 }
 
 impl ServerTransport for QuicServerTransport {
-    type Error = QuicServerTransportError;
-
-    fn start(&mut self, events: UnboundedSender<TransportEvent>) -> Result<(), Self::Error> {
-        if self.event_task.is_some() {
-            return Err(QuicServerTransportError::AlreadyStarted);
+    fn poll_events(&mut self, output: &mut Vec<TransportEvent>) {
+        if let Err(err) = self.collect_events(output) {
+            output.push(TransportEvent::Error {
+                client: None,
+                error: err,
+            });
         }
-
-        {
-            let mut guard = self.server.lock().expect("quic server mutex poisoned");
-            guard.start_endpoint(
-                self.endpoint_config.clone(),
-                self.cert_mode.clone(),
-                self.channels.clone(),
-            )?;
-        }
-
-        self.event_sender = Some(events.clone());
-        let shutdown_tx = self.spawn_event_task(events);
-        self.shutdown_tx = Some(shutdown_tx);
-        Ok(())
     }
 
-    fn stop(&mut self) {
-        if let Some(shutdown) = self.shutdown_tx.take() {
-            let _ = shutdown.send(());
-        }
+    fn send(&mut self, client: ClientId, payload: TransportPayload) -> TransportResult<()> {
+        self.ensure_started()?;
+        let datagram_channel = self.datagram_channel;
+        self.with_endpoint(|endpoint| {
+            Self::send_payload(endpoint, client, payload, datagram_channel)
+        })
+    }
 
-        if let Some(handle) = self.event_task.take() {
-            handle.abort();
-        }
-
-        self.event_sender = None;
-
-        if let Ok(mut guard) = self.server.lock() {
-            if let Err(err) = guard.stop_endpoint() {
-                match err {
-                    EndpointAlreadyClosed => trace!("quic endpoint already closed"),
-                }
+    fn broadcast(&mut self, payload: TransportPayload) -> TransportResult<()> {
+        self.ensure_started()?;
+        let datagram_channel = self.datagram_channel;
+        self.with_endpoint(|endpoint| {
+            let clients = endpoint.clients();
+            for client_id in clients {
+                Self::send_payload(endpoint, client_id, payload.clone(), datagram_channel)?;
             }
-        }
-    }
-
-    fn send(&self, client: ClientId, message: OutgoingMessage) -> Result<(), Self::Error> {
-        let mut guard = self.server.lock().expect("quic server mutex poisoned");
-        let endpoint = guard
-            .get_endpoint_mut()
-            .ok_or(QuicServerTransportError::NotStarted)?;
-
-        endpoint.send_payload_on(client, message.channel, message.payload.clone())?;
-        Ok(())
-    }
-
-    fn send_datagram(&self, client: ClientId, payload: Bytes) -> Result<(), Self::Error> {
-        let mut guard = self.server.lock().expect("quic server mutex poisoned");
-        let endpoint = guard
-            .get_endpoint_mut()
-            .ok_or(QuicServerTransportError::NotStarted)?;
-
-        if let Some(channel) = self.datagram_channel {
-            endpoint.send_payload_on(client, channel, payload)?;
             Ok(())
-        } else {
-            warn!(
-                "attempted to send datagram to client {} without unreliable channel",
-                client
-            );
-            Err(QuicServerTransportError::DatagramsUnsupported)
-        }
+        })
     }
 
-    fn disconnect(&self, client: ClientId, _reason: DisconnectReason) -> Result<(), Self::Error> {
-        let mut guard = self.server.lock().expect("quic server mutex poisoned");
-        let endpoint = guard
-            .get_endpoint_mut()
-            .ok_or(QuicServerTransportError::NotStarted)?;
-        endpoint.disconnect_client(client)?;
-        Ok(())
-    }
-
-    fn capabilities(&self) -> TransportCapabilities {
-        self.capabilities
+    fn broadcast_excluding(
+        &mut self,
+        exclude: &[ClientId],
+        payload: TransportPayload,
+    ) -> TransportResult<()> {
+        self.ensure_started()?;
+        let datagram_channel = self.datagram_channel;
+        let exclude: HashSet<_> = exclude.iter().copied().collect();
+        self.with_endpoint(|endpoint| {
+            let clients = endpoint.clients();
+            for client_id in clients {
+                if exclude.contains(&client_id) {
+                    continue;
+                }
+                Self::send_payload(endpoint, client_id, payload.clone(), datagram_channel)?;
+            }
+            Ok(())
+        })
     }
 }
 
-fn forward_server_async_message(
+impl Drop for QuicServerTransport {
+    fn drop(&mut self) {
+        self.shutdown();
+    }
+}
+
+fn handle_async_message(
     endpoint: &mut crate::Endpoint,
     message: ServerAsyncMessage,
-    events: &UnboundedSender<TransportEvent>,
+    output: &mut Vec<TransportEvent>,
 ) {
     match message {
         ServerAsyncMessage::ClientConnected(connection) => {
             match endpoint.handle_connection(connection) {
                 Ok(client_id) => {
-                    let _ = events.send(TransportEvent::PeerConnected { client: client_id });
+                    output.push(TransportEvent::PeerConnected { client: client_id });
                 }
                 Err(err) => {
                     error!("failed to register new connection: {}", err);
@@ -293,7 +291,7 @@ fn forward_server_async_message(
         }
         ServerAsyncMessage::ClientConnectionClosed(client_id) => {
             endpoint.try_disconnect_closed_client(client_id);
-            let _ = events.send(TransportEvent::PeerDisconnected {
+            output.push(TransportEvent::PeerDisconnected {
                 client: client_id,
                 reason: DisconnectReason::TransportError,
             });
@@ -318,4 +316,12 @@ fn default_certificate_mode(config: &ServerEndpointConfiguration) -> Certificate
         server_hostname: hostname,
         save_on_disk: true,
     }
+}
+
+fn map_endpoint_error(err: EndpointStartError) -> TransportError {
+    TransportError::Other(format!("failed to start quic endpoint: {err}"))
+}
+
+fn map_send_error(err: ServerSendError) -> TransportError {
+    TransportError::Other(format!("failed to send quic payload: {err}"))
 }

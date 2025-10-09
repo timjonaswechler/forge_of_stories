@@ -1,7 +1,7 @@
-use tracing::trace;
 use bytes::Bytes;
 use std::fmt::Display;
 use tokio::sync::mpsc::{self};
+use tracing::trace;
 
 use crate::channels::{CHANNEL_ID_LEN, ChannelId, CloseRecv};
 

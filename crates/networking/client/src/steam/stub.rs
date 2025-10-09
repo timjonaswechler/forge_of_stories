@@ -1,17 +1,22 @@
-use bytes::Bytes;
+use shared::transport::{ClientTransport, TransportPayload, TransportResult};
 use shared::{
+    ClientEvent, TransportCapabilities, TransportError,
     channels::ChannelKind,
     steam::{SteamAppId, SteamAuthTicket},
-    ClientEvent, DisconnectReason, OutgoingMessage, TransportCapabilities,
 };
-use tokio::sync::mpsc::UnboundedSender;
 
-use crate::transport::{ClientTransport, ConnectTarget};
+use crate::transport::ConnectTarget;
 
 #[derive(thiserror::Error, Debug)]
 pub enum SteamTransportError {
     #[error("steamworks feature is disabled")]
     Disabled,
+}
+
+impl From<SteamTransportError> for TransportError {
+    fn from(_: SteamTransportError) -> Self {
+        TransportError::Other("steamworks feature is disabled".into())
+    }
 }
 
 #[derive(Debug)]
@@ -28,37 +33,7 @@ impl SteamClientTransport {
     ) -> Result<Self, SteamTransportError> {
         Err(SteamTransportError::Disabled)
     }
-}
 
-impl ClientTransport for SteamClientTransport {
-    type Error = SteamTransportError;
-
-    fn connect(
-        &mut self,
-        _target: ConnectTarget,
-        _events: UnboundedSender<ClientEvent>,
-    ) -> Result<(), Self::Error> {
-        Err(SteamTransportError::Disabled)
-    }
-
-    fn disconnect(&mut self, _reason: DisconnectReason) -> Result<(), Self::Error> {
-        Err(SteamTransportError::Disabled)
-    }
-
-    fn send(&self, _message: OutgoingMessage) -> Result<(), Self::Error> {
-        Err(SteamTransportError::Disabled)
-    }
-
-    fn send_datagram(&self, _payload: Bytes) -> Result<(), Self::Error> {
-        Err(SteamTransportError::Disabled)
-    }
-
-    fn capabilities(&self) -> TransportCapabilities {
-        TransportCapabilities::default()
-    }
-}
-
-impl SteamClientTransport {
     pub fn request_lobby_list(&self) -> Result<(), SteamTransportError> {
         Err(SteamTransportError::Disabled)
     }
@@ -75,5 +50,29 @@ impl SteamClientTransport {
 
     pub fn submit_auth_ticket(&self, _ticket: SteamAuthTicket) -> Result<(), SteamTransportError> {
         Err(SteamTransportError::Disabled)
+    }
+}
+
+impl ClientTransport for SteamClientTransport {
+    type ConnectTarget = ConnectTarget;
+
+    fn poll_events(&mut self, _output: &mut Vec<ClientEvent>) {}
+
+    fn connect(&mut self, _target: Self::ConnectTarget) -> TransportResult<()> {
+        Err(SteamTransportError::Disabled.into())
+    }
+
+    fn disconnect(&mut self) -> TransportResult<()> {
+        Err(SteamTransportError::Disabled.into())
+    }
+
+    fn send(&mut self, _payload: TransportPayload) -> TransportResult<()> {
+        Err(SteamTransportError::Disabled.into())
+    }
+}
+
+impl SteamClientTransport {
+    pub fn capabilities(&self) -> TransportCapabilities {
+        TransportCapabilities::default()
     }
 }

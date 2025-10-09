@@ -1,17 +1,29 @@
-use bytes::Bytes;
+use shared::transport::{ServerTransport, TransportPayload, TransportResult};
 use shared::{
+    ClientId, TransportError, TransportEvent,
     channels::ChannelKind,
     steam::{SteamAppId, SteamAuthTicket},
-    ClientId, DisconnectReason, OutgoingMessage, TransportCapabilities, TransportEvent,
 };
-use tokio::sync::mpsc::UnboundedSender;
-
-use crate::transport::ServerTransport;
 
 #[derive(thiserror::Error, Debug)]
 pub enum SteamServerTransportError {
     #[error("steamworks feature is disabled")]
     Disabled,
+    #[error("steam authentication validation failed: {0}")]
+    AuthValidation(String),
+}
+
+impl From<SteamServerTransportError> for TransportError {
+    fn from(err: SteamServerTransportError) -> Self {
+        match err {
+            SteamServerTransportError::Disabled => {
+                TransportError::Other("steamworks feature is disabled".into())
+            }
+            SteamServerTransportError::AuthValidation(reason) => {
+                TransportError::Other(format!("steam auth validation failed: {reason}"))
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -39,27 +51,21 @@ impl SteamServerTransport {
 }
 
 impl ServerTransport for SteamServerTransport {
-    type Error = SteamServerTransportError;
+    fn poll_events(&mut self, _output: &mut Vec<TransportEvent>) {}
 
-    fn start(&mut self, _events: UnboundedSender<TransportEvent>) -> Result<(), Self::Error> {
-        Err(SteamServerTransportError::Disabled)
+    fn send(&mut self, _client: ClientId, _payload: TransportPayload) -> TransportResult<()> {
+        Err(SteamServerTransportError::Disabled.into())
     }
 
-    fn stop(&mut self) {}
-
-    fn send(&self, _client: ClientId, _message: OutgoingMessage) -> Result<(), Self::Error> {
-        Err(SteamServerTransportError::Disabled)
+    fn broadcast(&mut self, _payload: TransportPayload) -> TransportResult<()> {
+        Err(SteamServerTransportError::Disabled.into())
     }
 
-    fn send_datagram(&self, _client: ClientId, _payload: Bytes) -> Result<(), Self::Error> {
-        Err(SteamServerTransportError::Disabled)
-    }
-
-    fn disconnect(&self, _client: ClientId, _reason: DisconnectReason) -> Result<(), Self::Error> {
-        Err(SteamServerTransportError::Disabled)
-    }
-
-    fn capabilities(&self) -> TransportCapabilities {
-        TransportCapabilities::default()
+    fn broadcast_excluding(
+        &mut self,
+        _exclude: &[ClientId],
+        _payload: TransportPayload,
+    ) -> TransportResult<()> {
+        Err(SteamServerTransportError::Disabled.into())
     }
 }

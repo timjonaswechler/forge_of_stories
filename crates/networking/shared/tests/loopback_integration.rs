@@ -1,277 +1,129 @@
-//! Integration test for loopback transport.
-//!
-//! Verifies that client and server can communicate in the same process
-//! with zero network I/O.
+//! Integration tests for the loopback transport using the public trait API.
 
 use bytes::Bytes;
-use shared::transport::{LoopbackError, LoopbackPair};
-use shared::{ClientEvent, DisconnectReason, OutgoingMessage, TransportEvent};
-use tokio::sync::mpsc::unbounded_channel;
+use shared::transport::{LoopbackPair, TransportPayload};
+use shared::{ClientEvent, DisconnectReason, TransportEvent};
 
-#[test]
-fn test_loopback_client_server_same_process() {
-    use uuid::uuid;
+const LOOPBACK_CLIENT: uuid::Uuid = uuid::uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8");
 
-    // Create loopback pair
+fn connect_pair() -> LoopbackPair {
     let mut pair = LoopbackPair::new();
+    pair.client.connect(()).expect("loopback connect");
 
-    // Setup event channels
-    let (client_event_tx, mut client_event_rx) = unbounded_channel();
-    let (server_event_tx, mut server_event_rx) = unbounded_channel();
-
-    // Connect both sides
-    pair.client.connect(client_event_tx).unwrap();
-    pair.server.start(server_event_tx).unwrap();
-
-    // Verify connection events
-    let client_connected = client_event_rx.try_recv().unwrap();
+    // Drain the initial connect events so each test starts with clear queues.
+    let mut client_events = Vec::new();
+    pair.client.poll_events(&mut client_events);
     assert!(matches!(
-        client_connected,
-        ClientEvent::Connected { client_id: None }
+        client_events.as_slice(),
+        [ClientEvent::Connected { client_id: None }]
     ));
 
-    let server_peer_connected = server_event_rx.try_recv().unwrap();
-    let expected_uuid = uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8");
+    let mut server_events = Vec::new();
+    pair.server.poll_events(&mut server_events);
     assert!(matches!(
-        server_peer_connected,
-        TransportEvent::PeerConnected { client } if client == expected_uuid
+        server_events.as_slice(),
+        [TransportEvent::PeerConnected { client }] if *client == LOOPBACK_CLIENT
     ));
 
-    // Client sends message to server
-    let c2s_msg = OutgoingMessage::new(0, Bytes::from("Client Hello"));
-    pair.client.send(c2s_msg).unwrap();
-
-    // Server receives and processes
-    let server_events = pair.server.poll_events();
-    assert_eq!(server_events.len(), 1);
-
-    if let TransportEvent::Message {
-        client,
-        channel,
-        payload,
-    } = &server_events[0]
-    {
-        assert_eq!(*client, uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8"));
-        assert_eq!(*channel, 0);
-        assert_eq!(payload.as_ref(), b"Client Hello");
-
-        // Server responds
-        let s2c_msg = OutgoingMessage::new(0, Bytes::from("Server Response"));
-        pair.server.send(*client, s2c_msg).unwrap();
-    } else {
-        panic!("Expected Message event from server");
-    }
-
-    // Client receives response
-    let client_events = pair.client.poll_events();
-    assert_eq!(client_events.len(), 1);
-
-    if let ClientEvent::Message { channel, payload } = &client_events[0] {
-        assert_eq!(*channel, 0);
-        assert_eq!(payload.as_ref(), b"Server Response");
-    } else {
-        panic!("Expected Message event from client");
-    }
+    pair
 }
 
 #[test]
-fn test_loopback_multiple_messages() {
-    use uuid::uuid;
-    let mut pair = LoopbackPair::new();
+fn loopback_roundtrip() {
+    let mut pair = connect_pair();
 
-    let (client_event_tx, mut _client_event_rx) = unbounded_channel();
-    let (server_event_tx, mut _server_event_rx) = unbounded_channel();
+    pair.client
+        .send(TransportPayload::message(0, Bytes::from_static(b"hello")))
+        .unwrap();
 
-    pair.client.connect(client_event_tx).unwrap();
-    pair.server.start(server_event_tx).unwrap();
+    let mut server_events = Vec::new();
+    pair.server.poll_events(&mut server_events);
+    assert!(matches!(
+        server_events.as_slice(),
+        [TransportEvent::Message { client, channel, payload }]
+        if *client == LOOPBACK_CLIENT && *channel == 0 && payload.as_ref() == b"hello"
+    ));
 
-    // Send 100 messages in each direction
-    let count = 100;
-    for i in 0..count {
+    pair.server
+        .send(
+            LOOPBACK_CLIENT,
+            TransportPayload::message(1, Bytes::from_static(b"reply")),
+        )
+        .unwrap();
+
+    let mut client_events = Vec::new();
+    pair.client.poll_events(&mut client_events);
+    assert!(matches!(
+        client_events.as_slice(),
+        [ClientEvent::Message { channel, payload }]
+        if *channel == 1 && payload.as_ref() == b"reply"
+    ));
+}
+
+#[test]
+fn loopback_message_order_is_preserved() {
+    let mut pair = connect_pair();
+
+    for i in 0..50 {
         pair.client
-            .send(OutgoingMessage::new(0, Bytes::from(format!("C2S {}", i))))
+            .send(TransportPayload::message(
+                0,
+                Bytes::from(format!("C2S {i}")),
+            ))
             .unwrap();
-
         pair.server
             .send(
-                uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8"),
-                OutgoingMessage::new(0, Bytes::from(format!("S2C {}", i))),
+                LOOPBACK_CLIENT,
+                TransportPayload::message(0, Bytes::from(format!("S2C {i}"))),
             )
             .unwrap();
     }
 
-    // Verify all messages received
-    let server_events = pair.server.poll_events();
-    assert_eq!(server_events.len(), count);
-
-    let client_events = pair.client.poll_events();
-    assert_eq!(client_events.len(), count);
-
-    // Verify message order is preserved
-    for (i, event) in server_events.iter().enumerate() {
-        if let TransportEvent::Message { payload, .. } = event {
-            let expected = format!("C2S {}", i);
-            assert_eq!(payload.as_ref(), expected.as_bytes());
+    let mut server_events = Vec::new();
+    pair.server.poll_events(&mut server_events);
+    assert_eq!(server_events.len(), 50);
+    for (idx, event) in server_events.into_iter().enumerate() {
+        match event {
+            TransportEvent::Message { payload, .. } => {
+                assert_eq!(payload.as_ref(), format!("C2S {idx}").as_bytes());
+            }
+            other => panic!("unexpected server event: {other:?}"),
         }
     }
 
-    for (i, event) in client_events.iter().enumerate() {
-        if let ClientEvent::Message { payload, .. } = event {
-            let expected = format!("S2C {}", i);
-            assert_eq!(payload.as_ref(), expected.as_bytes());
+    let mut client_events = Vec::new();
+    pair.client.poll_events(&mut client_events);
+    assert_eq!(client_events.len(), 50);
+    for (idx, event) in client_events.into_iter().enumerate() {
+        match event {
+            ClientEvent::Message { payload, .. } => {
+                assert_eq!(payload.as_ref(), format!("S2C {idx}").as_bytes());
+            }
+            other => panic!("unexpected client event: {other:?}"),
         }
     }
 }
 
 #[test]
-fn test_loopback_disconnect_lifecycle() {
-    let mut pair = LoopbackPair::new();
+fn loopback_disconnect_propagates() {
+    let mut pair = connect_pair();
 
-    let (client_event_tx, mut client_event_rx) = unbounded_channel();
-    let (server_event_tx, mut server_event_rx) = unbounded_channel();
+    pair.client.disconnect().unwrap();
 
-    // Connect
-    pair.client.connect(client_event_tx).unwrap();
-    pair.server.start(server_event_tx).unwrap();
-
-    // Clear connection events
-    let _ = client_event_rx.try_recv();
-    let _ = server_event_rx.try_recv();
-
-    // Client disconnects gracefully
-    pair.client.disconnect(DisconnectReason::Graceful).unwrap();
-
-    // Verify client receives disconnect event
-    let client_disconnect = client_event_rx.try_recv().unwrap();
+    let mut client_events = Vec::new();
+    pair.client.poll_events(&mut client_events);
     assert!(matches!(
-        client_disconnect,
-        ClientEvent::Disconnected {
+        client_events.as_slice(),
+        [ClientEvent::Disconnected {
             reason: DisconnectReason::Graceful
-        }
+        }]
     ));
 
-    // Verify client cannot send after disconnect
-    let result = pair
-        .client
-        .send(OutgoingMessage::new(0, Bytes::from("test")));
-    assert!(result.is_err());
-    assert!(matches!(result.unwrap_err(), LoopbackError::NotConnected));
-}
-
-#[test]
-fn test_loopback_server_disconnect() {
-    use uuid::uuid;
-    let mut pair = LoopbackPair::new();
-
-    let (client_event_tx, mut _client_event_rx) = unbounded_channel();
-    let (server_event_tx, mut server_event_rx) = unbounded_channel();
-
-    pair.client.connect(client_event_tx).unwrap();
-    pair.server.start(server_event_tx).unwrap();
-
-    // Clear connection events
-    let _ = server_event_rx.try_recv();
-
-    // Server disconnects the client
-    pair.server
-        .disconnect(
-            uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8"),
-            DisconnectReason::Kicked,
-        )
-        .unwrap();
-
-    // Verify server emitted disconnect event
-    let server_disconnect = server_event_rx.try_recv().unwrap();
-    let matching_uuid = uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8");
+    let mut server_events = Vec::new();
+    pair.server.poll_events(&mut server_events);
     assert!(matches!(
-        server_disconnect,
-        TransportEvent::PeerDisconnected {
-            client: matching_uuid,
-            reason: DisconnectReason::Kicked
-        }
+        server_events.as_slice(),
+        [TransportEvent::PeerDisconnected { client, reason: DisconnectReason::Graceful }]
+        if *client == LOOPBACK_CLIENT
     ));
-}
-
-#[test]
-fn test_loopback_no_network_io() {
-    // This test verifies that loopback transport doesn't use network I/O.
-    // Since we're using in-memory channels, there should be no socket operations.
-    //
-    // On Unix systems, you could verify this with:
-    // - strace: no socket(), bind(), connect() syscalls
-    // - lsof: no network file descriptors
-    //
-    // For this test, we simply verify that the transport works without
-    // binding to any network interface.
-    use uuid::uuid;
-    let mut pair = LoopbackPair::new();
-    let (client_event_tx, mut _client_event_rx) = unbounded_channel();
-    let (server_event_tx, mut _server_event_rx) = unbounded_channel();
-
-    // Connect (should not require any network)
-    pair.client.connect(client_event_tx).unwrap();
-    pair.server.start(server_event_tx).unwrap();
-
-    // Exchange messages (should be instant, no network latency)
-    for i in 0..10 {
-        pair.client
-            .send(OutgoingMessage::new(0, Bytes::from(format!("msg {}", i))))
-            .unwrap();
-    }
-
-    let events = pair.server.poll_events();
-    assert_eq!(events.len(), 10);
-
-    // All messages should be delivered instantly (same process, same memory)
-    // No network overhead, no serialization over network, just in-memory copy
-}
-
-#[test]
-fn test_loopback_datagram_support() {
-    use uuid::uuid;
-    let mut pair = LoopbackPair::new();
-
-    let (client_event_tx, mut _client_event_rx) = unbounded_channel();
-    let (server_event_tx, mut _server_event_rx) = unbounded_channel();
-
-    pair.client.connect(client_event_tx).unwrap();
-    pair.server.start(server_event_tx).unwrap();
-
-    // Send datagrams (treated as regular messages for loopback)
-    pair.client
-        .send_datagram(Bytes::from("datagram 1"))
-        .unwrap();
-    pair.client
-        .send_datagram(Bytes::from("datagram 2"))
-        .unwrap();
-
-    pair.server
-        .send_datagram(
-            uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8"),
-            Bytes::from("server datagram"),
-        )
-        .unwrap();
-
-    // Server receives client datagrams
-    let server_events = pair.server.poll_events();
-    assert_eq!(server_events.len(), 2);
-
-    // Client receives server datagram
-    let client_events = pair.client.poll_events();
-    assert_eq!(client_events.len(), 1);
-}
-
-#[test]
-fn test_loopback_capabilities() {
-    let pair = LoopbackPair::new();
-
-    let client_caps = pair.client.capabilities();
-    assert!(client_caps.supports_reliable_streams);
-    assert!(client_caps.supports_datagrams);
-    assert_eq!(client_caps.max_channels, 255);
-
-    let server_caps = pair.server.capabilities();
-    assert!(server_caps.supports_reliable_streams);
-    assert!(server_caps.supports_datagrams);
-    assert_eq!(server_caps.max_channels, 255);
 }

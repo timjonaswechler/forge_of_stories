@@ -1,50 +1,24 @@
 use std::{
-    fs,
     net::{IpAddr, Ipv4Addr, SocketAddr},
-    path::PathBuf,
     sync::{Arc, Mutex},
-    time::Duration,
 };
 
-use bevy::log::{error, warn};
-use bytes::Bytes;
+use bevy::log::warn;
+use shared::transport::{ClientTransport, TransportPayload, TransportResult};
 use shared::{
-    ClientEvent, DisconnectReason, OutgoingMessage, TransportCapabilities, TransportError,
+    ClientEvent, DisconnectReason, TransportCapabilities, TransportError,
     channels::{ChannelAsyncMessage, ChannelKind, ChannelsConfiguration},
     error::AsyncChannelError,
 };
-use tokio::{
-    runtime::Runtime,
-    sync::{mpsc::UnboundedSender, oneshot},
-    task::JoinHandle,
-    time::sleep,
-};
+use tokio::runtime::Runtime;
 
-use super::{ClientTransport, ConnectTarget};
+use super::ConnectTarget;
 use crate::{
     ClientAsyncMessage, QuinnetClient,
     certificate::{CertificateVerificationMode, KnownHosts, TrustOnFirstUseConfig},
     connection::{ClientSideConnection, ConnectionLocalId, InternalConnectionState},
     error::ClientSendError,
 };
-
-#[derive(thiserror::Error, Debug)]
-pub enum QuicClientTransportError {
-    #[error("quic client transport already connected")]
-    AlreadyConnected,
-    #[error("quic client transport not connected")]
-    NotConnected,
-    #[error("invalid target address")]
-    InvalidTarget,
-    #[error("open connection failed: {0}")]
-    OpenConnection(#[from] AsyncChannelError),
-    #[error("send failed: {0}")]
-    Send(#[from] ClientSendError),
-    #[error("disconnect failed: {0}")]
-    Disconnect(String),
-    #[error("datagrams are not supported by the quic client transport yet")]
-    DatagramsUnsupported,
-}
 
 pub struct QuicClientTransport {
     runtime: Runtime,
@@ -54,9 +28,7 @@ pub struct QuicClientTransport {
     channels: ChannelsConfiguration,
     capabilities: TransportCapabilities,
     connection_id: Option<ConnectionLocalId>,
-    event_sender: Option<UnboundedSender<ClientEvent>>,
-    shutdown_tx: Option<oneshot::Sender<()>>,
-    event_task: Option<JoinHandle<()>>,
+    pending_events: Vec<ClientEvent>,
 }
 
 impl std::fmt::Debug for QuicClientTransport {
@@ -64,13 +36,13 @@ impl std::fmt::Debug for QuicClientTransport {
         f.debug_struct("QuicClientTransport")
             .field("local_bind", &self.local_bind)
             .field("capabilities", &self.capabilities)
+            .field("connected", &self.connection_id.is_some())
             .finish()
     }
 }
 
 impl QuicClientTransport {
     pub fn new(channels: ChannelsConfiguration, capabilities: TransportCapabilities) -> Self {
-        // Install default crypto provider for rustls if not already set
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
         let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -89,193 +61,72 @@ impl QuicClientTransport {
             channels,
             capabilities,
             connection_id: None,
-            event_sender: None,
-            shutdown_tx: None,
-            event_task: None,
+            pending_events: Vec::new(),
         }
     }
 
-    fn ensure_event_task(&mut self, events: UnboundedSender<ClientEvent>) {
-        if self.event_task.is_some() {
-            return;
-        }
-
-        let (shutdown_tx, mut shutdown_rx) = oneshot::channel();
-        let client = Arc::clone(&self.client);
-
-        let handle = self.runtime.spawn(async move {
-            loop {
-                {
-                    let mut guard = match client.lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => poisoned.into_inner(),
-                    };
-
-                    for (connection_id, connection) in &mut guard.connections {
-                        drain_client_messages(*connection_id, connection, &events);
-                    }
-                }
-
-                tokio::select! {
-                    _ = sleep(Duration::from_millis(16)) => {},
-                    _ = &mut shutdown_rx => break,
-                }
-            }
-        });
-
-        self.event_task = Some(handle);
-        self.shutdown_tx = Some(shutdown_tx);
-    }
-
-    fn stop_event_task(&mut self) {
-        if let Some(shutdown) = self.shutdown_tx.take() {
-            let _ = shutdown.send(());
-        }
-        if let Some(handle) = self.event_task.take() {
-            handle.abort();
-        }
-    }
-
-    fn resolve_target(
-        &self,
-        host: &str,
-        port: u16,
-    ) -> Result<SocketAddr, QuicClientTransportError> {
+    fn resolve_target(&self, host: &str, port: u16) -> TransportResult<SocketAddr> {
         let addr_str = format!("{host}:{port}");
         addr_str
             .parse()
-            .map_err(|_| QuicClientTransportError::InvalidTarget)
+            .map_err(|_| TransportError::InvalidConfig("invalid quic target"))
     }
-}
 
-impl ClientTransport for QuicClientTransport {
-    type Error = QuicClientTransportError;
+    fn collect_events(&mut self, output: &mut Vec<ClientEvent>) -> TransportResult<()> {
+        let mut guard = self
+            .client
+            .lock()
+            .map_err(|_| TransportError::Other("quic client mutex poisoned".into()))?;
 
-    fn connect(
-        &mut self,
-        target: ConnectTarget,
-        events: UnboundedSender<ClientEvent>,
-    ) -> Result<(), Self::Error> {
-        if self.connection_id.is_some() {
-            return Err(QuicClientTransportError::AlreadyConnected);
+        for (connection_id, connection) in &mut guard.connections {
+            drain_client_messages(*connection_id, connection, output);
         }
 
-        let socket = match target {
-            ConnectTarget::Quic { host, port } => self.resolve_target(&host, port)?,
-            ConnectTarget::Loopback => {
-                return Err(QuicClientTransportError::InvalidTarget);
-            }
-            ConnectTarget::SteamLobby { .. } => {
-                return Err(QuicClientTransportError::InvalidTarget);
-            }
-        };
-
-        let mut guard = self.client.lock().expect("quic client mutex poisoned");
-
-        let endpoint_config = crate::connection::ClientEndpointConfiguration::from_addrs_with_name(
-            socket,
-            socket.ip().to_string(),
-            self.local_bind,
-        );
-
-        let connection_id = guard.open_connection(
-            endpoint_config,
-            self.cert_mode.clone(),
-            self.channels.clone(),
-        )?;
-        guard.set_default_connection(connection_id);
-
-        drop(guard);
-
-        self.event_sender = Some(events.clone());
-        self.ensure_event_task(events);
-        self.connection_id = Some(connection_id);
         Ok(())
     }
 
-    fn disconnect(&mut self, _reason: DisconnectReason) -> Result<(), Self::Error> {
-        let conn_id = self
-            .connection_id
-            .ok_or(QuicClientTransportError::NotConnected)?;
-
-        let mut guard = self.client.lock().expect("quic client mutex poisoned");
-        if let Some(connection) = guard.get_connection_mut_by_id(conn_id) {
-            connection
-                .disconnect()
-                .map_err(|e| QuicClientTransportError::Disconnect(e.to_string()))?;
-        }
-        drop(guard);
-        self.connection_id = None;
-
-        if let Some(sender) = self.event_sender.as_ref() {
-            let _ = sender.send(ClientEvent::Disconnected {
-                reason: DisconnectReason::Graceful,
-            });
-        }
-
-        self.stop_event_task();
-        self.event_sender = None;
-        Ok(())
-    }
-
-    fn send(&self, message: OutgoingMessage) -> Result<(), Self::Error> {
-        let conn_id = self
-            .connection_id
-            .ok_or(QuicClientTransportError::NotConnected)?;
-        let mut guard = self.client.lock().expect("quic client mutex poisoned");
+    fn with_connection<R>(
+        &self,
+        f: impl FnOnce(&mut ClientSideConnection) -> TransportResult<R>,
+    ) -> TransportResult<R> {
+        let conn_id = self.connection_id.ok_or(TransportError::NotReady)?;
+        let mut guard = self
+            .client
+            .lock()
+            .map_err(|_| TransportError::Other("quic client mutex poisoned".into()))?;
         let connection = guard
             .get_connection_mut_by_id(conn_id)
-            .ok_or(QuicClientTransportError::NotConnected)?;
-
-        connection.send_payload_on(message.channel, message.payload.clone())?;
-        Ok(())
+            .ok_or(TransportError::NotReady)?;
+        f(connection)
     }
 
-    fn send_datagram(&self, payload: Bytes) -> Result<(), Self::Error> {
-        let conn_id = self
-            .connection_id
-            .ok_or(QuicClientTransportError::NotConnected)?;
-        let mut guard = self.client.lock().expect("quic client mutex poisoned");
-        let connection = guard
-            .get_connection_mut_by_id(conn_id)
-            .ok_or(QuicClientTransportError::NotConnected)?;
-
-        if let Some(channel) = connection.first_unreliable_channel() {
-            connection.send_payload_on(channel, payload)?;
-            Ok(())
-        } else {
-            warn!("attempted to send datagram but no unreliable channel configured");
-            Err(QuicClientTransportError::DatagramsUnsupported)
-        }
+    fn map_send_error(err: ClientSendError) -> TransportError {
+        TransportError::Other(format!("failed to send quic payload: {err}"))
     }
 
-    fn capabilities(&self) -> TransportCapabilities {
+    fn map_open_error(err: AsyncChannelError) -> TransportError {
+        TransportError::Other(format!("failed to open quic connection: {err}"))
+    }
+
+    /// Returns the advertised capabilities for this transport instance.
+    pub fn capabilities(&self) -> TransportCapabilities {
         self.capabilities
     }
-}
 
-impl QuicClientTransport {
-    /// Receive a message from the server (convenience method for gameplay code).
-    ///
-    /// This wraps the underlying connection's `receive_message` method.
+    /// Receive a gameplay message using the underlying connection API.
     pub fn receive_message<T: serde::de::DeserializeOwned>(
         &mut self,
     ) -> Result<Option<(shared::channels::ChannelId, T)>, crate::error::ClientMessageReceiveError>
     {
-        let conn_id = self
-            .connection_id
-            .ok_or_else(|| crate::error::ConnectionClosed)?;
+        let conn_id = self.connection_id.ok_or(crate::error::ConnectionClosed)?;
         let mut guard = self.client.lock().expect("quic client mutex poisoned");
         let connection = guard
             .get_connection_mut_by_id(conn_id)
-            .ok_or_else(|| crate::error::ConnectionClosed)?;
-
+            .ok_or(crate::error::ConnectionClosed)?;
         connection.receive_message()
     }
 
-    /// Send a message to the server (convenience method for gameplay code).
-    ///
-    /// This wraps the underlying connection's `send_message_on` method.
+    /// Send a gameplay message using the underlying connection API.
     pub fn send_message_on<T: serde::Serialize>(
         &mut self,
         channel: shared::channels::ChannelId,
@@ -288,14 +139,110 @@ impl QuicClientTransport {
         let connection = guard
             .get_connection_mut_by_id(conn_id)
             .ok_or(crate::error::ClientSendError::ConnectionClosed)?;
-
         connection.send_message_on(channel, message)?;
         Ok(())
     }
 }
 
+impl ClientTransport for QuicClientTransport {
+    type ConnectTarget = ConnectTarget;
+
+    fn poll_events(&mut self, output: &mut Vec<ClientEvent>) {
+        if !self.pending_events.is_empty() {
+            output.extend(self.pending_events.drain(..));
+        }
+
+        if let Err(err) = self.collect_events(output) {
+            output.push(ClientEvent::Error { error: err });
+        }
+    }
+
+    fn connect(&mut self, target: Self::ConnectTarget) -> TransportResult<()> {
+        if self.connection_id.is_some() {
+            return Err(TransportError::Other(
+                "quic client already connected".into(),
+            ));
+        }
+
+        let socket = match target {
+            ConnectTarget::Quic { host, port } => self.resolve_target(&host, port)?,
+            ConnectTarget::Loopback => {
+                return Err(TransportError::InvalidConfig(
+                    "loopback target not supported by quic client",
+                ));
+            }
+            ConnectTarget::SteamLobby { .. } => {
+                return Err(TransportError::InvalidConfig(
+                    "steam lobby target not supported by quic client",
+                ));
+            }
+        };
+
+        let mut guard = self
+            .client
+            .lock()
+            .map_err(|_| TransportError::Other("quic client mutex poisoned".into()))?;
+
+        let endpoint_config = crate::connection::ClientEndpointConfiguration::from_addrs_with_name(
+            socket,
+            socket.ip().to_string(),
+            self.local_bind,
+        );
+
+        let connection_id = guard
+            .open_connection(
+                endpoint_config,
+                self.cert_mode.clone(),
+                self.channels.clone(),
+            )
+            .map_err(Self::map_open_error)?;
+        guard.set_default_connection(connection_id);
+
+        drop(guard);
+        self.connection_id = Some(connection_id);
+        Ok(())
+    }
+
+    fn disconnect(&mut self) -> TransportResult<()> {
+        if self.connection_id.is_none() {
+            return Err(TransportError::NotReady);
+        }
+
+        let result = self.with_connection(|connection| {
+            connection.disconnect().map_err(|err| {
+                TransportError::Other(format!("failed to disconnect quic client: {err}"))
+            })
+        });
+
+        self.connection_id = None;
+        self.pending_events.push(ClientEvent::Disconnected {
+            reason: DisconnectReason::Graceful,
+        });
+        result
+    }
+
+    fn send(&mut self, payload: TransportPayload) -> TransportResult<()> {
+        self.with_connection(|connection| match payload {
+            TransportPayload::Message { channel, payload } => connection
+                .send_payload_on(channel, payload)
+                .map_err(Self::map_send_error),
+            TransportPayload::Datagram { payload } => {
+                if let Some(channel) = connection.first_unreliable_channel() {
+                    connection
+                        .send_payload_on(channel, payload)
+                        .map_err(Self::map_send_error)
+                } else {
+                    warn!("attempted to send datagram without unreliable channel configured");
+                    Err(TransportError::InvalidConfig(
+                        "quic client missing unreliable channel",
+                    ))
+                }
+            }
+        })
+    }
+}
+
 fn default_certificate_mode() -> CertificateVerificationMode {
-    // TODO: Implement certificate directory creation and default certificate mode
     let cert_dir = dirs::data_dir().expect("data directory not found");
     let hosts_file = cert_dir.join("known_hosts");
     CertificateVerificationMode::TrustOnFirstUse(TrustOnFirstUseConfig {
@@ -307,10 +254,10 @@ fn default_certificate_mode() -> CertificateVerificationMode {
 fn drain_client_messages(
     connection_id: ConnectionLocalId,
     connection: &mut ClientSideConnection,
-    events: &UnboundedSender<ClientEvent>,
+    output: &mut Vec<ClientEvent>,
 ) {
     while let Ok(message) = connection.from_async_client_recv.try_recv() {
-        forward_client_async_message(connection_id, connection, message, events);
+        forward_client_async_message(connection_id, connection, message, output);
     }
 
     while let Ok(message) = connection.from_channels_recv.try_recv() {
@@ -318,7 +265,7 @@ fn drain_client_messages(
             ChannelAsyncMessage::LostConnection => {
                 if !matches!(connection.state, InternalConnectionState::Disconnected) {
                     connection.try_disconnect_closed_connection();
-                    let _ = events.send(ClientEvent::Disconnected {
+                    output.push(ClientEvent::Disconnected {
                         reason: DisconnectReason::TransportError,
                     });
                 }
@@ -333,9 +280,9 @@ fn drain_client_messages(
                     connection.channel_kind(channel),
                     Some(ChannelKind::Unreliable)
                 ) {
-                    let _ = events.send(ClientEvent::Datagram { payload });
+                    output.push(ClientEvent::Datagram { payload });
                 } else {
-                    let _ = events.send(ClientEvent::Message { channel, payload });
+                    output.push(ClientEvent::Message { channel, payload });
                 }
             }
             Ok(None) => break,
@@ -343,7 +290,7 @@ fn drain_client_messages(
                 if !matches!(connection.state, InternalConnectionState::Disconnected) {
                     connection.try_disconnect_closed_connection();
                 }
-                let _ = events.send(ClientEvent::Disconnected {
+                output.push(ClientEvent::Disconnected {
                     reason: DisconnectReason::TransportError,
                 });
                 break;
@@ -356,51 +303,48 @@ fn forward_client_async_message(
     _connection_id: ConnectionLocalId,
     connection: &mut ClientSideConnection,
     message: ClientAsyncMessage,
-    events: &UnboundedSender<ClientEvent>,
+    output: &mut Vec<ClientEvent>,
 ) {
     match message {
         ClientAsyncMessage::Connected(internal_connection, client_id) => {
             connection.state = InternalConnectionState::Connected(internal_connection, client_id);
-            let _ = events.send(ClientEvent::Connected { client_id });
+            output.push(ClientEvent::Connected { client_id });
         }
         ClientAsyncMessage::ConnectionFailed(err) => {
             connection.state = InternalConnectionState::Disconnected;
-            let _ = events.send(ClientEvent::Error {
+            output.push(ClientEvent::Error {
                 error: TransportError::Other(err.to_string()),
             });
-            let _ = events.send(ClientEvent::Disconnected {
+            output.push(ClientEvent::Disconnected {
                 reason: DisconnectReason::TransportError,
             });
         }
         ClientAsyncMessage::ConnectionClosed => {
             if !matches!(connection.state, InternalConnectionState::Disconnected) {
                 connection.try_disconnect_closed_connection();
-                let _ = events.send(ClientEvent::Disconnected {
+                output.push(ClientEvent::Disconnected {
                     reason: DisconnectReason::TransportError,
                 });
             }
         }
         ClientAsyncMessage::CertificateInteractionRequest { .. } => {
-            warn!("certificate interaction request received but not handled yet");
-        }
-        ClientAsyncMessage::CertificateTrustUpdate(info) => {
-            warn!("certificate trust update ignored: {:?}", info);
-        }
-        ClientAsyncMessage::CertificateConnectionAbort { status, cert_info } => {
-            error!(
-                "connection aborted during certificate verification: {:?} {:?}",
-                status, cert_info
-            );
-            connection.try_disconnect_closed_connection();
-            connection.state = InternalConnectionState::Disconnected;
-            let _ = events.send(ClientEvent::Error {
-                error: TransportError::Other(format!(
-                    "certificate verification failed: {:?}",
-                    status
-                )),
+            warn!("Ignoring certificate interaction request in minimal client transport");
+            output.push(ClientEvent::Error {
+                error: TransportError::Other(
+                    "certificate interaction not supported in this build".into(),
+                ),
             });
-            let _ = events.send(ClientEvent::Disconnected {
-                reason: DisconnectReason::TransportError,
+        }
+        ClientAsyncMessage::CertificateTrustUpdate(_) => {
+            warn!("Ignoring certificate trust update in minimal client transport");
+        }
+        ClientAsyncMessage::CertificateConnectionAbort { .. } => {
+            connection.state = InternalConnectionState::Disconnected;
+            output.push(ClientEvent::Error {
+                error: TransportError::Other("certificate verification aborted by remote".into()),
+            });
+            output.push(ClientEvent::Disconnected {
+                reason: DisconnectReason::AuthenticationFailed,
             });
         }
     }

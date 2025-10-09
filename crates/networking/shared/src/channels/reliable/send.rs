@@ -1,7 +1,7 @@
-use tracing::{error, trace, warn};
 use futures::sink::SinkExt;
 use quinn::SendStream;
 use tokio_util::codec::FramedWrite;
+use tracing::{error, trace, warn};
 
 use crate::channels::{ChannelAsyncMessage, ChannelId, CloseReason, SendChannelTask};
 

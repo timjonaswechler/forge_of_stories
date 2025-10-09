@@ -19,8 +19,8 @@ use bevy::ecs::world::World;
 use bevy::prelude::*;
 use server::transport::quic::QuicServerTransport;
 use server::transport::{ServerTransport, SteamServerTransport};
-use shared::ClientId;
-use shared::transport::{LoopbackClientTransport, LoopbackServerTransport};
+use shared::transport::{LoopbackClientTransport, LoopbackServerTransport, TransportPayload};
+use shared::{ClientId, TransportError, TransportEvent};
 use std::time::SystemTime;
 use tracing::error;
 use uuid::Uuid;
@@ -274,16 +274,6 @@ impl Drop for ServerHandle {
 // GameServer - Unified Server Implementation
 // ==============================================================================
 
-/// Resource holding the transport event receiver and sender channels.
-///
-/// The GameServer polls the receiver in tick() to receive events from all transports.
-/// The sender is used when dynamically adding new transports at runtime.
-#[derive(Resource)]
-struct TransportEventChannel {
-    receiver: tokio::sync::mpsc::UnboundedReceiver<shared::TransportEvent>,
-    sender: tokio::sync::mpsc::UnboundedSender<shared::TransportEvent>,
-}
-
 /// Unified game server implementation that can run in different modes.
 ///
 /// This is the core server that handles all gameplay logic, physics, and state management.
@@ -312,6 +302,50 @@ pub struct GameServer {
 pub enum ExternalTransport {
     Quic(QuicServerTransport),
     Steam(SteamServerTransport),
+}
+
+impl ExternalTransport {
+    fn poll_events(&mut self, output: &mut Vec<TransportEvent>) {
+        match self {
+            ExternalTransport::Quic(quic) => quic.poll_events(output),
+            ExternalTransport::Steam(steam) => steam.poll_events(output),
+        }
+    }
+
+    fn send(&mut self, client: ClientId, payload: TransportPayload) -> Result<(), TransportError> {
+        match self {
+            ExternalTransport::Quic(quic) => quic.send(client, payload),
+            ExternalTransport::Steam(steam) => steam.send(client, payload),
+        }
+    }
+
+    fn broadcast_excluding(
+        &mut self,
+        exclude: &[ClientId],
+        payload: TransportPayload,
+    ) -> Result<(), TransportError> {
+        match self {
+            ExternalTransport::Quic(quic) => quic.broadcast_excluding(exclude, payload),
+            ExternalTransport::Steam(steam) => steam.broadcast_excluding(exclude, payload),
+        }
+    }
+
+    fn shutdown(&mut self) {
+        match self {
+            ExternalTransport::Quic(quic) => quic.shutdown(),
+            ExternalTransport::Steam(_steam) => {}
+        }
+    }
+}
+
+fn warm_up_external(external: &mut ExternalTransport) {
+    let mut discard = Vec::new();
+    external.poll_events(&mut discard);
+}
+
+fn warm_up_quic(quic: &mut QuicServerTransport) {
+    let mut discard = Vec::new();
+    quic.poll_events(&mut discard);
 }
 
 /// Server operational mode defining which transports are active.
@@ -486,56 +520,18 @@ impl GameServer {
 
         Self::initialize_server(&mut world, &mut schedule);
 
-        // Create a channel for transport events
-        let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
-
-        // Store the event receiver and sender in a resource
-        world.insert_resource(TransportEventChannel {
-            receiver: event_rx,
-            sender: event_tx.clone(),
-        });
-
         // Start transports based on mode
         let mut mode = mode; // Make it mutable
         match &mut mode {
             ServerMode::Embedded { loopback, external } => {
-                // Always start the loopback transport for the host player
-                if let Err(e) = loopback.start(event_tx.clone()) {
-                    tracing::error!("Failed to start loopback transport: {:?}", e);
-                } else {
-                    let mode_str = if external.is_some() {
-                        "multiplayer"
-                    } else {
-                        "singleplayer"
-                    };
-                    tracing::info!("Started loopback transport for {} host", mode_str);
-                }
-
-                // Start external transport if present
-                if let Some(ext) = external {
-                    match ext {
-                        ExternalTransport::Quic(quic) => {
-                            if let Err(e) = quic.start(event_tx.clone()) {
-                                tracing::error!("Failed to start QUIC transport: {:?}", e);
-                            } else {
-                                tracing::info!("QUIC transport started successfully");
-                            }
-                        }
-                        ExternalTransport::Steam(_steam) => {
-                            tracing::error!("Steam transport not yet implemented");
-                        }
-                    }
-                }
-
                 tracing::info!("GameServer starting in Embedded mode");
+                if let Some(ext) = external {
+                    warm_up_external(ext);
+                }
             }
             ServerMode::DedicatedQuic { external } => {
-                if let Err(e) = external.start(event_tx.clone()) {
-                    tracing::error!("Failed to start QUIC transport: {:?}", e);
-                    panic!("Failed to start QUIC transport: {:?}", e);
-                } else {
-                    tracing::info!("Dedicated QUIC server started successfully");
-                }
+                tracing::info!("Dedicated QUIC server started successfully");
+                warm_up_quic(external);
             }
         }
 
@@ -555,9 +551,11 @@ impl GameServer {
     pub fn add_external(mut self, external: ExternalTransport) -> Self {
         match self.mode {
             ServerMode::Embedded { loopback, .. } => {
+                let mut transport = external;
+                warm_up_external(&mut transport);
                 self.mode = ServerMode::Embedded {
                     loopback,
-                    external: Some(external),
+                    external: Some(transport),
                 };
             }
             ServerMode::DedicatedQuic { .. } => {
@@ -606,10 +604,10 @@ impl GameServer {
         state.store(ServerState::Running);
 
         // Target tick duration (20 TPS = 50ms per tick)
-        let tick_duration = Duration::from_millis(50);
+        let _tick_duration = Duration::from_millis(50);
 
         loop {
-            let tick_start = std::time::Instant::now();
+            let _tick_start = std::time::Instant::now();
 
             // Process commands from the control channel
             match command_rx.try_recv() {
@@ -632,34 +630,14 @@ impl GameServer {
                 Ok(ServerCommand::AddExternal(mut transport)) => {
                     tracing::info!("AddExternal command received");
                     if let ServerMode::Embedded { external, .. } = &mut self.mode {
-                        if external.is_some() {
-                            tracing::warn!("External transport already exists, replacing it");
+                        if let Some(mut existing) = external.take() {
+                            tracing::warn!("Replacing existing external transport");
+                            existing.shutdown();
                         }
 
-                        // Get event channel sender for the transport
-                        if let Some(event_channel) =
-                            self.world.get_resource::<TransportEventChannel>()
-                        {
-                            let event_tx = event_channel.sender.clone();
-
-                            // Start the transport
-                            match &mut transport {
-                                ExternalTransport::Quic(quic) => {
-                                    if let Err(e) = quic.start(event_tx) {
-                                        tracing::error!("Failed to start QUIC transport: {:?}", e);
-                                        return; // Don't set external if start failed
-                                    }
-                                    tracing::info!("QUIC transport started successfully");
-                                }
-                                ExternalTransport::Steam(_steam) => {
-                                    tracing::error!("Steam transport not yet implemented");
-                                    return;
-                                }
-                            }
-                        }
-
+                        warm_up_external(&mut transport);
                         *external = Some(transport);
-                        tracing::info!("External transport added and started");
+                        tracing::info!("External transport attached");
                     } else {
                         tracing::error!("Cannot add external transport to dedicated server");
                     }
@@ -667,12 +645,14 @@ impl GameServer {
                 Ok(ServerCommand::RemoveExternal) => {
                     tracing::info!("RemoveExternal command received");
                     if let ServerMode::Embedded { external, .. } = &mut self.mode {
-                        if external.is_some() {
-                            // TODO: Properly disconnect all external clients before removing
-                            *external = None;
-                            tracing::info!("External transport removed");
-                        } else {
-                            tracing::warn!("No external transport to remove");
+                        match external.take() {
+                            Some(mut existing) => {
+                                existing.shutdown();
+                                tracing::info!("External transport removed");
+                            }
+                            None => {
+                                tracing::warn!("No external transport to remove");
+                            }
                         }
                     } else {
                         tracing::error!("Cannot remove external transport from dedicated server");
@@ -725,13 +705,7 @@ impl GameServer {
 
         // Poll transport events and add them to NetworkEvents
         let mut incoming_events = Vec::new();
-        if let Some(mut event_channel) = self.world.get_resource_mut::<TransportEventChannel>() {
-            // Drain all available events from the transport channel
-            while let Ok(event) = event_channel.receiver.try_recv() {
-                incoming_events.push(event);
-            }
-        }
-        // Add events to NetworkEvents
+        self.poll_transports(&mut incoming_events);
         if !incoming_events.is_empty() {
             if let Some(mut network_events) =
                 self.world.get_resource_mut::<network::NetworkEvents>()
@@ -782,62 +756,43 @@ impl GameServer {
             }
         }
 
-        // Process broadcasts: serialize once, then Arc-share via Bytes
+        // Process broadcasts: serialize once, then reuse payload across transports
         for message in broadcasts {
-            let payload = match bincode::serde::encode_to_vec(&message, bincode::config::standard())
-            {
-                Ok(bytes) => bytes::Bytes::from(bytes),
-                Err(e) => {
-                    tracing::error!("Failed to serialize broadcast message: {:?}", e);
-                    continue;
-                }
-            };
+            let raw_bytes =
+                match bincode::serde::encode_to_vec(&message, bincode::config::standard()) {
+                    Ok(bytes) => bytes::Bytes::from(bytes),
+                    Err(e) => {
+                        tracing::error!("Failed to serialize broadcast message: {:?}", e);
+                        continue;
+                    }
+                };
 
-            let out_msg = shared::OutgoingMessage {
-                channel: message.channel(),
-                payload: payload.clone(),
-            };
+            let payload_len = raw_bytes.len();
+            let payload = TransportPayload::message(message.channel(), raw_bytes.clone());
 
             tracing::debug!(
                 "Broadcasting message to {} clients on channel {}, {} bytes",
                 connected_client_ids.len(),
                 message.channel(),
-                payload.len()
+                payload_len
             );
 
-            // Send to all clients (Bytes::clone is cheap, Arc-based)
             match &mut self.mode {
                 ServerMode::Embedded { loopback, external } => {
-                    // Send to loopback client (host)
-                    if let Err(e) = loopback.send(HOST_CLIENT_ID, out_msg.clone()) {
+                    if let Err(e) = loopback.send(HOST_CLIENT_ID, payload.clone()) {
                         tracing::warn!("Failed to broadcast to loopback client: {:?}", e);
                     }
-                    // Send to all external clients
+
                     if let Some(ext) = external {
-                        for &client_id in &connected_client_ids {
-                            if client_id != HOST_CLIENT_ID {
-                                let send_result = match ext {
-                                    ExternalTransport::Quic(quic) => {
-                                        quic.send(client_id, out_msg.clone())
-                                    }
-                                    ExternalTransport::Steam(_steam) => continue,
-                                };
-                                if let Err(e) = send_result {
-                                    tracing::warn!(
-                                        "Failed to broadcast to client {}: {:?}",
-                                        client_id,
-                                        e
-                                    );
-                                }
-                            }
+                        if let Err(e) = ext.broadcast_excluding(&[HOST_CLIENT_ID], payload.clone())
+                        {
+                            tracing::warn!("Failed to broadcast to external clients: {:?}", e);
                         }
                     }
                 }
                 ServerMode::DedicatedQuic { external } => {
-                    for &client_id in &connected_client_ids {
-                        if let Err(e) = external.send(client_id, out_msg.clone()) {
-                            tracing::warn!("Failed to broadcast to client {}: {:?}", client_id, e);
-                        }
+                    if let Err(e) = external.broadcast_excluding(&[], payload.clone()) {
+                        tracing::warn!("Failed to broadcast to clients: {:?}", e);
                     }
                 }
             }
@@ -845,61 +800,64 @@ impl GameServer {
 
         // Process unicasts: serialize individually
         for (client_id, message) in unicasts {
-            let payload = match bincode::serde::encode_to_vec(&message, bincode::config::standard())
-            {
-                Ok(bytes) => bytes::Bytes::from(bytes),
-                Err(e) => {
-                    tracing::error!("Failed to serialize unicast message: {:?}", e);
-                    continue;
-                }
-            };
+            let raw_bytes =
+                match bincode::serde::encode_to_vec(&message, bincode::config::standard()) {
+                    Ok(bytes) => bytes::Bytes::from(bytes),
+                    Err(e) => {
+                        tracing::error!("Failed to serialize unicast message: {:?}", e);
+                        continue;
+                    }
+                };
 
-            let out_msg = shared::OutgoingMessage {
-                channel: message.channel(),
-                payload,
-            };
+            let payload_len = raw_bytes.len();
+            let payload = TransportPayload::message(message.channel(), raw_bytes);
 
             tracing::debug!(
                 "Sending message to client {} on channel {}, {} bytes",
                 client_id,
                 message.channel(),
-                out_msg.payload.len()
+                payload_len
             );
 
             match &mut self.mode {
                 ServerMode::Embedded { loopback, external } => {
                     if client_id == HOST_CLIENT_ID {
-                        if let Err(e) = loopback.send(client_id, out_msg) {
+                        if let Err(e) = loopback.send(client_id, payload) {
                             tracing::warn!(
                                 "Failed to send to loopback client {}: {:?}",
                                 client_id,
                                 e
                             );
                         }
-                    } else {
-                        if let Some(ext) = external {
-                            let send_result = match ext {
-                                ExternalTransport::Quic(quic) => quic.send(client_id, out_msg),
-                                ExternalTransport::Steam(_steam) => {
-                                    tracing::warn!("Steam transport not yet implemented");
-                                    continue;
-                                }
-                            };
-                            if let Err(e) = send_result {
-                                tracing::warn!(
-                                    "Failed to send to external client {}: {:?}",
-                                    client_id,
-                                    e
-                                );
-                            }
+                    } else if let Some(ext) = external {
+                        if let Err(e) = ext.send(client_id, payload) {
+                            tracing::warn!(
+                                "Failed to send to external client {}: {:?}",
+                                client_id,
+                                e
+                            );
                         }
                     }
                 }
                 ServerMode::DedicatedQuic { external } => {
-                    if let Err(e) = external.send(client_id, out_msg) {
+                    if let Err(e) = external.send(client_id, payload) {
                         tracing::warn!("Failed to send to client {}: {:?}", client_id, e);
                     }
                 }
+            }
+        }
+    }
+
+    fn poll_transports(&mut self, output: &mut Vec<TransportEvent>) {
+        match &mut self.mode {
+            ServerMode::Embedded { loopback, external } => {
+                loopback.poll_events(output);
+                if let Some(ext) = external {
+                    ext.poll_events(output);
+                }
+            }
+            ServerMode::DedicatedQuic { external } => {
+                external.poll_events(output);
             }
         }
     }
@@ -913,11 +871,16 @@ impl GameServer {
     pub fn stop(&mut self) {
         self.state = ServerState::ShuttingDown;
 
-        // TODO: Implement proper cleanup:
-        // - Call transport.stop() to disconnect all clients
-        // - Save world state if needed
-        // - Clean up resources
-        // This will be implemented when we integrate transport event handling
+        match &mut self.mode {
+            ServerMode::Embedded { external, .. } => {
+                if let Some(ext) = external {
+                    ext.shutdown();
+                }
+            }
+            ServerMode::DedicatedQuic { external } => {
+                external.shutdown();
+            }
+        }
 
         // Clear the world
         self.world.clear_all();

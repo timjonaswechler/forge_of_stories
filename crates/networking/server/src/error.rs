@@ -1,4 +1,4 @@
-use shared::{channels::ChannelId, error::AsyncChannelError, ClientId};
+use shared::{ClientId, channels::ChannelId, error::AsyncChannelError};
 
 /// Error when sending data from the server
 #[derive(thiserror::Error, Debug)]
