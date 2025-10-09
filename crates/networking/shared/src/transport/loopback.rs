@@ -15,6 +15,17 @@ use crate::{
     ClientEvent, ClientId, DisconnectReason, OutgoingMessage, TransportCapabilities, TransportEvent,
 };
 
+/// Loopback transport capabilities.
+///
+/// Loopback transports support reliable streams and datagrams,
+/// but not unreliable streams (since in-memory communication is always reliable).
+const LOOPBACK_CAPABILITIES: TransportCapabilities = TransportCapabilities {
+    supports_reliable_streams: true,
+    supports_unreliable_streams: false,
+    supports_datagrams: true,
+    max_channels: 255,
+};
+
 /// Error type for loopback transport operations.
 #[derive(Debug, thiserror::Error)]
 pub enum LoopbackError {
@@ -148,12 +159,7 @@ impl LoopbackClientTransport {
 
     /// Returns the transport capabilities.
     pub fn capabilities(&self) -> TransportCapabilities {
-        TransportCapabilities {
-            supports_reliable_streams: true,
-            supports_unreliable_streams: false,
-            supports_datagrams: true,
-            max_channels: 255,
-        }
+        LOOPBACK_CAPABILITIES
     }
 }
 
@@ -263,12 +269,7 @@ impl LoopbackServerTransport {
 
     /// Returns the transport capabilities.
     pub fn capabilities(&self) -> TransportCapabilities {
-        TransportCapabilities {
-            supports_reliable_streams: true,
-            supports_unreliable_streams: false,
-            supports_datagrams: true,
-            max_channels: 255,
-        }
+        LOOPBACK_CAPABILITIES
     }
 }
 
