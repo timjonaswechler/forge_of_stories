@@ -523,7 +523,10 @@ impl GameServer {
         // Start transports based on mode
         let mut mode = mode; // Make it mutable
         match &mut mode {
-            ServerMode::Embedded { loopback, external } => {
+            ServerMode::Embedded {
+                loopback: _,
+                external,
+            } => {
                 tracing::info!("GameServer starting in Embedded mode");
                 if let Some(ext) = external {
                     warm_up_external(ext);
@@ -756,71 +759,125 @@ impl GameServer {
             }
         }
 
-        // Process broadcasts: serialize once, then reuse payload across transports
+        let serialize_message = |msg: &protocol::GameplayMessage| -> Option<bytes::Bytes> {
+            match bincode::serde::encode_to_vec(msg, bincode::config::standard()) {
+                Ok(bytes) => Some(bytes::Bytes::from(bytes)),
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to serialize gameplay message on channel {}: {:?}",
+                        msg.channel(),
+                        e
+                    );
+                    None
+                }
+            }
+        };
+
+        // Process broadcasts: use loopback fast-path when no external transport is attached
         for message in broadcasts {
-            let raw_bytes =
-                match bincode::serde::encode_to_vec(&message, bincode::config::standard()) {
-                    Ok(bytes) => bytes::Bytes::from(bytes),
-                    Err(e) => {
-                        tracing::error!("Failed to serialize broadcast message: {:?}", e);
-                        continue;
-                    }
-                };
-
-            let payload_len = raw_bytes.len();
-            let payload = TransportPayload::message(message.channel(), raw_bytes.clone());
-
-            tracing::debug!(
-                "Broadcasting message to {} clients on channel {}, {} bytes",
-                connected_client_ids.len(),
-                message.channel(),
-                payload_len
-            );
-
             match &mut self.mode {
+                ServerMode::Embedded { loopback, external } if external.is_none() => {
+                    let channel = message.channel();
+
+                    tracing::debug!(
+                        "Broadcasting gameplay message via loopback fast-path on channel {}",
+                        channel
+                    );
+
+                    if let Err(e) = loopback.send_direct(channel, message) {
+                        tracing::warn!(
+                            "Failed to broadcast to loopback client via fast-path: {:?}",
+                            e
+                        );
+                    }
+                }
                 ServerMode::Embedded { loopback, external } => {
+                    let channel = message.channel();
+                    let Some(raw_bytes) = serialize_message(&message) else {
+                        continue;
+                    };
+
+                    let payload_len = raw_bytes.len();
+                    let payload = TransportPayload::message(channel, raw_bytes.clone());
+
+                    tracing::debug!(
+                        "Broadcasting message to {} clients on channel {}, {} bytes",
+                        connected_client_ids.len(),
+                        channel,
+                        payload_len
+                    );
+
                     if let Err(e) = loopback.send(HOST_CLIENT_ID, payload.clone()) {
                         tracing::warn!("Failed to broadcast to loopback client: {:?}", e);
                     }
 
-                    if let Some(ext) = external {
-                        if let Err(e) = ext.broadcast_excluding(&[HOST_CLIENT_ID], payload.clone())
-                        {
+                    if let Some(ext) = external.as_mut() {
+                        if let Err(e) = ext.broadcast_excluding(&[HOST_CLIENT_ID], payload) {
                             tracing::warn!("Failed to broadcast to external clients: {:?}", e);
                         }
                     }
                 }
                 ServerMode::DedicatedQuic { external } => {
-                    if let Err(e) = external.broadcast_excluding(&[], payload.clone()) {
+                    let channel = message.channel();
+                    let Some(raw_bytes) = serialize_message(&message) else {
+                        continue;
+                    };
+
+                    let payload_len = raw_bytes.len();
+                    let payload = TransportPayload::message(channel, raw_bytes);
+
+                    tracing::debug!(
+                        "Broadcasting message to dedicated clients on channel {}, {} bytes",
+                        channel,
+                        payload_len
+                    );
+
+                    if let Err(e) = external.broadcast_excluding(&[], payload) {
                         tracing::warn!("Failed to broadcast to clients: {:?}", e);
                     }
                 }
             }
         }
 
-        // Process unicasts: serialize individually
+        // Process unicasts: use loopback fast-path when sending to host without external transport
         for (client_id, message) in unicasts {
-            let raw_bytes =
-                match bincode::serde::encode_to_vec(&message, bincode::config::standard()) {
-                    Ok(bytes) => bytes::Bytes::from(bytes),
-                    Err(e) => {
-                        tracing::error!("Failed to serialize unicast message: {:?}", e);
+            match &mut self.mode {
+                ServerMode::Embedded { loopback, external } if external.is_none() => {
+                    if client_id != HOST_CLIENT_ID {
+                        tracing::warn!(
+                            "Attempted to send to client {} without external transport",
+                            client_id
+                        );
                         continue;
                     }
-                };
 
-            let payload_len = raw_bytes.len();
-            let payload = TransportPayload::message(message.channel(), raw_bytes);
+                    let channel = message.channel();
 
-            tracing::debug!(
-                "Sending message to client {} on channel {}, {} bytes",
-                client_id,
-                message.channel(),
-                payload_len
-            );
+                    tracing::debug!(
+                        "Sending gameplay message to host via loopback fast-path on channel {}",
+                        channel
+                    );
 
-            match &mut self.mode {
+                    if let Err(e) = loopback.send_direct(channel, message) {
+                        tracing::warn!("Failed to send to loopback client via fast-path: {:?}", e);
+                    }
+                }
                 ServerMode::Embedded { loopback, external } => {
+                    let channel = message.channel();
+                    let Some(raw_bytes) = serialize_message(&message) else {
+                        continue;
+                    };
+
+                    let payload_len = raw_bytes.len();
+                    let payload = TransportPayload::message(channel, raw_bytes);
+
+                    tracing::debug!(
+                        "Sending message to client {} on channel {}, {} bytes",
+                        client_id,
+                        channel,
+                        payload_len
+                    );
+
                     if client_id == HOST_CLIENT_ID {
                         if let Err(e) = loopback.send(client_id, payload) {
                             tracing::warn!(
@@ -829,7 +886,7 @@ impl GameServer {
                                 e
                             );
                         }
-                    } else if let Some(ext) = external {
+                    } else if let Some(ext) = external.as_mut() {
                         if let Err(e) = ext.send(client_id, payload) {
                             tracing::warn!(
                                 "Failed to send to external client {}: {:?}",
@@ -840,6 +897,21 @@ impl GameServer {
                     }
                 }
                 ServerMode::DedicatedQuic { external } => {
+                    let channel = message.channel();
+                    let Some(raw_bytes) = serialize_message(&message) else {
+                        continue;
+                    };
+
+                    let payload_len = raw_bytes.len();
+                    let payload = TransportPayload::message(channel, raw_bytes);
+
+                    tracing::debug!(
+                        "Sending message to client {} on channel {}, {} bytes",
+                        client_id,
+                        channel,
+                        payload_len
+                    );
+
                     if let Err(e) = external.send(client_id, payload) {
                         tracing::warn!("Failed to send to client {}: {:?}", client_id, e);
                     }

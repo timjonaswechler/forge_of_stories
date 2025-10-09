@@ -73,13 +73,19 @@ fn main() {
             // )
             .add_systems(
                 Update,
-                (
-                    handle_player_input_networked,
-                    receive_server_messages,
-                    interpolate_remote_players,
-                )
+                (handle_player_input_networked, receive_server_messages)
                     .run_if(in_state(GameState::InGame))
                     .run_if(resource_exists::<GameClient>),
+            )
+            .add_systems(
+                Update,
+                receive_loopback_messages
+                    .run_if(in_state(GameState::InGame))
+                    .run_if(resource_exists::<LoopbackClient>),
+            )
+            .add_systems(
+                Update,
+                interpolate_remote_players.run_if(in_state(GameState::InGame)),
             );
             app
         });
@@ -977,6 +983,110 @@ fn interpolate_remote_players(
     }
 }
 
+fn apply_gameplay_message(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    remote_players: &mut Query<(Entity, &RemotePlayer, &mut NetworkedTransform)>,
+    message: game_server::protocol::GameplayMessage,
+) {
+    use game_server::protocol::{PlayerDespawnMessage, PlayerSpawnMessage};
+
+    match message {
+        game_server::protocol::GameplayMessage::PlayerSpawn(PlayerSpawnMessage {
+            player_id,
+            color,
+            shape,
+            position,
+        }) => {
+            info!("Client received PlayerSpawn for player {}", player_id);
+
+            let bevy_color: Color = color.into();
+            let bevy_position: Vec3 = position.into();
+
+            let mesh_handle = match shape {
+                game_server::protocol::PlayerShape::Cube => meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
+                game_server::protocol::PlayerShape::Capsule => meshes.add(Capsule3d::new(0.5, 1.0)),
+            };
+
+            commands.spawn((
+                Mesh3d(mesh_handle),
+                MeshMaterial3d(materials.add(bevy_color)),
+                Transform::from_translation(bevy_position),
+                RemotePlayer { player_id },
+                NetworkedTransform {
+                    current: bevy_position,
+                    target: bevy_position,
+                    velocity: Vec3::ZERO,
+                    interpolation_speed: 0.15,
+                },
+            ));
+
+            info!(
+                "Spawned remote player {} at {:?} with color {:?}",
+                player_id, bevy_position, bevy_color
+            );
+        }
+        game_server::protocol::GameplayMessage::PlayerDespawn(PlayerDespawnMessage {
+            player_id,
+        }) => {
+            info!("Client received PlayerDespawn for player {}", player_id);
+
+            for (entity, remote_player, _) in remote_players.iter() {
+                if remote_player.player_id == player_id {
+                    commands.entity(entity).despawn();
+                    info!("Despawned remote player {}", player_id);
+                    break;
+                }
+            }
+        }
+        game_server::protocol::GameplayMessage::WorldState(state) => {
+            for player_state in state.players {
+                let target_pos: Vec3 = player_state.position.into();
+                let target_vel: Vec3 = player_state.velocity.into();
+
+                let mut found = false;
+                for (_entity, remote_player, mut networked_transform) in remote_players.iter_mut() {
+                    if remote_player.player_id == player_state.player_id {
+                        networked_transform.target = target_pos;
+                        networked_transform.velocity = target_vel;
+                        found = true;
+                        break;
+                    }
+                }
+
+                if !found {
+                    info!(
+                        "Spawning player {} from WorldState (missed spawn message)",
+                        player_state.player_id
+                    );
+
+                    let mesh_handle = meshes.add(Capsule3d::new(0.4, 1.0));
+                    let default_color = Color::srgb(0.8, 0.8, 0.8);
+
+                    commands.spawn((
+                        Mesh3d(mesh_handle),
+                        MeshMaterial3d(materials.add(default_color)),
+                        Transform::from_translation(target_pos),
+                        RemotePlayer {
+                            player_id: player_state.player_id,
+                        },
+                        NetworkedTransform {
+                            current: target_pos,
+                            target: target_pos,
+                            velocity: target_vel,
+                            interpolation_speed: 0.15,
+                        },
+                    ));
+                }
+            }
+        }
+        game_server::protocol::GameplayMessage::PlayerInput(_) => {
+            warn!("Client received PlayerInput message (unexpected)");
+        }
+    }
+}
+
 /// System that receives network messages from server and renders remote players.
 ///
 /// Runs for clients connected via QUIC (not loopback).
@@ -987,7 +1097,7 @@ fn receive_server_messages(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut remote_players: Query<(Entity, &RemotePlayer, &mut NetworkedTransform)>,
 ) {
-    use game_server::protocol::{GameplayMessage, PlayerDespawnMessage, PlayerSpawnMessage};
+    use game_server::protocol::GameplayMessage;
 
     let Some(client) = client.as_mut() else {
         return; // No client connection
@@ -1002,114 +1112,13 @@ fn receive_server_messages(
                     channel, message
                 );
 
-                // Process the message
-                match message {
-                    GameplayMessage::PlayerSpawn(PlayerSpawnMessage {
-                        player_id,
-                        color,
-                        shape,
-                        position,
-                    }) => {
-                        info!("Client received PlayerSpawn for player {}", player_id);
-
-                        // Convert serializable types back to Bevy types
-                        let bevy_color: Color = color.into();
-                        let bevy_position: Vec3 = position.into();
-
-                        // Choose mesh based on shape
-                        let mesh_handle = match shape {
-                            game_server::protocol::PlayerShape::Cube => {
-                                meshes.add(Cuboid::new(1.0, 1.0, 1.0))
-                            }
-                            game_server::protocol::PlayerShape::Capsule => {
-                                meshes.add(Capsule3d::new(0.5, 1.0))
-                            }
-                        };
-
-                        // Spawn visual entity with networked transform for interpolation
-                        commands.spawn((
-                            Mesh3d(mesh_handle),
-                            MeshMaterial3d(materials.add(bevy_color)),
-                            Transform::from_translation(bevy_position),
-                            RemotePlayer { player_id },
-                            NetworkedTransform {
-                                current: bevy_position,
-                                target: bevy_position,
-                                velocity: Vec3::ZERO,
-                                interpolation_speed: 0.15, // Smooth interpolation
-                            },
-                        ));
-
-                        info!(
-                            "Spawned remote player {} at {:?} with color {:?}",
-                            player_id, bevy_position, bevy_color
-                        );
-                    }
-                    GameplayMessage::PlayerDespawn(PlayerDespawnMessage { player_id }) => {
-                        info!("Client received PlayerDespawn for player {}", player_id);
-
-                        // Find and despawn the entity
-                        for (entity, remote_player, _) in &remote_players {
-                            if remote_player.player_id == player_id {
-                                commands.entity(entity).despawn();
-                                info!("Despawned remote player {}", player_id);
-                                break;
-                            }
-                        }
-                    }
-                    GameplayMessage::WorldState(state) => {
-                        // Update target positions for all remote players
-                        // Also spawn any players we don't know about yet (in case we missed their spawn message)
-                        for player_state in state.players {
-                            let target_pos: Vec3 = player_state.position.into();
-                            let target_vel: Vec3 = player_state.velocity.into();
-
-                            // Check if we already have this player
-                            let mut found = false;
-                            for (_entity, remote_player, mut networked_transform) in
-                                remote_players.iter_mut()
-                            {
-                                if remote_player.player_id == player_state.player_id {
-                                    networked_transform.target = target_pos;
-                                    networked_transform.velocity = target_vel;
-                                    found = true;
-                                    break;
-                                }
-                            }
-
-                            // If we don't have this player yet, spawn them
-                            if !found {
-                                info!(
-                                    "Spawning player {} from WorldState (missed spawn message)",
-                                    player_state.player_id
-                                );
-
-                                // Spawn with default shape and color
-                                let mesh_handle = meshes.add(Capsule3d::new(0.4, 1.0));
-                                let default_color = Color::srgb(0.8, 0.8, 0.8); // Gray for unknown players
-
-                                commands.spawn((
-                                    Mesh3d(mesh_handle),
-                                    MeshMaterial3d(materials.add(default_color)),
-                                    Transform::from_translation(target_pos),
-                                    RemotePlayer {
-                                        player_id: player_state.player_id,
-                                    },
-                                    NetworkedTransform {
-                                        current: target_pos,
-                                        target: target_pos,
-                                        velocity: target_vel,
-                                        interpolation_speed: 0.15,
-                                    },
-                                ));
-                            }
-                        }
-                    }
-                    GameplayMessage::PlayerInput(_input) => {
-                        // Server should never send PlayerInput to client
-                        warn!("Client received PlayerInput message (unexpected)");
-                    }
-                }
+                apply_gameplay_message(
+                    &mut commands,
+                    &mut meshes,
+                    &mut materials,
+                    &mut remote_players,
+                    message,
+                );
             }
             Ok(None) => {
                 // No more messages
@@ -1118,6 +1127,112 @@ fn receive_server_messages(
             Err(e) => {
                 warn!("Error receiving message: {:?}", e);
                 break;
+            }
+        }
+    }
+}
+
+fn receive_loopback_messages(
+    loopback: Option<ResMut<LoopbackClient>>,
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut remote_players: Query<(Entity, &RemotePlayer, &mut NetworkedTransform)>,
+) {
+    use game_server::protocol::GameplayMessage;
+    use shared::{ClientEvent, TransportError};
+
+    let Some(mut loopback) = loopback else {
+        return;
+    };
+
+    let transport = &mut loopback.0;
+
+    let mut direct_messages = Vec::new();
+    match transport.poll_direct::<GameplayMessage>(&mut direct_messages) {
+        Ok(()) => {}
+        Err(TransportError::NotReady) => {
+            // Loopback not connected yet; skip
+        }
+        Err(e) => {
+            warn!("Failed to poll loopback direct messages: {:?}", e);
+        }
+    }
+
+    for (channel, message) in direct_messages {
+        debug!(
+            "Loopback client received direct message on channel {}: {:?}",
+            channel, message
+        );
+
+        apply_gameplay_message(
+            &mut commands,
+            &mut meshes,
+            &mut materials,
+            &mut remote_players,
+            message,
+        );
+    }
+
+    let mut events = Vec::new();
+    transport.poll_events(&mut events);
+
+    for event in events {
+        match event {
+            ClientEvent::Message { channel, payload } => {
+                match bincode::serde::decode_from_slice::<GameplayMessage, _>(
+                    &payload,
+                    bincode::config::standard(),
+                ) {
+                    Ok((message, _)) => {
+                        debug!(
+                            "Loopback client received serialized message on channel {}: {:?}",
+                            channel, message
+                        );
+                        apply_gameplay_message(
+                            &mut commands,
+                            &mut meshes,
+                            &mut materials,
+                            &mut remote_players,
+                            message,
+                        );
+                    }
+                    Err(e) => {
+                        warn!(
+                            "Failed to deserialize loopback message on channel {}: {:?}",
+                            channel, e
+                        );
+                    }
+                }
+            }
+            ClientEvent::Datagram { payload } => {
+                debug!(
+                    "Loopback client received datagram ({} bytes) - ignoring",
+                    payload.len()
+                );
+            }
+            ClientEvent::Connected { .. } => {
+                debug!("Loopback client connected");
+            }
+            ClientEvent::Disconnected { reason } => {
+                info!("Loopback client disconnected: {:?}", reason);
+            }
+            ClientEvent::Error { error } => {
+                warn!("Loopback client error: {:?}", error);
+            }
+            ClientEvent::Discovery(event) => {
+                debug!("Loopback client discovery event ignored: {:?}", event);
+            }
+            ClientEvent::AuthResult {
+                client,
+                steam_id,
+                owner_steam_id,
+                result,
+            } => {
+                debug!(
+                    "Loopback client auth result ignored: client={:?} steam_id={} owner={} result={:?}",
+                    client, steam_id, owner_steam_id, result
+                );
             }
         }
     }

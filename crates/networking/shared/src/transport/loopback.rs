@@ -5,6 +5,7 @@
 //! singleplayer runs and local testing.
 
 use std::{
+    any::Any,
     collections::VecDeque,
     sync::{
         Arc, Mutex,
@@ -12,10 +13,12 @@ use std::{
     },
 };
 
+use tracing::warn;
 use uuid::uuid;
 
 use crate::{
     ClientEvent, ClientId, DisconnectReason, TransportCapabilities, TransportError, TransportEvent,
+    channels::ChannelId,
 };
 
 use super::{ClientTransport, ServerTransport, TransportPayload, TransportResult};
@@ -60,6 +63,35 @@ impl From<LoopbackError> for TransportError {
     }
 }
 
+#[derive(Debug, Default)]
+struct DirectMessageQueue {
+    inner: VecDeque<DirectMessage>,
+}
+
+impl DirectMessageQueue {
+    fn push(&mut self, message: DirectMessage) {
+        self.inner.push_back(message);
+    }
+
+    fn drain(&mut self) -> VecDeque<DirectMessage> {
+        std::mem::take(&mut self.inner)
+    }
+}
+
+struct DirectMessage {
+    channel: ChannelId,
+    payload: Box<dyn Any + Send>,
+}
+
+impl std::fmt::Debug for DirectMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DirectMessage")
+            .field("channel", &self.channel)
+            .field("payload_type", &self.payload.type_id())
+            .finish()
+    }
+}
+
 #[derive(Debug)]
 struct SharedLoopbackState {
     connected: AtomicBool,
@@ -68,6 +100,7 @@ struct SharedLoopbackState {
     client_events: Mutex<VecDeque<ClientEvent>>,
     client_to_server: Mutex<VecDeque<TransportPayload>>,
     server_to_client: Mutex<VecDeque<TransportPayload>>,
+    server_direct_messages: Mutex<DirectMessageQueue>,
 }
 
 impl SharedLoopbackState {
@@ -79,6 +112,7 @@ impl SharedLoopbackState {
             client_events: Mutex::new(VecDeque::new()),
             client_to_server: Mutex::new(VecDeque::new()),
             server_to_client: Mutex::new(VecDeque::new()),
+            server_direct_messages: Mutex::new(DirectMessageQueue::default()),
         }
     }
 
@@ -92,6 +126,20 @@ impl SharedLoopbackState {
         if let Ok(mut queue) = self.client_events.lock() {
             queue.push_back(event);
         }
+    }
+
+    fn push_server_direct_message(&self, channel: ChannelId, payload: Box<dyn Any + Send>) {
+        if let Ok(mut queue) = self.server_direct_messages.lock() {
+            queue.push(DirectMessage { channel, payload });
+        }
+    }
+
+    fn drain_server_direct_messages(&self) -> VecDeque<DirectMessage> {
+        if let Ok(mut queue) = self.server_direct_messages.lock() {
+            return queue.drain();
+        }
+
+        VecDeque::new()
     }
 }
 
@@ -139,6 +187,33 @@ impl LoopbackClientTransport {
     /// Returns the fixed capabilities for the loopback client.
     pub fn capabilities(&self) -> TransportCapabilities {
         LOOPBACK_CAPABILITIES
+    }
+
+    /// Drains typed direct messages sent by the server without serialization.
+    ///
+    /// Each entry contains the logical channel alongside the typed payload.
+    /// Messages of a different type are dropped with a warning.
+    pub fn poll_direct<M>(&mut self, output: &mut Vec<(ChannelId, M)>) -> TransportResult<()>
+    where
+        M: Send + 'static,
+    {
+        self.ensure_connected()?;
+
+        let mut drained = self.state.drain_server_direct_messages();
+        while let Some(packet) = drained.pop_front() {
+            match packet.payload.downcast::<M>() {
+                Ok(message) => output.push((packet.channel, *message)),
+                Err(untyped) => {
+                    warn!(
+                        "loopback direct message dropped: expected type {}, got {:?}",
+                        std::any::type_name::<M>(),
+                        untyped.type_id()
+                    );
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -261,6 +336,21 @@ impl LoopbackServerTransport {
                 client: self.state.client_id,
                 reason,
             });
+        Ok(())
+    }
+
+    /// Sends a typed payload directly to the loopback client without serialization.
+    ///
+    /// This is primarily used for singleplayer fast paths where server and client
+    /// share memory. Messages are stored internally and can be drained via
+    /// [`LoopbackClientTransport::poll_direct`].
+    pub fn send_direct<M>(&mut self, channel: ChannelId, message: M) -> TransportResult<()>
+    where
+        M: Send + 'static,
+    {
+        self.ensure_connected()?;
+        self.state
+            .push_server_direct_message(channel, Box::new(message));
         Ok(())
     }
 }
@@ -476,5 +566,30 @@ mod tests {
         let pair = LoopbackPair::new();
         assert_eq!(pair.client.capabilities(), LOOPBACK_CAPABILITIES);
         assert_eq!(pair.server.capabilities(), LOOPBACK_CAPABILITIES);
+    }
+
+    #[test]
+    fn test_loopback_direct_message_roundtrip() {
+        let mut pair = connected_pair();
+
+        #[derive(Debug, PartialEq, Eq)]
+        struct DummyMessage(u32);
+
+        pair.server.send_direct(0, DummyMessage(42)).unwrap();
+
+        let mut direct_messages = Vec::new();
+        pair.client
+            .poll_direct::<DummyMessage>(&mut direct_messages)
+            .unwrap();
+
+        assert_eq!(direct_messages.len(), 1);
+        let (channel, payload) = direct_messages.into_iter().next().unwrap();
+        assert_eq!(channel, 0);
+        assert_eq!(payload, DummyMessage(42));
+
+        // second poll returns nothing
+        let mut empty = Vec::new();
+        pair.client.poll_direct::<DummyMessage>(&mut empty).unwrap();
+        assert!(empty.is_empty());
     }
 }
