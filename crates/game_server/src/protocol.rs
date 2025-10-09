@@ -6,6 +6,7 @@
 //! Uses `shared` transport primitives and `ClientSideConnection::send_message()`
 //! for serialization and transmission.
 
+use crate::world::Player;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use shared::channels::ChannelId;
@@ -47,6 +48,32 @@ pub struct PlayerSpawnMessage {
     pub shape: PlayerShape,
     /// Initial spawn position.
     pub position: SerializableVec3,
+}
+
+impl PlayerSpawnMessage {
+    /// Create a spawn message from a Player component and position.
+    ///
+    /// This is used when sending existing players to newly connected clients.
+    pub fn from_player(player: &Player, position: Vec3, shape: PlayerShape) -> Self {
+        Self {
+            player_id: player.id,
+            color: player.color.into(),
+            shape,
+            position: position.into(),
+        }
+    }
+
+    /// Create a new spawn message with default shape.
+    ///
+    /// This is used when spawning a new player for the first time.
+    pub fn new(player_id: uuid::Uuid, color: Color, position: Vec3) -> Self {
+        Self {
+            player_id,
+            color: color.into(),
+            shape: PlayerShape::default(),
+            position: position.into(),
+        }
+    }
 }
 
 /// Message sent when a player leaves the game.

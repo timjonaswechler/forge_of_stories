@@ -77,12 +77,12 @@ pub fn process_network_events(
                 // (This ensures the new client sees existing players immediately)
                 for (_entity, player) in &players {
                     // Send existing player to new client
-                    let existing_spawn = GameplayMessage::PlayerSpawn(PlayerSpawnMessage {
-                        player_id: player.id,
-                        color: player.color.into(),
-                        shape: PlayerShape::default(),
-                        position: Vec3::new(0.0, 1.0, 0.0).into(), // TODO: Get actual position
-                    });
+                    let existing_spawn =
+                        GameplayMessage::PlayerSpawn(PlayerSpawnMessage::from_player(
+                            player,
+                            Vec3::new(0.0, 1.0, 0.0), // TODO: Get actual position
+                            PlayerShape::default(),
+                        ));
 
                     info!(
                         "Sending existing player {} to new client {}",
@@ -111,12 +111,11 @@ pub fn process_network_events(
                 );
 
                 // Broadcast spawn message to ALL clients (including the new one)
-                let spawn_msg = GameplayMessage::PlayerSpawn(PlayerSpawnMessage {
-                    player_id: client,
-                    color: color.into(),
-                    shape: PlayerShape::default(),
-                    position: Vec3::new(0.0, 1.0, 0.0).into(),
-                });
+                let spawn_msg = GameplayMessage::PlayerSpawn(PlayerSpawnMessage::new(
+                    client,
+                    color,
+                    Vec3::new(0.0, 1.0, 0.0),
+                ));
 
                 info!("Broadcasting spawn of player {} to all clients", client);
                 outgoing.messages.push((None, spawn_msg)); // None = broadcast to all
