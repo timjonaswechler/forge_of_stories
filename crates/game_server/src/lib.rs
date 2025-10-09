@@ -21,6 +21,7 @@ use server::transport::quic::QuicServerTransport;
 use server::transport::{ServerTransport, SteamServerTransport};
 use shared::ClientId;
 use shared::transport::{LoopbackClientTransport, LoopbackServerTransport};
+use std::time::SystemTime;
 use tracing::error;
 use uuid::Uuid;
 
@@ -303,6 +304,8 @@ pub struct GameServer {
 
     /// Current server state
     state: ServerState,
+
+    metrics: Metrics,
 }
 
 #[derive(Debug)]
@@ -352,6 +355,38 @@ pub enum ServerState {
     Stopped = 4,
 }
 
+/// Metrics for the server.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Metrics {
+    pub receive_enter_time: SystemTime,
+    pub receive_exit_time: SystemTime,
+    pub simulation_enter_time: SystemTime,
+    pub simulation_exit_time: SystemTime,
+    pub replication_enter_time: SystemTime,
+    pub replication_exit_time: SystemTime,
+    pub transmit_enter_time: SystemTime,
+    pub transmit_exit_time: SystemTime,
+    pub control_enter_time: SystemTime,
+    pub control_exit_time: SystemTime,
+}
+
+impl Default for Metrics {
+    fn default() -> Self {
+        Self {
+            receive_enter_time: SystemTime::now(),
+            receive_exit_time: SystemTime::now(),
+            simulation_enter_time: SystemTime::now(),
+            simulation_exit_time: SystemTime::now(),
+            replication_enter_time: SystemTime::now(),
+            replication_exit_time: SystemTime::now(),
+            transmit_enter_time: SystemTime::now(),
+            transmit_exit_time: SystemTime::now(),
+            control_enter_time: SystemTime::now(),
+            control_exit_time: SystemTime::now(),
+        }
+    }
+}
+
 // ==============================================================================
 // Server Configuration & Resources
 // ==============================================================================
@@ -389,15 +424,6 @@ impl Default for ServerConfig {
             max_clients: 16,
         }
     }
-}
-
-/// Server statistics resource (optional, for monitoring).
-#[derive(Resource, Debug, Default)]
-pub struct ServerStats {
-    /// Total number of ticks processed.
-    pub total_ticks: u64,
-    /// Number of currently connected clients.
-    pub connected_clients: u32,
 }
 
 // ==============================================================================
@@ -518,6 +544,7 @@ impl GameServer {
             world,
             schedule,
             state: ServerState::Starting,
+            metrics: Metrics::default(),
         })
     }
 
@@ -668,16 +695,16 @@ impl GameServer {
             }
 
             // Sleep for the remaining tick time
-            let tick_elapsed = tick_start.elapsed();
-            if tick_elapsed < tick_duration {
-                std::thread::sleep(tick_duration - tick_elapsed);
-            } else {
-                tracing::warn!(
-                    "Server tick took longer than target duration: {:?} > {:?}",
-                    tick_elapsed,
-                    tick_duration
-                );
-            }
+            // let tick_elapsed = tick_start.elapsed();
+            // if tick_elapsed < tick_duration {
+            //     std::thread::sleep(tick_duration - tick_elapsed);
+            // } else {
+            //     tracing::warn!(
+            //         "Server tick took longer than target duration: {:?} > {:?}",
+            //         tick_elapsed,
+            //         tick_duration
+            //     );
+            // }
         }
 
         tracing::info!("GameServer thread stopped");
@@ -924,6 +951,17 @@ impl GameServer {
         self.state = ServerState::Running;
         tracing::info!("Server resumed");
     }
+
+    fn enter_receive(&mut self) {
+        self.metrics.receive_enter_time = SystemTime::now();
+    }
+    fn enter_simulation(&mut self) {}
+    fn enter_replication(&mut self) {}
+    fn enter_transmit(&mut self) {}
+    fn exit_receive(&mut self) {}
+    fn exit_simulation(&mut self) {}
+    fn exit_replication(&mut self) {}
+    fn exit_transmit(&mut self) {}
 }
 
 #[cfg(test)]
