@@ -102,34 +102,20 @@ impl<A: Application> AppBuilder<A> {
 
         #[cfg(not(debug_assertions))]
         let level = LevelFilter::WARN;
-        // metrics
-        let metrics_file = File::create("metrics.log").unwrap();
-        let metrics_layer = fmt::Layer::default()
-            .with_writer(metrics_file)
-            .with_ansi(false)
-            .with_filter(filter::filter_fn(|metadata| {
-                metadata.target().starts_with("metrics")
-            }));
 
         // Separate layer: file (non-blocking) + console (stdout)
         let file_layer = fmt::Layer::default()
             .with_target(false)
             .with_ansi(false)
             .with_writer(non_blocking)
-            .with_filter(filter_fn(move |metadata| {
-                // Nur nicht-metrics Events auf passendem Level
-                metadata.level() <= &level && !metadata.target().starts_with("metrics")
-            }));
+            .with_filter(filter_fn(move |metadata| metadata.level() <= &level));
 
         let console_layer = fmt::Layer::default()
             .with_target(false)
-            .with_filter(filter_fn(move |metadata| {
-                metadata.level() <= &level && !metadata.target().starts_with("metrics")
-            }));
+            .with_filter(filter_fn(move |metadata| metadata.level() <= &level));
 
         tracing_subscriber::registry()
             .with(file_layer)
-            .with(metrics_layer)
             .with(console_layer)
             .init();
 

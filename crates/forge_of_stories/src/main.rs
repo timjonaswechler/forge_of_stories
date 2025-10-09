@@ -57,20 +57,6 @@ fn main() {
             )
             .add_systems(OnExit(GameState::JoinMenu), cleanup::<JoinMenuUI>)
             .add_systems(OnEnter(GameState::InGame), enter_game)
-            // .add_systems(
-            //     Update,
-            //     (handle_player_input_host, sync_server_state)
-            //         .run_if(in_state(GameState::InGame))
-            //         .run_if(resource_exists::<EmbeddedServer>)
-            //         .run_if(resource_exists::<LoopbackClient>),
-            // )
-            // .add_systems(
-            //     Update,
-            //     (handle_player_input, sync_server_state)
-            //         .run_if(in_state(GameState::InGame))
-            //         .run_if(resource_exists::<EmbeddedServer>)
-            //         .run_if(not(resource_exists::<LoopbackClient>)),
-            // )
             .add_systems(
                 Update,
                 (handle_player_input_networked, receive_server_messages)

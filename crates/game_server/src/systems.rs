@@ -42,13 +42,6 @@ pub fn heartbeat_system(
     let uptime_secs = (now - state.start_time.unwrap()).as_secs_f64();
 
     // Sende strukturierte Metrik-Events mit Target "metrics::heartbeat"
-    tracing::info!(
-        target: "metrics::heartbeat",
-        tick = state.tick_count,
-        target_ms,
-        actual_ms = real_ms,
-        uptime_secs
-    );
 
     // Optional weiterhin lesbare Logs in höheren Leveln ausgeben, z.B. alle 100 Ticks
     if state.tick_count % 100 == 0 {
