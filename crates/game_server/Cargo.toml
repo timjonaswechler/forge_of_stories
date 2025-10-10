@@ -12,8 +12,7 @@ bevy = { version = "0.17.2", default-features = false, features = [
     "serialize",
     "bevy_color"
 ] }
-shared.workspace = true
-server.workspace = true
+networking.workspace = true
 tracing.workspace = true
 serde = { version = "1.0", features = ["derive"] }
 ron = "0.8"

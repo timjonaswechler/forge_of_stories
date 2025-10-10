@@ -1,6 +1,7 @@
 docs/**
 /target
 .**
+**/.github
 !.gitignore
 !.gitmodules
 WARP.md

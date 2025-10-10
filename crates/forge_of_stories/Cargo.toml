@@ -8,9 +8,7 @@ app = {workspace = true, features = ["bevy"]}
 bevy = { workspace = true, default-features = true }
 settings.workspace = true
 paths.workspace = true
-shared.workspace = true
-client.workspace = true
-server.workspace = true
+networking.workspace = true
 game_server.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
