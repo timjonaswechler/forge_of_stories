@@ -19,14 +19,16 @@ use bevy::ecs::world::World;
 use bevy::prelude::*;
 use server::transport::quic::QuicServerTransport;
 use server::transport::{ServerTransport, SteamServerTransport};
-use shared::transport::{LoopbackClientTransport, LoopbackServerTransport, TransportPayload};
+use shared::transport::{
+    LOOPBACK_CLIENT_ID, LoopbackClientTransport, LoopbackServerTransport, TransportPayload,
+};
 use shared::{ClientId, TransportError, TransportEvent};
 use std::time::SystemTime;
 use tracing::error;
 use uuid::Uuid;
 
 /// The host player always uses this client ID (UUID with all zeros)
-pub const HOST_CLIENT_ID: ClientId = Uuid::nil();
+pub const HOST_CLIENT_ID: ClientId = LOOPBACK_CLIENT_ID;
 
 mod error;
 pub mod movement;
@@ -227,6 +229,11 @@ impl ServerHandle {
     /// Returns the current server state.
     pub fn state(&self) -> ServerState {
         self.state.load()
+    }
+
+    /// Returns the initial mode information used when starting the server.
+    pub fn mode_info(&self) -> ServerModeInfo {
+        self.mode_info
     }
 
     /// Sends a shutdown command to the server thread.

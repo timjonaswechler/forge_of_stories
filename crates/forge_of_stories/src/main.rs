@@ -2,18 +2,24 @@ mod fos_app;
 mod server;
 
 use crate::fos_app::FOSApp;
-use crate::server::{LoopbackClient, start_multiplayer_server, start_singleplayer_server};
+use crate::server::{
+    LoopbackClient, create_default_quic_transport, start_multiplayer_server,
+    start_singleplayer_server,
+};
 use app::AppBuilder;
-use bevy::asset::uuid;
 use bevy::{color::palettes::basic::*, input_focus::InputFocus, log::LogPlugin, prelude::*};
 use client::transport::{ClientTransport, ConnectTarget, QuicClientTransport};
 use game_server::ServerHandle;
 use shared::TransportCapabilities;
+use std::cell::BorrowError;
+use std::collections::HashSet;
+use uuid::Uuid;
 
 /// Game state tracking where we are in the application flow.
 #[derive(States, Debug, Clone, PartialEq, Eq, Hash, Default)]
 enum GameState {
     #[default]
+    Slapshscreen,
     MainMenu,
     JoinMenu,
     InGame,
@@ -40,8 +46,11 @@ fn main() {
             )
             .init_resource::<InputFocus>()
             .init_resource::<ServerToClientEntityMap>()
+            .init_resource::<RemotePlayerRegistry>()
             .init_resource::<JoinMenuState>()
+            .init_resource::<InGameMenuState>()
             .init_state::<GameState>()
+            .add_systems(OnEnter(GameState::Slapshscreen), setup_slapshscreen)
             .add_systems(OnEnter(GameState::MainMenu), setup)
             .add_systems(Update, button_system.run_if(in_state(GameState::MainMenu)))
             .add_systems(OnExit(GameState::MainMenu), cleanup::<MainMenuUI>)
@@ -59,7 +68,26 @@ fn main() {
             .add_systems(OnEnter(GameState::InGame), enter_game)
             .add_systems(
                 Update,
-                (handle_player_input_networked, receive_server_messages)
+                toggle_in_game_menu.run_if(in_state(GameState::InGame)),
+            )
+            .add_systems(
+                Update,
+                spawn_in_game_menu_ui.run_if(in_state(GameState::InGame)),
+            )
+            .add_systems(
+                Update,
+                handle_in_game_menu_buttons.run_if(in_state(GameState::InGame)),
+            )
+            .add_systems(
+                Update,
+                handle_player_input_networked
+                    .run_if(in_state(GameState::InGame))
+                    .run_if(resource_exists::<GameClient>)
+                    .run_if(menu_closed),
+            )
+            .add_systems(
+                Update,
+                receive_server_messages
                     .run_if(in_state(GameState::InGame))
                     .run_if(resource_exists::<GameClient>),
             )
@@ -72,7 +100,8 @@ fn main() {
             .add_systems(
                 Update,
                 interpolate_remote_players.run_if(in_state(GameState::InGame)),
-            );
+            )
+            .add_systems(OnExit(GameState::InGame), cleanup_in_game_entities);
             app
         });
 
@@ -89,13 +118,16 @@ fn cleanup<T: Component>(mut commands: Commands, query: Query<Entity, With<T>>) 
     }
 }
 
-fn setup(mut commands: Commands) {
+fn setup_slapshscreen(mut commands: Commands, mut next_state: ResMut<NextState<GameState>>) {
     // Spawn 3D camera
     commands.spawn((
         Camera3d::default(),
         Transform::from_xyz(0.0, 5.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
-    ));
+    )); // Spawn 3D camera
+    next_state.set(GameState::MainMenu);
+}
 
+fn setup(mut commands: Commands) {
     // Main menu UI
     commands
         .spawn((
@@ -230,14 +262,6 @@ fn enter_game(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let (server_state_text, _entity_count) = if let Some(server) = server.as_ref() {
-        info!("Entered game state! Server state: {:?}", server.state());
-        (Some(format!("{:?}", server.state())), 0)
-    } else {
-        info!("Entered game state as client (no server)");
-        (None, 0)
-    };
-
     // Spawn light
     commands.spawn((
         DirectionalLight {
@@ -246,6 +270,7 @@ fn enter_game(
             ..default()
         },
         Transform::from_xyz(4.0, 8.0, 4.0).looking_at(Vec3::ZERO, Vec3::Y),
+        InGameCleanup,
     ));
 
     // Spawn ground plane (client-side rendering)
@@ -254,16 +279,21 @@ fn enter_game(
         MeshMaterial3d(materials.add(Color::srgb(0.3, 0.5, 0.3))),
         Transform::from_xyz(0.0, 0.0, 0.0),
         ClientGroundPlane,
+        InGameCleanup,
     ));
 
     // Spawn in-game UI with server info
-    let ui_text = if let Some(mode) = server_state_text {
-        // TODO: Determine server mode from ServerHandle
-        format!("Game Running\nServer: {:?}", mode)
-    } else {
-        // Client-only mode (joined someone else's server)
-        "Connected to Server\n\nPlaying as client".to_string()
+    let ui_text = match server {
+        Some(server) => {
+            format!("Game Running\nServer: {:?}", server.mode_info())
+        }
+        None => {
+            // Client-only mode (joined someone else's server)
+            "Connected to Server\n\nPlaying as client".to_string()
+        }
     };
+
+    commands.insert_resource(RemotePlayerRegistry::default());
 
     commands.spawn((
         Text::new(ui_text),
@@ -278,6 +308,7 @@ fn enter_game(
             left: Val::Px(10.0),
             ..default()
         },
+        InGameCleanup,
     ));
 }
 
@@ -299,69 +330,29 @@ struct GameClient {
     tick_counter: u64,
 }
 
-/// System that syncs server world state to client rendering.
-///
-/// NOTE: This system is currently disabled because ServerHandle doesn't expose
-/// direct world access. We need to implement a proper state synchronization
-/// mechanism via the transport layer instead.
-///
-/// TODO: Remove this function or refactor to use network messages
-#[allow(dead_code)]
-fn sync_server_state(
-    _commands: Commands,
-    _entity_map: ResMut<ServerToClientEntityMap>,
-    _meshes: ResMut<Assets<Mesh>>,
-    _materials: ResMut<Assets<StandardMaterial>>,
-    _client_transforms: Query<&mut Transform>,
-) {
-    // NOTE: ServerHandle doesn't expose world access anymore
-    // This code is disabled and needs refactoring to use network messages
-    /*
-    use game_server::protocol::PlayerShape;
-    use game_server::world::{Player, Position};
+#[derive(Resource, Default)]
+struct RemotePlayerRegistry {
+    known_players: HashSet<Uuid>,
+}
 
-    let server_world = server_handle.world_mut();
+#[derive(Resource, Default)]
+struct InGameMenuState {
+    open: bool,
+    external_open: bool,
+}
 
-    // Sync players
-    for (server_entity, (player, position, shape)) in server_world
-        .query::<(
-            bevy::ecs::entity::Entity,
-            (&Player, &Position, &PlayerShape),
-        )>()
-        .iter(server_world)
-    {
-        // Check if we already have a client entity for this server entity
-        if let Some(&client_entity) = entity_map.map.get(&server_entity) {
-            // Update existing client entity position
-            if let Ok(mut transform) = client_transforms.get_mut(client_entity) {
-                transform.translation = position.translation;
-            }
-        } else {
-            // Spawn new client entity for this player
-            let mesh = match shape {
-                PlayerShape::Cube => meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
-                PlayerShape::Capsule => meshes.add(Capsule3d::new(0.5, 1.0)),
-            };
+#[derive(Component)]
+struct InGameCleanup;
 
-            let client_entity = commands
-                .spawn((
-                    Mesh3d(mesh),
-                    MeshMaterial3d(materials.add(player.color)),
-                    Transform::from_translation(position.translation),
-                    ClientPlayer {
-                        server_id: player.id,
-                    },
-                ))
-                .id();
+#[derive(Component)]
+struct InGameMenuUI;
 
-            entity_map.map.insert(server_entity, client_entity);
-            info!(
-                "Spawned client entity for player {} (shape: {:?})",
-                player.id, shape
-            );
-        }
-    }
-    */
+#[derive(Component, Clone, Copy, PartialEq, Eq)]
+enum InGameMenuButtonAction {
+    Resume,
+    LeaveSession,
+    OpenLan,
+    CloseLan,
 }
 
 /// Marker component for client-side player rendering.
@@ -373,63 +364,6 @@ struct ClientPlayer {
 /// Resource holding the save file path.
 #[derive(Resource)]
 struct SavePath(std::path::PathBuf);
-
-/// System that captures player input for the host player (uses loopback).
-/// The host player is always client ID 1.
-/// Handles player input for the host player using loopback transport.
-///
-/// NOTE: This system is currently disabled because we need to refactor it
-/// to send input via the LoopbackClient transport instead of directly
-/// accessing the server world.
-///
-/// TODO: Refactor to use loopback.send() for player input
-#[allow(dead_code)]
-fn handle_player_input_host(
-    _keyboard: Res<ButtonInput<KeyCode>>,
-    _loopback: Res<LoopbackClient>,
-    _save_path: Res<SavePath>,
-) {
-    // NOTE: This code is disabled and needs refactoring to send input via loopback transport
-    /*
-    use game_server::movement::PlayerInput;
-
-    // Handle save/load hotkeys
-    if keyboard.just_pressed(KeyCode::F5) {
-        // TODO: Implement save via server command
-    }
-
-    if keyboard.just_pressed(KeyCode::F9) {
-        // TODO: Implement load via server command
-    }
-
-    // Calculate movement direction from WASD/Arrow keys
-    let mut direction = Vec2::ZERO;
-
-    if keyboard.pressed(KeyCode::KeyW) || keyboard.pressed(KeyCode::ArrowUp) {
-        direction.y += 1.0;
-    }
-    if keyboard.pressed(KeyCode::KeyS) || keyboard.pressed(KeyCode::ArrowDown) {
-        direction.y -= 1.0;
-    }
-    if keyboard.pressed(KeyCode::KeyA) || keyboard.pressed(KeyCode::ArrowLeft) {
-        direction.x -= 1.0;
-    }
-    if keyboard.pressed(KeyCode::KeyD) || keyboard.pressed(KeyCode::ArrowRight) {
-        direction.x += 1.0;
-    }
-
-    // Normalize diagonal movement
-    if direction.length() > 0.01 {
-        direction = direction.normalize();
-    }
-
-    let jump = keyboard.pressed(KeyCode::Space);
-
-    // Send input to server (host player uses HOST_CLIENT_ID)
-    let input = PlayerInput { direction, jump };
-    server.send_player_input(game_server::HOST_CLIENT_ID, input);
-    */
-}
 
 /// System that captures player input and sends it to the server (singleplayer).
 /// Handles player input for non-host players.
@@ -568,7 +502,7 @@ fn button_system(
                         // For now, use default settings
                         match start_multiplayer_server("0.0.0.0:7777") {
                             Ok((server_handle, loopback_client)) => {
-                                info!("LAN server started on port 7777 in separate thread");
+                                info!("LAN server started in separate thread");
                                 commands.insert_resource(server_handle);
                                 commands.insert_resource(loopback_client);
                                 next_state.set(GameState::InGame);
@@ -838,6 +772,7 @@ fn join_menu_system(
                                     }
                                     Err(e) => {
                                         error!("Failed to connect to server: {}", e);
+                                        *border_color = BorderColor::all(RED);
                                     }
                                 }
                             } else {
@@ -848,7 +783,6 @@ fn join_menu_system(
                         }
                     }
                     JoinMenuAction::Back => {
-                        info!("Back to main menu");
                         next_state.set(GameState::MainMenu);
                     }
                 }
@@ -923,7 +857,7 @@ fn update_join_address_display(
 /// Component marking a client-rendered remote player entity.
 #[derive(Component)]
 struct RemotePlayer {
-    player_id: uuid::Uuid,
+    player_id: Uuid,
 }
 
 /// Component for interpolating remote player positions smoothly.
@@ -974,6 +908,7 @@ fn apply_gameplay_message(
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
     remote_players: &mut Query<(Entity, &RemotePlayer, &mut NetworkedTransform)>,
+    registry: &mut RemotePlayerRegistry,
     message: game_server::protocol::GameplayMessage,
 ) {
     use game_server::protocol::{PlayerDespawnMessage, PlayerSpawnMessage};
@@ -989,16 +924,44 @@ fn apply_gameplay_message(
 
             let bevy_color: Color = color.into();
             let bevy_position: Vec3 = position.into();
-
             let mesh_handle = match shape {
                 game_server::protocol::PlayerShape::Cube => meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
                 game_server::protocol::PlayerShape::Capsule => meshes.add(Capsule3d::new(0.5, 1.0)),
             };
+            let material_handle = materials.add(bevy_color);
+            let transform = Transform::from_translation(bevy_position);
+
+            let is_new = registry.known_players.insert(player_id);
+
+            if !is_new {
+                let mut updated_existing = false;
+                for (entity, remote_player, mut networked_transform) in remote_players.iter_mut() {
+                    if remote_player.player_id == player_id {
+                        networked_transform.current = bevy_position;
+                        networked_transform.target = bevy_position;
+                        networked_transform.velocity = Vec3::ZERO;
+
+                        commands.entity(entity).insert((
+                            Mesh3d(mesh_handle.clone()),
+                            MeshMaterial3d(material_handle.clone()),
+                            transform,
+                        ));
+
+                        info!("Updated remote player {} from spawn message", player_id);
+                        updated_existing = true;
+                        break;
+                    }
+                }
+
+                if updated_existing {
+                    return;
+                }
+            }
 
             commands.spawn((
                 Mesh3d(mesh_handle),
-                MeshMaterial3d(materials.add(bevy_color)),
-                Transform::from_translation(bevy_position),
+                MeshMaterial3d(material_handle),
+                transform,
                 RemotePlayer { player_id },
                 NetworkedTransform {
                     current: bevy_position,
@@ -1006,6 +969,7 @@ fn apply_gameplay_message(
                     velocity: Vec3::ZERO,
                     interpolation_speed: 0.15,
                 },
+                InGameCleanup,
             ));
 
             info!(
@@ -1025,6 +989,8 @@ fn apply_gameplay_message(
                     break;
                 }
             }
+
+            registry.known_players.remove(&player_id);
         }
         game_server::protocol::GameplayMessage::WorldState(state) => {
             for player_state in state.players {
@@ -1041,30 +1007,38 @@ fn apply_gameplay_message(
                     }
                 }
 
-                if !found {
-                    info!(
-                        "Spawning player {} from WorldState (missed spawn message)",
-                        player_state.player_id
-                    );
-
-                    let mesh_handle = meshes.add(Capsule3d::new(0.4, 1.0));
-                    let default_color = Color::srgb(0.8, 0.8, 0.8);
-
-                    commands.spawn((
-                        Mesh3d(mesh_handle),
-                        MeshMaterial3d(materials.add(default_color)),
-                        Transform::from_translation(target_pos),
-                        RemotePlayer {
-                            player_id: player_state.player_id,
-                        },
-                        NetworkedTransform {
-                            current: target_pos,
-                            target: target_pos,
-                            velocity: target_vel,
-                            interpolation_speed: 0.15,
-                        },
-                    ));
+                if found {
+                    continue;
                 }
+
+                if !registry.known_players.insert(player_state.player_id) {
+                    // Await the actual entity spawn (already queued earlier).
+                    continue;
+                }
+
+                info!(
+                    "Spawning player {} from WorldState (missed spawn message)",
+                    player_state.player_id
+                );
+
+                let mesh_handle = meshes.add(Capsule3d::new(0.4, 1.0));
+                let default_color = Color::srgb(0.8, 0.8, 0.8);
+
+                commands.spawn((
+                    Mesh3d(mesh_handle),
+                    MeshMaterial3d(materials.add(default_color)),
+                    Transform::from_translation(target_pos),
+                    RemotePlayer {
+                        player_id: player_state.player_id,
+                    },
+                    NetworkedTransform {
+                        current: target_pos,
+                        target: target_pos,
+                        velocity: target_vel,
+                        interpolation_speed: 0.15,
+                    },
+                    InGameCleanup,
+                ));
             }
         }
         game_server::protocol::GameplayMessage::PlayerInput(_) => {
@@ -1081,6 +1055,7 @@ fn receive_server_messages(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut registry: ResMut<RemotePlayerRegistry>,
     mut remote_players: Query<(Entity, &RemotePlayer, &mut NetworkedTransform)>,
 ) {
     use game_server::protocol::GameplayMessage;
@@ -1103,6 +1078,7 @@ fn receive_server_messages(
                     &mut meshes,
                     &mut materials,
                     &mut remote_players,
+                    registry.as_mut(),
                     message,
                 );
             }
@@ -1123,6 +1099,7 @@ fn receive_loopback_messages(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut registry: ResMut<RemotePlayerRegistry>,
     mut remote_players: Query<(Entity, &RemotePlayer, &mut NetworkedTransform)>,
 ) {
     use game_server::protocol::GameplayMessage;
@@ -1156,6 +1133,7 @@ fn receive_loopback_messages(
             &mut meshes,
             &mut materials,
             &mut remote_players,
+            registry.as_mut(),
             message,
         );
     }
@@ -1180,6 +1158,7 @@ fn receive_loopback_messages(
                             &mut meshes,
                             &mut materials,
                             &mut remote_players,
+                            registry.as_mut(),
                             message,
                         );
                     }
@@ -1222,4 +1201,257 @@ fn receive_loopback_messages(
             }
         }
     }
+}
+
+fn toggle_in_game_menu(keys: Res<ButtonInput<KeyCode>>, mut menu: ResMut<InGameMenuState>) {
+    if keys.just_pressed(KeyCode::Escape) {
+        menu.open = !menu.open;
+    }
+}
+
+fn spawn_in_game_menu_ui(
+    mut commands: Commands,
+    menu: Res<InGameMenuState>,
+    server_handle: Option<Res<ServerHandle>>,
+    existing: Query<Entity, With<InGameMenuUI>>,
+) {
+    if !menu.is_changed() {
+        return;
+    }
+
+    for entity in &existing {
+        if let Ok(mut entity_commands) = commands.get_entity(entity) {
+            entity_commands.despawn();
+        }
+    }
+
+    if !menu.open {
+        return;
+    }
+
+    let is_host = server_handle.is_some();
+    let status_text = if is_host {
+        if menu.external_open {
+            "LAN/Steam access: OPEN"
+        } else {
+            "LAN/Steam access: CLOSED"
+        }
+    } else {
+        "Connected as client"
+    };
+
+    commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.65)),
+            InGameMenuUI,
+            InGameCleanup,
+        ))
+        .with_children(|parent| {
+            parent
+                .spawn((
+                    Node {
+                        padding: UiRect::all(Val::Px(24.0)),
+                        row_gap: Val::Px(16.0),
+                        flex_direction: FlexDirection::Column,
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Center,
+                        ..default()
+                    },
+                    BorderColor::all(Color::WHITE),
+                    BorderRadius::all(Val::Px(12.0)),
+                    BackgroundColor(Color::srgb(0.1, 0.1, 0.1)),
+                    InGameCleanup,
+                ))
+                .with_children(|panel| {
+                    panel.spawn((
+                        Text::new("In-Game Menu"),
+                        TextFont {
+                            font_size: 32.0,
+                            ..default()
+                        },
+                        TextColor(Color::srgb(0.9, 0.9, 0.9)),
+                        InGameCleanup,
+                    ));
+
+                    panel.spawn((
+                        Text::new(status_text.to_string()),
+                        TextFont {
+                            font_size: 18.0,
+                            ..default()
+                        },
+                        TextColor(Color::srgb(0.8, 0.8, 0.8)),
+                        InGameCleanup,
+                    ));
+
+                    let mut spawn_button = |label: &str, action: InGameMenuButtonAction| {
+                        panel
+                            .spawn((
+                                Button,
+                                Node {
+                                    width: Val::Px(260.0),
+                                    height: Val::Px(56.0),
+                                    border: UiRect::all(Val::Px(4.0)),
+                                    justify_content: JustifyContent::Center,
+                                    align_items: AlignItems::Center,
+                                    ..default()
+                                },
+                                BorderColor::all(Color::WHITE),
+                                BorderRadius::all(Val::Px(10.0)),
+                                BackgroundColor(NORMAL_BUTTON),
+                                InGameCleanup,
+                                action,
+                            ))
+                            .with_children(|button| {
+                                button.spawn((
+                                    Text::new(label.to_string()),
+                                    TextFont {
+                                        font_size: 22.0,
+                                        ..default()
+                                    },
+                                    TextColor(Color::srgb(0.9, 0.9, 0.9)),
+                                    InGameCleanup,
+                                ));
+                            });
+                    };
+
+                    spawn_button("Resume", InGameMenuButtonAction::Resume);
+
+                    if is_host {
+                        if menu.external_open {
+                            spawn_button(
+                                "Close LAN/Steam access",
+                                InGameMenuButtonAction::CloseLan,
+                            );
+                        } else {
+                            spawn_button("Open to LAN", InGameMenuButtonAction::OpenLan);
+                        }
+                        spawn_button("Return to Main Menu", InGameMenuButtonAction::LeaveSession);
+                    } else {
+                        spawn_button("Disconnect", InGameMenuButtonAction::LeaveSession);
+                    }
+                });
+        });
+}
+
+fn handle_in_game_menu_buttons(
+    mut commands: Commands,
+    mut interaction_query: Query<
+        (
+            &Interaction,
+            &InGameMenuButtonAction,
+            &mut BackgroundColor,
+            &mut BorderColor,
+        ),
+        Changed<Interaction>,
+    >,
+    mut menu: ResMut<InGameMenuState>,
+    mut next_state: ResMut<NextState<GameState>>,
+    server_handle: Option<Res<ServerHandle>>,
+    mut game_client: Option<ResMut<GameClient>>,
+) {
+    for (interaction, action, mut color, mut border_color) in &mut interaction_query {
+        match *interaction {
+            Interaction::Pressed => {
+                *color = PRESSED_BUTTON.into();
+                *border_color = BorderColor::all(RED);
+
+                match action {
+                    InGameMenuButtonAction::Resume => {
+                        menu.open = false;
+                    }
+                    InGameMenuButtonAction::LeaveSession => {
+                        if let Some(server) = server_handle.as_ref() {
+                            server.shutdown();
+                        }
+                        if server_handle.is_some() {
+                            commands.remove_resource::<ServerHandle>();
+                            menu.external_open = false;
+                        }
+
+                        let mut remove_client = false;
+                        if let Some(mut client) = game_client.take() {
+                            if let Err(e) = client.transport.disconnect() {
+                                warn!("Failed to disconnect client: {:?}", e);
+                            }
+                            remove_client = true;
+                        }
+                        if remove_client {
+                            commands.remove_resource::<GameClient>();
+                        }
+
+                        commands.remove_resource::<LoopbackClient>();
+
+                        menu.open = false;
+                        next_state.set(GameState::MainMenu);
+                    }
+                    InGameMenuButtonAction::OpenLan => {
+                        if let Some(server) = server_handle.as_ref() {
+                            match create_default_quic_transport() {
+                                Ok((external, addr)) => match server.add_external(external) {
+                                    Ok(_) => {
+                                        info!("LAN/Steam access opened on {}", addr);
+                                        menu.external_open = true;
+                                    }
+                                    Err(e) => warn!("Failed to add external transport: {}", e),
+                                },
+                                Err(e) => warn!("Failed to create external transport: {}", e),
+                            }
+                        } else {
+                            warn!("Cannot open LAN/Steam access without hosting server");
+                        }
+                    }
+                    InGameMenuButtonAction::CloseLan => {
+                        if let Some(server) = server_handle.as_ref() {
+                            match server.remove_external() {
+                                Ok(_) => {
+                                    info!("LAN/Steam access closed");
+                                    menu.external_open = false;
+                                }
+                                Err(e) => warn!("Failed to remove external transport: {}", e),
+                            }
+                        } else {
+                            warn!("Cannot close LAN/Steam access without hosting server");
+                        }
+                    }
+                }
+            }
+            Interaction::Hovered => {
+                *color = HOVERED_BUTTON.into();
+                *border_color = BorderColor::all(Color::WHITE);
+            }
+            Interaction::None => {
+                *color = NORMAL_BUTTON.into();
+                *border_color = BorderColor::all(Color::BLACK);
+            }
+        }
+    }
+}
+
+fn menu_closed(menu: Res<InGameMenuState>) -> bool {
+    !menu.open
+}
+
+fn cleanup_in_game_entities(
+    mut commands: Commands,
+    mut menu: ResMut<InGameMenuState>,
+    mut registry: ResMut<RemotePlayerRegistry>,
+    cleanup_entities: Query<Entity, With<InGameCleanup>>,
+) {
+    menu.open = false;
+    menu.external_open = false;
+    registry.known_players.clear();
+    for entity in &cleanup_entities {
+        if let Ok(mut entity_commands) = commands.get_entity(entity) {
+            entity_commands.despawn();
+        }
+    }
+    commands.remove_resource::<LoopbackClient>();
+    commands.remove_resource::<GameClient>();
 }

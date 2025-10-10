@@ -9,6 +9,8 @@
 use bevy::prelude::*;
 use game_server::{ExternalTransport, ServerHandle};
 use shared::transport::{LoopbackClientTransport, TransportOrchestrator};
+use std::io::ErrorKind;
+use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
 
 /// Resource containing the loopback client transport for the host player.
 ///
@@ -16,6 +18,8 @@ use shared::transport::{LoopbackClientTransport, TransportOrchestrator};
 /// allowing the host to communicate with their own server.
 #[derive(Resource)]
 pub struct LoopbackClient(pub LoopbackClientTransport);
+
+const PORT_PROBE_LIMIT: u16 = 16;
 
 /// Starts an embedded server in Singleplayer mode.
 ///
@@ -58,17 +62,21 @@ pub fn start_singleplayer_server() -> (ServerHandle, LoopbackClient) {
 pub fn start_multiplayer_server(
     bind_address: &str,
 ) -> Result<(ServerHandle, LoopbackClient), String> {
+    let base_addr: SocketAddr = bind_address
+        .parse()
+        .map_err(|e| format!("Invalid bind address: {e}"))?;
+    let resolved_addr = resolve_bind_addr(base_addr)?;
+
     info!(
         "Starting embedded server in Multiplayer mode on {}",
-        bind_address
+        resolved_addr
     );
 
     // Create loopback transport pair for the host
     let loopback_pair = TransportOrchestrator::create_loopback_pair();
 
     // Create QUIC transport for remote clients
-    let endpoint_config = server::ServerEndpointConfiguration::from_string(bind_address)
-        .map_err(|e| format!("Invalid bind address: {}", e))?;
+    let endpoint_config = server::ServerEndpointConfiguration::from_addr(resolved_addr);
 
     let channels = game_server::protocol::channels::create_gameplay_channels();
 
@@ -87,6 +95,8 @@ pub fn start_multiplayer_server(
         }
     };
     let external = ExternalTransport::Quic(quic);
+
+    info!("QUIC transport bound to {}", resolved_addr);
 
     // Start the server with loopback + QUIC
     let mut handle =
@@ -124,16 +134,71 @@ pub fn shutdown_server(mut commands: Commands, handle: Option<Res<ServerHandle>>
 /// This can be called from a UI button or hotkey to dynamically open
 /// a singleplayer game to multiplayer.
 pub fn open_to_lan(server_handle: Res<ServerHandle>) {
-    info!("Opening server to LAN on port 7777...");
+    info!("Opening server to LAN...");
 
-    // Create QUIC transport configuration
-    let endpoint_config = match server::ServerEndpointConfiguration::from_string("0.0.0.0:7777") {
-        Ok(config) => config,
-        Err(e) => {
-            error!("Failed to create endpoint config: {}", e);
-            return;
+    match create_default_quic_transport() {
+        Ok((external, addr)) => {
+            if let Err(e) = server_handle.add_external(external) {
+                error!("Failed to add external transport: {}", e);
+            } else {
+                info!("Server successfully opened to LAN on {}", addr);
+            }
         }
-    };
+        Err(e) => error!("Failed to create external transport: {}", e),
+    }
+}
+
+fn resolve_bind_addr(base_addr: SocketAddr) -> Result<SocketAddr, String> {
+    if base_addr.port() == 0 {
+        return Ok(base_addr);
+    }
+
+    for offset in 0..=PORT_PROBE_LIMIT {
+        let candidate_port = base_addr.port() as u32 + offset as u32;
+        if candidate_port > u16::MAX as u32 {
+            break;
+        }
+
+        let candidate = SocketAddr::new(base_addr.ip(), candidate_port as u16);
+
+        match UdpSocket::bind(candidate) {
+            Ok(socket) => {
+                drop(socket);
+
+                if offset > 0 {
+                    info!(
+                        "Requested port {} unavailable, using {} instead",
+                        base_addr.port(),
+                        candidate.port()
+                    );
+                }
+
+                return Ok(candidate);
+            }
+            Err(err) if err.kind() == ErrorKind::AddrInUse => continue,
+            Err(err) => {
+                return Err(format!(
+                    "Failed to bind UDP port {} on {}: {err}",
+                    candidate.port(),
+                    candidate.ip()
+                ));
+            }
+        }
+    }
+
+    Err(format!(
+        "No free UDP port available near {}:{}",
+        base_addr.ip(),
+        base_addr.port()
+    ))
+}
+
+pub fn create_default_quic_transport() -> Result<(ExternalTransport, SocketAddr), String> {
+    let base_addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, 7777));
+    let resolved_addr = resolve_bind_addr(base_addr)?;
+    info!("Preparing default QUIC transport on {}", resolved_addr);
+
+    let endpoint_config = server::ServerEndpointConfiguration::from_addr(resolved_addr);
 
     let channels = game_server::protocol::channels::create_gameplay_channels();
     let capabilities = shared::TransportCapabilities::new(
@@ -143,17 +208,8 @@ pub fn open_to_lan(server_handle: Res<ServerHandle>) {
         8,    // max_channels
     );
 
-    let quic = match game_server::QuicTransport::new(endpoint_config, channels, capabilities) {
-        Ok(quic) => quic,
-        Err(e) => {
-            error!("Failed to create QUIC transport: {}", e);
-            return;
-        }
-    };
+    let quic = game_server::QuicTransport::new(endpoint_config, channels, capabilities)
+        .map_err(|e| format!("Failed to create QUIC transport: {e}"))?;
 
-    if let Err(e) = server_handle.add_external(ExternalTransport::Quic(quic)) {
-        error!("Failed to add external transport: {}", e);
-    } else {
-        info!("Server successfully opened to LAN!");
-    }
+    Ok((ExternalTransport::Quic(quic), resolved_addr))
 }
