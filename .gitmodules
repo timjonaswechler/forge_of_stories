@@ -1,0 +1,4 @@
+[submodule "crates/networking"]
+	path = crates/networking
+	url = git@github.com:timjonaswechler/networking.git
+	branch = features
