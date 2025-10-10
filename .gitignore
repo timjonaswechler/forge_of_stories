@@ -2,6 +2,7 @@ docs/**
 /target
 .**
 !.gitignore
+!.gitmodules
 WARP.md
 AGENTS.md
 Cargo.lock
