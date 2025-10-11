@@ -6,6 +6,7 @@ members = [
     "crates/settings",
     "crates/app",
     "crates/networking",
+    "crates/backend/quic",
     "crates/game_server",
     "crates/keymap",
     "third_party/steamworks-sys",
@@ -20,6 +21,7 @@ edition = "2024"
 [workspace.dependencies]
 app.path = "crates/app"
 networking.path = "crates/networking"
+quic.path = "crates/backend/quic"
 fos.path = "crates/forge_of_stories"
 paths.path = "crates/paths"
 settings.path = "crates/settings"
