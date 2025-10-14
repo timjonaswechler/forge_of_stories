@@ -7,6 +7,7 @@ members = [
     "crates/app",
     "crates/networking",
     "crates/backend/quic",
+    "crates/backend/loopback",
     "crates/game_server",
     "crates/keymap",
     "third_party/steamworks-sys",
@@ -22,6 +23,7 @@ edition = "2024"
 app.path = "crates/app"
 networking.path = "crates/networking"
 quic.path = "crates/backend/quic"
+loopback.path = "crates/backend/loopback"
 fos.path = "crates/forge_of_stories"
 paths.path = "crates/paths"
 settings.path = "crates/settings"

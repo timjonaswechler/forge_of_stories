@@ -1,0 +1,17 @@
+[package]
+name = "loopback"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bevy = { version = "0.17.2", default-features = false, features = ["bevy_log"] }
+networking = { path = "../../networking", default-features = false }
+
+[features]
+default = ["client", "server"]
+server = ["networking/server"]
+client = ["networking/client"]
+
+[dev-dependencies]
+serde = "1.0"
+test-log = "0.2"
