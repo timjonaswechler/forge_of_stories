@@ -5,6 +5,7 @@ members = [
     "crates/paths",
     "crates/settings",
     "crates/app",
+    "crates/auth",
     "crates/networking",
     "crates/backend/quic",
     "crates/backend/loopback",
@@ -21,6 +22,7 @@ edition = "2024"
 
 [workspace.dependencies]
 app.path = "crates/app"
+auth.path = "crates/auth"
 networking.path = "crates/networking"
 quic.path = "crates/backend/quic"
 loopback.path = "crates/backend/loopback"
@@ -51,6 +53,7 @@ rcgen = { version = "0.14", features = [
     "aws_lc_rs",
 ], default-features = false }
 regex = "1.5"
+reqwest = { version = "0.12", default-features = false}
 ring = "0.17.7"
 rust-embed = { version = "8.4", features = ["include-exclude"] }
 rustls = { version = "0.23", features = ["aws-lc-rs", "log"] }
