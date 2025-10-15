@@ -127,6 +127,55 @@ fn send_packets(
     }
 }
 
+fn close_stream_on_despawn(
+    trigger: On<Remove, ConnectedClient>,
+    clients: Query<&LoopbackConnection>,
+) {
+    if let Ok(connection) = clients.get(trigger.entity) {
+        debug!("closing stream for despawned client `{}`", trigger.entity);
+        // TCP Stream wird automatisch geclosed beim Drop
+        // Aber du könntest explizit connection.stream.shutdown(...) callen
+    }
+}
+
+fn update_statistics(
+    mut bps_timer: Local<f64>,
+    mut clients: Query<(&NetworkId, &mut ConnectedClient, &mut ClientStats)>,
+    mut loopback_server: ResMut<LoopbackServer>,
+    time: Res<Time>,
+) {
+    let Some(endpoint) = loopback_server.get_endpoint_mut() else {
+        return;
+    };
+    for (network_id, mut client, mut client_stats) in clients.iter_mut() {
+        let Some(connection) = endpoint.connection_mut(network_id.get()) else {
+            continue;
+        };
+
+        if let Some(max_size) = connection.max_datagram_size() {
+            client.max_size = max_size;
+        }
+
+        let quinn_stats = connection.quinn_connection_stats();
+        client_stats.rtt = quinn_stats.path.rtt.as_secs_f64();
+        client_stats.packet_loss = if quinn_stats.path.sent_packets == 0 {
+            0.0
+        } else {
+            100.0 * (quinn_stats.path.lost_packets as f64 / quinn_stats.path.sent_packets as f64)
+        };
+
+        *bps_timer += time.delta_secs_f64();
+        if *bps_timer >= BYTES_PER_SEC_PERIOD {
+            *bps_timer = 0.;
+            let stats = connection.stats_mut();
+            let received_bytes_count = stats.clear_received_bytes_count() as f64;
+            let sent_bytes_count = stats.clear_sent_bytes_count() as f64;
+            client_stats.received_bps = received_bytes_count / BYTES_PER_SEC_PERIOD;
+            client_stats.sent_bps = sent_bytes_count / BYTES_PER_SEC_PERIOD;
+        }
+    }
+}
+
 /// The socket used by the server.
 #[derive(Resource)]
 pub struct LoopbackServer(TcpListener);
