@@ -9,8 +9,8 @@ pub use client::*;
 #[cfg(feature = "server")]
 pub use server::*;
 
+pub const BYTES_PER_SEC_PERIOD: f64 = 0.1;
 use bevy::{app::PluginGroupBuilder, prelude::*};
-
 /// Plugin group for all replicon example backend plugins.
 ///
 /// Contains the following:

@@ -3,9 +3,6 @@ use std::{
     net::{SocketAddr, TcpStream},
 };
 
-use bevy::prelude::*;
-use networking::prelude::*;
-
 /// Adds a client messaging backend made for examples to `bevy_replicon`.
 pub struct LoopbackClientPlugin;
 
@@ -14,8 +11,7 @@ impl Plugin for LoopbackClientPlugin {
         app.add_systems(
             PreUpdate,
             (
-                (
-                    receive_packets.run_if(resource_exists::<LoopbackClient>),
+                    update_statistics.run_if(resource_exists::<LoopbackClient>),
                     // Run after since the resource might be removed after receiving packets.
                     set_disconnected.run_if(resource_removed::<LoopbackClient>),
                 )
@@ -47,8 +43,9 @@ fn receive_packets(
     mut messages: ResMut<ClientMessages>,
 ) {
     loop {
-        match crate::tcp::read_message(&mut client.stream) {
-            Ok((channel_id, message)) => {
+                // Track received bytes
+                client.stats.bytes_received += message.len();
+
                 messages.insert_received(channel_id, message);
             }
             Err(e) => match e.kind() {
@@ -72,13 +69,36 @@ fn send_packets(
     mut commands: Commands,
     mut client: ResMut<LoopbackClient>,
     mut messages: ResMut<ClientMessages>,
-) {
-    for (channel_id, message) in messages.drain_sent() {
+        // Track sent bytes
+        client.stats.bytes_sent += message.len();
+
         if let Err(e) = crate::tcp::send_message(&mut client.stream, channel_id, &message) {
             error!("disconnecting due message write error: {e}");
             commands.remove_resource::<LoopbackClient>();
             return;
         }
+    }
+fn update_statistics(
+    mut bps_timer: Local<f64>,
+    mut client: ResMut<LoopbackClient>,
+    mut client_stats: ResMut<ClientStats>,
+    time: Res<Time>,
+) {
+    *bps_timer += time.delta_secs_f64();
+    if *bps_timer >= BYTES_PER_SEC_PERIOD {
+        *bps_timer = 0.0;
+
+        // Calculate BPS from tracked bytes
+        client_stats.received_bps = client.stats.bytes_received as f64 / BYTES_PER_SEC_PERIOD;
+        client_stats.sent_bps = client.stats.bytes_sent as f64 / BYTES_PER_SEC_PERIOD;
+
+        // Reset counters
+        client.stats.bytes_received = 0;
+        client.stats.bytes_sent = 0;
+
+        // TCP doesn't expose RTT/packet loss easily, set to defaults
+        client_stats.rtt = 0.0;
+        client_stats.packet_loss = 0.0;
     }
 }
 
@@ -86,15 +106,23 @@ fn send_packets(
 #[derive(Resource)]
 pub struct LoopbackClient {
     stream: TcpStream,
+    stats: ConnectionStats,
+}
+
+#[derive(Default)]
+struct ConnectionStats {
+    bytes_sent: usize,
+    bytes_received: usize,
 }
 
 impl LoopbackClient {
     /// Opens an example client socket connected to a server on the specified port.
     pub fn new(addr: impl Into<SocketAddr>) -> io::Result<Self> {
         let stream = TcpStream::connect(addr.into())?;
-        stream.set_nonblocking(true)?;
-        stream.set_nodelay(true)?;
-        Ok(Self { stream })
+        Ok(Self {
+            stream,
+            stats: ConnectionStats::default(),
+        })
     }
 
     /// Returns local address if connected.
