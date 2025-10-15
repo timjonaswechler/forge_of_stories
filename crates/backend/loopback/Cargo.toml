@@ -5,12 +5,13 @@ edition = "2024"
 
 [dependencies]
 tokio.workspace = true
+bevy.workspace = true
+networking.workspace = true
 
 [features]
-default = ["client", "server"]
-server = ["networking/server"]
+default = []
 client = ["networking/client"]
-
+server = ["networking/server"]
 [dev-dependencies]
 serde = "1.0"
 test-log = "0.2"

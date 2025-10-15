@@ -1,3 +1,6 @@
+use super::BYTES_PER_SEC_PERIOD;
+use bevy::prelude::*;
+use networking::{prelude::*, shared::backend::connected_client::NetworkId};
 use std::{
     io,
     net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream},
@@ -46,6 +49,8 @@ fn receive_packets(
     mut messages: ResMut<ServerMessages>,
     server: Res<LoopbackServer>,
     mut clients: Query<(Entity, &mut LoopbackConnection)>,
+) {
+    loop {
         match server.endpoint().accept() {
             Ok((stream, addr)) => {
                 if let Err(e) = stream.set_nodelay(true) {
@@ -59,6 +64,8 @@ fn receive_packets(
                 let network_id = NetworkId::new(addr.port().into());
                 let client = commands
                     .spawn((
+                        ConnectedClient { max_size: 1200 },
+                        network_id,
                         LoopbackConnection::new(stream),
                     ))
                     .id();
@@ -76,6 +83,8 @@ fn receive_packets(
 
     for (client, mut connection) in &mut clients {
         loop {
+            match crate::tcp::read_message(&mut connection.stream) {
+                Ok((channel_id, message)) => {
                     // Track received bytes
                     connection.stats.bytes_received += message.len();
 
@@ -102,11 +111,15 @@ fn receive_packets(
     }
 }
 
+fn send_packets(
+    mut commands: Commands,
     mut messages: ResMut<ServerMessages>,
     mut clients: Query<&mut LoopbackConnection>,
 ) {
     for (client, channel_id, message) in messages.drain_sent() {
         let mut connection = clients
+            .get_mut(client)
+            .expect("all connected clients should have streams");
 
         // Track sent bytes
         connection.stats.bytes_sent += message.len();
@@ -139,6 +152,8 @@ fn close_stream_on_despawn(
     }
 }
 
+fn update_statistics(
+    mut bps_timer: Local<f64>,
     mut clients: Query<(&mut LoopbackConnection, &mut ClientStats)>,
     time: Res<Time>,
 ) {
@@ -184,6 +199,8 @@ impl LoopbackConnection {
     }
 }
 
+/// The socket used by the server.
+#[derive(Resource)]
 pub struct LoopbackServer {
     endpoint: Option<TcpListener>,
 }
@@ -191,6 +208,8 @@ pub struct LoopbackServer {
 impl LoopbackServer {
     /// Opens an example server socket on the specified port.
     pub fn new(port: u16) -> io::Result<Self> {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, port))?;
+        listener.set_nonblocking(true)?;
         Ok(Self {
             endpoint: Some(listener),
         })

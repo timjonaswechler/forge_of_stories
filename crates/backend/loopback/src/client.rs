@@ -1,3 +1,6 @@
+use super::BYTES_PER_SEC_PERIOD;
+use bevy::prelude::*;
+use networking::prelude::*;
 use std::{
     io,
     net::{SocketAddr, TcpStream},
@@ -11,6 +14,8 @@ impl Plugin for LoopbackClientPlugin {
         app.add_systems(
             PreUpdate,
             (
+                (
+                    receive_packets.run_if(resource_exists::<LoopbackClient>),
                     update_statistics.run_if(resource_exists::<LoopbackClient>),
                     // Run after since the resource might be removed after receiving packets.
                     set_disconnected.run_if(resource_removed::<LoopbackClient>),
@@ -43,6 +48,8 @@ fn receive_packets(
     mut messages: ResMut<ClientMessages>,
 ) {
     loop {
+        match crate::tcp::read_message(&mut client.stream) {
+            Ok((channel_id, message)) => {
                 // Track received bytes
                 client.stats.bytes_received += message.len();
 
@@ -69,6 +76,8 @@ fn send_packets(
     mut commands: Commands,
     mut client: ResMut<LoopbackClient>,
     mut messages: ResMut<ClientMessages>,
+) {
+    for (channel_id, message) in messages.drain_sent() {
         // Track sent bytes
         client.stats.bytes_sent += message.len();
 
@@ -78,6 +87,8 @@ fn send_packets(
             return;
         }
     }
+}
+
 fn update_statistics(
     mut bps_timer: Local<f64>,
     mut client: ResMut<LoopbackClient>,
@@ -119,6 +130,8 @@ impl LoopbackClient {
     /// Opens an example client socket connected to a server on the specified port.
     pub fn new(addr: impl Into<SocketAddr>) -> io::Result<Self> {
         let stream = TcpStream::connect(addr.into())?;
+        stream.set_nonblocking(true)?;
+        stream.set_nodelay(true)?;
         Ok(Self {
             stream,
             stats: ConnectionStats::default(),
