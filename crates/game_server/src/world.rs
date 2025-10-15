@@ -1,50 +1,29 @@
-//! World and entity components for the game.
+//! World and entity resources for the game.
 //!
-//! This module defines the minimal game entities for the demo:
-//! - Ground plane
-//! - Player entities (colored shapes)
+//! This module defines resources used by the server for world management.
+//! Components have been moved to the `components` module.
 
 use bevy::color::palettes::css::*;
 use bevy::prelude::*;
+
+// Re-export components from the components module
+pub use crate::components::{Player, Position, Velocity};
 
 /// Marker component for the ground plane entity.
 #[derive(Component, Debug, Clone, Copy)]
 pub struct GroundPlane;
 
-/// Player entity component.
-#[derive(Component, Debug, Clone)]
-pub struct Player {
-    /// Unique player ID (matches ClientId from networking).
-    pub id: uuid::Uuid,
-    /// Player's assigned color.
-    pub color: Color,
-}
-
-/// Movement velocity component.
-#[derive(Component, Debug, Clone, Copy, Default)]
-pub struct Velocity {
-    pub linear: Vec3,
-}
-
-/// Simple position component (server authoritative).
-///
-/// The server maintains this, clients receive updates.
-#[derive(Component, Debug, Clone, Copy, Default)]
-pub struct Position {
-    pub translation: Vec3,
-}
-
 /// Resource for assigning player colors.
 ///
 /// Cycles through a predefined palette to ensure each player has a unique color.
-#[derive(Resource, Debug)]
+#[derive(Resource, Debug, Default)]
 pub struct PlayerColorAssigner {
     available_colors: Vec<Color>,
     next_index: usize,
 }
 
-impl Default for PlayerColorAssigner {
-    fn default() -> Self {
+impl PlayerColorAssigner {
+    pub fn new() -> Self {
         Self {
             available_colors: vec![
                 RED.into(),     // Red
@@ -59,11 +38,12 @@ impl Default for PlayerColorAssigner {
             next_index: 0,
         }
     }
-}
 
-impl PlayerColorAssigner {
     /// Assigns the next color from the palette (wraps around if needed).
     pub fn next_color(&mut self) -> Color {
+        if self.available_colors.is_empty() {
+            *self = Self::new();
+        }
         let color = self.available_colors[self.next_index];
         self.next_index = (self.next_index + 1) % self.available_colors.len();
         color
