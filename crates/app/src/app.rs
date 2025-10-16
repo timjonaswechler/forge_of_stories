@@ -105,13 +105,13 @@ impl<A: Application> AppBuilder<A> {
 
         // Separate layer: file (non-blocking) + console (stdout)
         let file_layer = fmt::Layer::default()
-            .with_target(false)
+            .with_target(true)
             .with_ansi(false)
             .with_writer(non_blocking)
             .with_filter(filter_fn(move |metadata| metadata.level() <= &level));
 
         let console_layer = fmt::Layer::default()
-            .with_target(false)
+            .with_target(true)
             .with_filter(filter_fn(move |metadata| metadata.level() <= &level));
 
         tracing_subscriber::registry()
