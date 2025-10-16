@@ -9,6 +9,7 @@
 //! for automatic server-authoritative replication.
 
 use bevy::prelude::*;
+use bevy::state::app::StatesPlugin;
 use loopback::{LoopbackBackendPlugins, LoopbackServer};
 use networking::prelude::*;
 use std::sync::Arc;
@@ -217,7 +218,7 @@ fn run_server_app(
     let mut app = App::new();
 
     // Core plugins (minimal - no rendering/audio)
-    app.add_plugins(MinimalPlugins);
+    app.add_plugins(MinimalPlugins).add_plugins(StatesPlugin);
 
     // Initialize game server state
     app.init_state::<GameServerState>();
@@ -248,10 +249,7 @@ fn run_server_app(
     )
     .add_systems(
         Update,
-        (
-            movement::process_player_input,
-            movement::apply_velocity,
-        )
+        (movement::process_player_input, movement::apply_velocity)
             .run_if(in_state(GameServerState::Running)),
     );
 
@@ -259,11 +257,10 @@ fn run_server_app(
     world_setup::spawn_world(&mut app.world_mut());
 
     // Start loopback server
-    let addr = format!("127.0.0.1:{}", port).parse().unwrap();
-    match LoopbackServer::new(addr) {
+    match LoopbackServer::new(port) {
         Ok(server) => {
             app.insert_resource(server);
-            info!("Loopback server listening on {}", addr);
+            info!("Loopback server listening on 127.0.0.1:{}", port);
         }
         Err(e) => {
             error!("Failed to start loopback server: {}", e);
@@ -271,6 +268,11 @@ fn run_server_app(
             return;
         }
     }
+
+    // Finish plugin initialization before starting the main loop
+    // This ensures all Plugin::finish() methods are called, including
+    // ServerPlugin::finish() which initializes the message channels
+    app.finish();
 
     // Update state to Running
     state.store(GameServerState::Running);
@@ -284,7 +286,9 @@ fn run_server_app(
 
         // Check if we're shutting down
         if matches!(
-            app.world().get_resource::<State<GameServerState>>().map(|s| **s),
+            app.world()
+                .get_resource::<State<GameServerState>>()
+                .map(|s| **s),
             Some(GameServerState::ShuttingDown)
         ) {
             info!("Shutdown initiated");
@@ -346,7 +350,10 @@ fn handle_client_connections(
         let color = color_assigner.next_color();
         let client_id = ClientId::from(client_entity);
 
-        info!("Client {} connected, spawning player with color {:?}", client_id, color);
+        info!(
+            "Client {} connected, spawning player with color {:?}",
+            client_id, color
+        );
 
         // Spawn player entity with replicated components
         commands.spawn((

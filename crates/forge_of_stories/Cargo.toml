@@ -8,7 +8,8 @@ app = {workspace = true, features = ["bevy"]}
 bevy = { workspace = true, default-features = true }
 settings.workspace = true
 paths.workspace = true
-networking.workspace = true
+networking = { workspace = true, features = ["client"] }
+loopback = { path = "../backend/loopback", features = ["client"] }
 game_server.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
