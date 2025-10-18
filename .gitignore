@@ -6,6 +6,7 @@ docs/**
 !.gitmodules
 WARP.md
 AGENTS.md
+CLAUDE.md
 Cargo.lock
 Dockerfile
 assets/codecks/
@@ -13,3 +14,4 @@ third_party/steamworks-sys/**
 !third_party/steamworks-sys/Cargo.toml
 .python/
 .zed
+assets/forge_of_stories/
