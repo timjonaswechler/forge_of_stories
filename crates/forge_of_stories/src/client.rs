@@ -5,9 +5,13 @@
 //! - Rendering of replicated entities
 //! - Camera following
 
-use bevy::prelude::*;
+use crate::InGame;
+use crate::ui::normal_vector::NormalArrowVisual;
+use bevy::{
+    color::palettes::basic::{BLUE, GREEN, RED},
+    prelude::*,
+};
 use game_server::{Player, PlayerInput, Position};
-
 /// Marker component for client-side player mesh rendering.
 #[derive(Component)]
 pub struct PlayerMesh;
@@ -17,7 +21,7 @@ pub struct PlayerMesh;
 /// This system runs every frame when in-game and the menu is closed.
 pub fn send_player_input(
     keyboard: Res<ButtonInput<KeyCode>>,
-    mut input_writer: Option<MessageWriter<PlayerInput>>,
+    input_writer: Option<MessageWriter<PlayerInput>>,
 ) {
     // Return early if the message writer is not yet initialized
     let Some(mut input_writer) = input_writer else {
@@ -73,16 +77,59 @@ pub fn spawn_player_meshes(
                 ..default()
             })),
             PlayerMesh,
+            InGame,
         ));
     }
 }
+#[derive(Component)]
+pub struct DebugArrows;
 
 /// System that updates player mesh positions from replicated Position components.
 ///
 /// This runs every frame to smoothly update visual positions.
-pub fn update_player_positions(mut players: Query<(&Position, &mut Transform), With<Player>>) {
+pub fn update_player_positions(
+    mut commands: Commands,
+    mut players: Query<(&Position, &mut Transform), With<Player>>,
+) {
     for (position, mut transform) in &mut players {
         transform.translation = position.translation;
+        let head_origin = position.translation + Vec3::new(0.0, 1.0, 0.0);
+        commands.spawn((
+            NormalArrowVisual {
+                origin: head_origin,
+                direction: Vec3::Y, // Normale ist der normalisierte Vektor vom Kugelzentrum zum Punkt
+                length: 0.5,
+                color: RED,
+            },
+            InGame,
+            DebugArrows,
+        ));
+
+        // Pfeil am Körper (X-Achse)
+        let body_origin = position.translation + Vec3::new(0.5, 0.0, 0.0);
+        commands.spawn((
+            NormalArrowVisual {
+                origin: body_origin,
+                direction: Vec3::X,
+                length: 0.5,
+                color: GREEN,
+            },
+            InGame,
+            DebugArrows,
+        ));
+
+        // Pfeil am Äquator (Z-Achse)
+        let hip_origin = position.translation + Vec3::new(0.0, 0.0, 0.5);
+        commands.spawn((
+            NormalArrowVisual {
+                origin: hip_origin,
+                direction: Vec3::Z,
+                length: 0.5,
+                color: BLUE,
+            },
+            InGame,
+            DebugArrows,
+        ));
     }
 }
 

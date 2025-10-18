@@ -249,14 +249,17 @@ fn run_server_app(
     )
     .add_systems(
         Update,
-        (movement::process_player_input, movement::apply_velocity)
+        (
+            movement::process_player_input.after(ServerSystems::Receive),
+            movement::apply_velocity,
+        )
             .run_if(in_state(GameServerState::Running)),
     );
 
     // Initialize world
     world_setup::spawn_world(&mut app.world_mut());
 
-    // Start loopback server
+    // Start loopback server BEFORE app.finish() to ensure ServerState is set
     match LoopbackServer::new(port) {
         Ok(server) => {
             app.insert_resource(server);
@@ -271,12 +274,33 @@ fn run_server_app(
 
     // Finish plugin initialization before starting the main loop
     // This ensures all Plugin::finish() methods are called, including
-    // ServerPlugin::finish() which initializes the message channels
+    // ServerPlugin::finish() which initializes the message channels.
+    // The LoopbackServer resource must be inserted before this call so that
+    // the set_running system can properly set ServerState::Running.
     app.finish();
 
-    // Update state to Running
+    // Run one update cycle to trigger state transitions (e.g., ServerState::Running)
+    // This is necessary because the LoopbackServer resource was added, and the
+    // set_running system needs to run to set ServerState::Running before we start
+    // processing messages in the main loop.
+    app.update();
+
+    // Update state to Running - both atomic state and Bevy state
     state.store(GameServerState::Running);
-    info!("Server running");
+    app.world_mut()
+        .resource_mut::<NextState<GameServerState>>()
+        .set(GameServerState::Running);
+
+    // Run one more update to apply the state transition
+    app.update();
+
+    // Debug: Check states after initialization
+    let server_state = app.world().resource::<State<ServerState>>();
+    let game_state = app.world().resource::<State<GameServerState>>();
+    info!(
+        "Server running - ServerState: {:?}, GameServerState: {:?}",
+        **server_state, **game_state
+    );
 
     // Main server loop
     loop {
