@@ -1,8 +1,0 @@
-[submodule "crates/networking"]
-	path = crates/networking
-	url = git@github.com:timjonaswechler/networking.git
-	branch = features
-[submodule "crates/backend/quic"]
-	path = crates/backend/quic
-	url = https://github.com/timjonaswechler/quic.git
-	branch = main

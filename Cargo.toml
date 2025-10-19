@@ -6,9 +6,6 @@ members = [
     "crates/settings",
     "crates/app",
     "crates/auth",
-    "crates/networking",
-    "crates/backend/quic",
-    "crates/backend/loopback",
     "crates/game_server",
     "crates/keymap",
     "third_party/steamworks-sys",
@@ -23,9 +20,6 @@ edition = "2024"
 [workspace.dependencies]
 app.path = "crates/app"
 auth.path = "crates/auth"
-networking.path = "crates/networking"
-quic.path = "crates/backend/quic"
-loopback.path = "crates/backend/loopback"
 fos.path = "crates/forge_of_stories"
 paths.path = "crates/paths"
 settings.path = "crates/settings"
@@ -38,6 +32,8 @@ anyhow = { version = "1.0.80" }
 axum = { version = "0.8.4", features = ["json", "ws"] }
 base64 = "0.22.1"
 bevy = { version = "0.17.2", default-features = false }
+bevy_replicon = { version = "0.36.1", default-features = false }
+bevy_replicon_renet = { version = "0.12.0", default-features = false }
 bincode = { version = "2.0.1", features = ["serde"] }
 bitflags = { version = "2.9.3", features = ["serde"] }
 chrono = "0.4.42"

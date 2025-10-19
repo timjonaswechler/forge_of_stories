@@ -1,7 +1,6 @@
 pub mod normal_vector;
 
 use crate::GameState;
-use crate::SingleplayerRequested;
 use crate::utils::cleanup;
 use bevy::{color::palettes::basic::RED, input_focus::InputFocus, prelude::*};
 use normal_vector::draw_normal_arrows_system;
@@ -11,7 +10,8 @@ pub struct UIMenuPlugin;
 
 impl Plugin for UIMenuPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(GameState::Splashscreen), setup_splashscreen)
+        app.init_resource::<InputFocus>()
+            .add_systems(OnEnter(GameState::Splashscreen), setup_splashscreen)
             .add_systems(OnEnter(GameState::MainMenu), setup_main_menu)
             .add_systems(OnEnter(GameState::InGame), render_in_game_ui)
             .add_systems(
@@ -22,15 +22,16 @@ impl Plugin for UIMenuPlugin {
             .add_systems(
                 Update,
                 (
-                    crate::poll_loopback_connection
-                        .run_if(in_state(GameState::ConnectingSingleplayer)),
                     toggle_in_game_menu.run_if(in_state(GameState::InGame)),
                     spawn_in_game_menu_ui.run_if(in_state(GameState::InGame)),
                     handle_in_game_menu_buttons.run_if(in_state(GameState::InGame)),
                 ),
             )
             .add_systems(OnExit(GameState::InGame), cleanup::<InGameUI>)
-            .add_systems(Update, draw_normal_arrows_system);
+            .add_systems(Update, draw_normal_arrows_system)
+            .add_systems(OnEnter(GameState::Splashscreen), display_game_state)
+            .add_systems(OnEnter(GameState::MainMenu), display_game_state)
+            .add_systems(OnEnter(GameState::InGame), display_game_state);
     }
 }
 
@@ -147,7 +148,6 @@ fn main_menu_buttons(
                 match action {
                     MenuAction::Singleplayer => {
                         info!("Singleplayer game requested");
-                        commands.trigger(SingleplayerRequested);
                     }
                 }
             }
@@ -322,7 +322,7 @@ fn handle_in_game_menu_buttons(
     >,
     mut menu: ResMut<InGameMenuState>,
     mut next_state: ResMut<NextState<GameState>>,
-    server_handle: Option<Res<crate::ServerHandle>>,
+    mut server_handle: Option<ResMut<crate::ServerHandle>>,
 ) {
     for (interaction, action, mut color, mut border_color) in &mut interaction_query {
         match *interaction {
@@ -338,13 +338,10 @@ fn handle_in_game_menu_buttons(
                         info!("Leaving game...");
 
                         // Shutdown server if hosting
-                        if let Some(ref server) = server_handle {
+                        if let Some(ref mut server) = server_handle {
                             server.shutdown();
                             commands.remove_resource::<crate::ServerHandle>();
                         }
-
-                        // Disconnect client
-                        commands.remove_resource::<crate::LoopbackClient>();
 
                         menu.open = false;
                         next_state.set(GameState::MainMenu);
@@ -376,4 +373,8 @@ fn toggle_in_game_menu(keys: Res<ButtonInput<KeyCode>>, mut menu: ResMut<InGameM
     if keys.just_pressed(KeyCode::Escape) {
         menu.open = !menu.open;
     }
+}
+
+fn display_game_state(state: Res<State<GameState>>) {
+    info!("Aktueller Zustand: {:?}", state.get());
 }

@@ -12,8 +12,9 @@ bevy = { version = "0.17.2", default-features = false, features = [
     "serialize",
     "bevy_color"
 ] }
-networking = { workspace = true, features = ["server"] }
-loopback = { path = "../backend/loopback", features = ["server"] }
+bevy_replicon = { workspace = true, features = ["server"] }
+bevy_replicon_renet = { workspace = true, features = ["server","renet_netcode","renet_steam"] }
+
 tracing.workspace = true
 serde = { version = "1.0", features = ["derive"] }
 ron = "0.8"
