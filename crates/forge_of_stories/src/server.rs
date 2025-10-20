@@ -4,7 +4,9 @@
 //! that runs in a separate thread with bevy_replicon.
 
 use bevy::prelude::*;
-use game_server::{Port, ServerHandle};
+use game_server::Port;
+
+pub use game_server::ServerHandle;
 
 const DEFAULT_PORT: Port = Port(7777);
 

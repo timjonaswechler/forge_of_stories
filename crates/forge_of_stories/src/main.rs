@@ -8,8 +8,9 @@ use crate::client::*;
 use crate::fos_app::FOSApp;
 use app::AppBuilder;
 use bevy::{log::LogPlugin, prelude::*};
-use game_server::ServerHandle;
 use ui::UIMenuPlugin;
+
+pub use server::ServerHandle;
 
 /// Game state tracking where we are in the application flow.
 #[derive(States, Debug, Clone, PartialEq, Eq, Hash, Default)]
@@ -40,7 +41,7 @@ fn main() {
             app.init_state::<GameState>();
 
             // Add UiPlugin
-            app.add_plugins(UIMenuPlugin);
+            app.add_plugins((UIMenuPlugin, ClientPlugin));
 
             app
         });

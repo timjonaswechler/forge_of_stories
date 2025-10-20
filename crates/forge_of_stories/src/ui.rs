@@ -1,6 +1,9 @@
 pub mod normal_vector;
 
 use crate::GameState;
+use crate::ServerHandle;
+use crate::client::ClientConnectRequest;
+use crate::server::start_singleplayer_server;
 use crate::utils::cleanup;
 use bevy::{color::palettes::basic::RED, input_focus::InputFocus, prelude::*};
 use normal_vector::draw_normal_arrows_system;
@@ -11,6 +14,7 @@ pub struct UIMenuPlugin;
 impl Plugin for UIMenuPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<InputFocus>()
+            .init_resource::<InGameMenuState>()
             .add_systems(OnEnter(GameState::Splashscreen), setup_splashscreen)
             .add_systems(OnEnter(GameState::MainMenu), setup_main_menu)
             .add_systems(OnEnter(GameState::InGame), render_in_game_ui)
@@ -137,6 +141,8 @@ fn main_menu_buttons(
         ),
         Changed<Interaction>,
     >,
+    mut next_state: ResMut<NextState<GameState>>,
+    existing_server: Option<Res<ServerHandle>>,
 ) {
     for (entity, interaction, action, mut color, mut border_color) in &mut interaction_query {
         match *interaction {
@@ -148,6 +154,14 @@ fn main_menu_buttons(
                 match action {
                     MenuAction::Singleplayer => {
                         info!("Singleplayer game requested");
+                        if existing_server.is_some() {
+                            info!("Server already running, skipping new startup");
+                        } else {
+                            let handle = start_singleplayer_server();
+                            commands.insert_resource(handle);
+                        }
+                        commands.insert_resource(ClientConnectRequest::singleplayer());
+                        next_state.set(GameState::InGame);
                     }
                 }
             }
@@ -284,7 +298,7 @@ fn spawn_in_game_menu_ui(
         });
 }
 
-fn render_in_game_ui(mut commands: Commands, server: Option<Res<crate::ServerHandle>>) {
+fn render_in_game_ui(mut commands: Commands, server: Option<Res<ServerHandle>>) {
     // Spawn in-game UI
     let ui_text = if server.is_some() {
         "Singleplayer\nPress ESC for menu"
@@ -322,7 +336,7 @@ fn handle_in_game_menu_buttons(
     >,
     mut menu: ResMut<InGameMenuState>,
     mut next_state: ResMut<NextState<GameState>>,
-    mut server_handle: Option<ResMut<crate::ServerHandle>>,
+    mut server_handle: Option<ResMut<ServerHandle>>,
 ) {
     for (interaction, action, mut color, mut border_color) in &mut interaction_query {
         match *interaction {
@@ -340,7 +354,7 @@ fn handle_in_game_menu_buttons(
                         // Shutdown server if hosting
                         if let Some(ref mut server) = server_handle {
                             server.shutdown();
-                            commands.remove_resource::<crate::ServerHandle>();
+                            commands.remove_resource::<ServerHandle>();
                         }
 
                         menu.open = false;

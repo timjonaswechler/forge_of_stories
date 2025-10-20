@@ -8,7 +8,7 @@
 //! The server runs in its own thread with a complete Bevy App using bevy_replicon
 //! for automatic server-authoritative replication.
 
-use bevy::prelude::*;
+use bevy::{prelude::*, state::app::StatesPlugin};
 use bevy_replicon::{prelude::*, server::ServerSystems};
 use bevy_replicon_renet::{
     RenetChannelsExt, RepliconRenetPlugins,
@@ -17,6 +17,10 @@ use bevy_replicon_renet::{
 };
 use std::{
     net::{Ipv4Addr, UdpSocket},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     thread,
     thread::JoinHandle,
     time::SystemTime,
@@ -30,6 +34,9 @@ use world::*;
 #[derive(Resource, Debug)]
 pub struct Port(pub u16);
 
+#[derive(Resource, Clone)]
+struct ServerReadyFlag(Arc<AtomicBool>);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, States, Default)]
 pub enum GameplayState {
     #[default]
@@ -40,17 +47,29 @@ pub enum GameplayState {
 #[derive(Resource)]
 pub struct ServerHandle {
     thread_handle: Option<JoinHandle<()>>,
+    ready_flag: Arc<AtomicBool>,
     // Kein eigener State mehr nötig - Replicon managed das
 }
 
 impl ServerHandle {
     pub fn start_embedded(port: Port) -> Self {
+        let ready_flag = Arc::new(AtomicBool::new(false));
+        let server_ready = ready_flag.clone();
+
         let thread_handle = thread::spawn(move || {
+            let thread_ready = ServerReadyFlag(server_ready);
+
             App::new()
-                .add_plugins((MinimalPlugins, RepliconPlugins, RepliconRenetPlugins))
+                .add_plugins((
+                    MinimalPlugins,
+                    StatesPlugin,
+                    RepliconPlugins,
+                    RepliconRenetPlugins,
+                ))
                 .insert_resource(Time::<Fixed>::from_hz(20.0))
                 .insert_resource(port)
                 .init_state::<GameplayState>()
+                .insert_resource(thread_ready)
                 // Beim Server-Start
                 .add_systems(
                     OnEnter(ServerState::Running),
@@ -73,6 +92,7 @@ impl ServerHandle {
         });
         Self {
             thread_handle: Some(thread_handle),
+            ready_flag,
         }
     }
 
@@ -81,9 +101,20 @@ impl ServerHandle {
             handle.join().expect("Failed to join server thread");
         }
     }
+
+    /// Indicates whether the embedded server finished initializing networking
+    /// and is ready to accept client connections.
+    pub fn is_ready(&self) -> bool {
+        self.ready_flag.load(Ordering::Acquire)
+    }
 }
 
-fn setup_networking(mut commands: Commands, channels: Res<RepliconChannels>, port: Res<Port>) {
+fn setup_networking(
+    mut commands: Commands,
+    channels: Res<RepliconChannels>,
+    port: Res<Port>,
+    ready_flag: Res<ServerReadyFlag>,
+) {
     const PROTOCOL_ID: u64 = 0;
 
     let server_channels_config = channels.server_configs();
@@ -117,6 +148,7 @@ fn setup_networking(mut commands: Commands, channels: Res<RepliconChannels>, por
     commands.insert_resource(transport);
 
     info!("Server started on port {}", port.0);
+    ready_flag.0.store(true, Ordering::Release);
 }
 
 fn save_world(mut commands: Commands) -> Result<()> {
