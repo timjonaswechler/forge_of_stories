@@ -1,6 +1,5 @@
 mod client;
 mod fos_app;
-mod server;
 mod ui;
 mod utils;
 
@@ -10,14 +9,13 @@ use app::AppBuilder;
 use bevy::{log::LogPlugin, prelude::*};
 use ui::UIMenuPlugin;
 
-pub use server::ServerHandle;
-
 /// Game state tracking where we are in the application flow.
 #[derive(States, Debug, Clone, PartialEq, Eq, Hash, Default)]
 enum GameState {
     #[default]
     Splashscreen,
     MainMenu,
+    ConnectingToServer,
     InGame,
 }
 
@@ -40,7 +38,8 @@ fn main() {
             // Initialize GameState
             app.init_state::<GameState>();
 
-            // Add UiPlugin
+            // Add plugins: UI and Client logic
+            // Server logic runs in embedded server thread (via ServerHandle)
             app.add_plugins((UIMenuPlugin, ClientPlugin));
 
             app

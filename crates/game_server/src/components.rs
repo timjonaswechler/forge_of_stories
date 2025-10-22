@@ -9,7 +9,8 @@ use serde::{Deserialize, Serialize};
 ///
 /// This component marks an entity as a player and stores their color.
 /// The relationship between ConnectedClient and Player is maintained separately.
-#[derive(Component, Debug, Clone, Serialize, Deserialize)]
+#[derive(Component, Debug, Clone, Serialize, Deserialize, Reflect)]
+#[reflect(Component)]
 pub struct Player {
     /// Player's assigned color.
     pub color: Color,
@@ -18,7 +19,8 @@ pub struct Player {
 /// Position component (server authoritative).
 ///
 /// The server maintains this, clients receive updates via replication.
-#[derive(Component, Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[derive(Component, Debug, Clone, Copy, Default, Serialize, Deserialize, Reflect)]
+#[reflect(Component)]
 pub struct Position {
     pub translation: Vec3,
 }
@@ -26,7 +28,8 @@ pub struct Position {
 /// Movement velocity component.
 ///
 /// Replicated from server to clients for smooth interpolation.
-#[derive(Component, Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[derive(Component, Debug, Clone, Copy, Default, Serialize, Deserialize, Reflect)]
+#[reflect(Component)]
 pub struct Velocity {
     pub linear: Vec3,
 }

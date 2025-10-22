@@ -1,9 +1,6 @@
 pub mod normal_vector;
 
 use crate::GameState;
-use crate::ServerHandle;
-use crate::client::ClientConnectRequest;
-use crate::server::start_singleplayer_server;
 use crate::utils::cleanup;
 use bevy::{color::palettes::basic::RED, input_focus::InputFocus, prelude::*};
 use normal_vector::draw_normal_arrows_system;
@@ -32,9 +29,14 @@ impl Plugin for UIMenuPlugin {
                 ),
             )
             .add_systems(OnExit(GameState::InGame), cleanup::<InGameUI>)
+            .add_systems(
+                Update,
+                wait_for_server_ready.run_if(in_state(GameState::ConnectingToServer)),
+            )
             .add_systems(Update, draw_normal_arrows_system)
             .add_systems(OnEnter(GameState::Splashscreen), display_game_state)
             .add_systems(OnEnter(GameState::MainMenu), display_game_state)
+            .add_systems(OnEnter(GameState::ConnectingToServer), display_game_state)
             .add_systems(OnEnter(GameState::InGame), display_game_state);
     }
 }
@@ -50,9 +52,9 @@ fn setup_splashscreen(mut commands: Commands, mut next_state: ResMut<NextState<G
     // Spawn 3D camera
     commands.spawn((
         Camera3d::default(),
-        Transform::from_xyz(0.0, 5.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Transform::from_xyz(-10.0, 8.0, 14.0).looking_at(Vec3::ZERO, Vec3::Y),
+        // InGameWorld,
     ));
-
     //load Animation of 3D Logo into this scene
 
     next_state.set(GameState::MainMenu);
@@ -142,7 +144,6 @@ fn main_menu_buttons(
         Changed<Interaction>,
     >,
     mut next_state: ResMut<NextState<GameState>>,
-    existing_server: Option<Res<ServerHandle>>,
 ) {
     for (entity, interaction, action, mut color, mut border_color) in &mut interaction_query {
         match *interaction {
@@ -153,15 +154,15 @@ fn main_menu_buttons(
 
                 match action {
                     MenuAction::Singleplayer => {
-                        info!("Singleplayer game requested");
-                        if existing_server.is_some() {
-                            info!("Server already running, skipping new startup");
-                        } else {
-                            let handle = start_singleplayer_server();
-                            commands.insert_resource(handle);
-                        }
-                        commands.insert_resource(ClientConnectRequest::singleplayer());
-                        next_state.set(GameState::InGame);
+                        info!("🎮 Singleplayer game requested - starting embedded server");
+
+                        // Start embedded server
+                        let server =
+                            game_server::ServerHandle::start_embedded(game_server::Port(5000));
+                        commands.insert_resource(server);
+
+                        info!("🎮 Server starting... transitioning to ConnectingToServer state");
+                        next_state.set(GameState::ConnectingToServer);
                     }
                 }
             }
@@ -298,13 +299,9 @@ fn spawn_in_game_menu_ui(
         });
 }
 
-fn render_in_game_ui(mut commands: Commands, server: Option<Res<ServerHandle>>) {
+fn render_in_game_ui(mut commands: Commands) {
     // Spawn in-game UI
-    let ui_text = if server.is_some() {
-        "Singleplayer\nPress ESC for menu"
-    } else {
-        "Connected as client\nPress ESC for menu"
-    };
+    let ui_text = "Singleplayer\nPress ESC for menu";
 
     commands.spawn((
         Text::new(ui_text),
@@ -324,7 +321,6 @@ fn render_in_game_ui(mut commands: Commands, server: Option<Res<ServerHandle>>) 
 }
 
 fn handle_in_game_menu_buttons(
-    mut commands: Commands,
     mut interaction_query: Query<
         (
             &Interaction,
@@ -336,7 +332,6 @@ fn handle_in_game_menu_buttons(
     >,
     mut menu: ResMut<InGameMenuState>,
     mut next_state: ResMut<NextState<GameState>>,
-    mut server_handle: Option<ResMut<ServerHandle>>,
 ) {
     for (interaction, action, mut color, mut border_color) in &mut interaction_query {
         match *interaction {
@@ -350,13 +345,6 @@ fn handle_in_game_menu_buttons(
                     }
                     InGameMenuAction::LeaveGame => {
                         info!("Leaving game...");
-
-                        // Shutdown server if hosting
-                        if let Some(ref mut server) = server_handle {
-                            server.shutdown();
-                            commands.remove_resource::<ServerHandle>();
-                        }
-
                         menu.open = false;
                         next_state.set(GameState::MainMenu);
                     }
@@ -391,4 +379,18 @@ fn toggle_in_game_menu(keys: Res<ButtonInput<KeyCode>>, mut menu: ResMut<InGameM
 
 fn display_game_state(state: Res<State<GameState>>) {
     info!("Aktueller Zustand: {:?}", state.get());
+}
+
+fn wait_for_server_ready(
+    server: Option<Res<game_server::ServerHandle>>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
+    if let Some(server) = server {
+        if server.is_ready() {
+            info!("✅ Server is ready! Transitioning to InGame state");
+            next_state.set(GameState::InGame);
+        }
+    } else {
+        error!("❌ No ServerHandle resource found while waiting for server!");
+    }
 }

@@ -5,13 +5,25 @@
 
 use bevy::color::palettes::css::*;
 use bevy::prelude::*;
+use serde::{Deserialize, Serialize};
 
 // Re-export components from the components module
 pub use crate::components::{Player, Position, Velocity};
 
 /// Marker component for the ground plane entity.
-#[derive(Component, Debug, Clone, Copy)]
+#[derive(Component, Debug, Clone, Copy, Serialize, Deserialize, Reflect)]
+#[reflect(Component)]
 pub struct GroundPlane;
+
+/// Size dimensions for the ground plane.
+/// This is replicated from server to client so the client knows how to render it.
+#[derive(Component, Debug, Clone, Copy, Serialize, Deserialize, Reflect)]
+#[reflect(Component)]
+pub struct GroundPlaneSize {
+    pub width: f32,
+    pub height: f32,
+    pub depth: f32,
+}
 
 /// Resource for assigning player colors.
 ///

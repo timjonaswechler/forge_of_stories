@@ -9,6 +9,7 @@
 //! for automatic server-authoritative replication.
 
 use bevy::{prelude::*, state::app::StatesPlugin};
+use bevy_replicon::shared::backend::ServerState as RepliconServerState;
 use bevy_replicon::{prelude::*, server::ServerSystems};
 use bevy_replicon_renet::{
     RenetChannelsExt, RepliconRenetPlugins,
@@ -28,14 +29,23 @@ use std::{
 
 pub mod components;
 pub mod world;
+pub mod world_setup;
 use components::PlayerOwner;
+use world::GroundPlaneSize;
 use world::*;
+use world_setup::spawn_world;
 
 #[derive(Resource, Debug)]
 pub struct Port(pub u16);
 
 #[derive(Resource, Clone)]
 struct ServerReadyFlag(Arc<AtomicBool>);
+
+#[derive(Resource, Clone)]
+struct PortStorage(Arc<std::sync::Mutex<u16>>);
+
+#[derive(Resource, Default)]
+struct WorldSpawned(bool);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, States, Default)]
 pub enum GameplayState {
@@ -48,7 +58,7 @@ pub enum GameplayState {
 pub struct ServerHandle {
     thread_handle: Option<JoinHandle<()>>,
     ready_flag: Arc<AtomicBool>,
-    // Kein eigener State mehr nötig - Replicon managed das
+    port: Arc<std::sync::Mutex<u16>>,
 }
 
 impl ServerHandle {
@@ -56,8 +66,12 @@ impl ServerHandle {
         let ready_flag = Arc::new(AtomicBool::new(false));
         let server_ready = ready_flag.clone();
 
+        let actual_port = Arc::new(std::sync::Mutex::new(port.0));
+        let thread_port = actual_port.clone();
+
         let thread_handle = thread::spawn(move || {
             let thread_ready = ServerReadyFlag(server_ready);
+            let port_storage = PortStorage(thread_port);
 
             App::new()
                 .add_plugins((
@@ -70,29 +84,35 @@ impl ServerHandle {
                 .insert_resource(port)
                 .init_state::<GameplayState>()
                 .insert_resource(thread_ready)
-                // Beim Server-Start
-                .add_systems(
-                    OnEnter(ServerState::Running),
-                    (setup_networking, initialize_world).chain(),
-                )
+                .insert_resource(port_storage)
+                .init_resource::<WorldSpawned>()
+                .init_resource::<PlayerColorAssigner>()
+                .replicate::<Player>()
+                .replicate::<Position>()
+                .replicate::<Velocity>()
+                .replicate::<GroundPlane>()
+                .replicate::<GroundPlaneSize>()
+                // Server-Networking beim Start einrichten
+                .add_systems(Startup, setup_networking)
                 .add_systems(
                     PreUpdate,
                     handle_client_connections
                         .in_set(ServerSystems::Receive) // Läuft nachdem Replicon Nachrichten empfangen hat
-                        .run_if(in_state(ServerState::Running)),
+                        .run_if(in_state(RepliconServerState::Running)),
                 )
                 .add_systems(
                     FixedUpdate,
                     simulate_physics
-                        .run_if(in_state(ServerState::Running))
+                        .run_if(in_state(RepliconServerState::Running))
                         .run_if(in_state(GameplayState::Unpaused)),
                 )
-                .add_systems(OnExit(ServerState::Running), save_world)
+                .add_systems(OnExit(RepliconServerState::Running), save_world)
                 .run();
         });
         Self {
             thread_handle: Some(thread_handle),
             ready_flag,
+            port: actual_port,
         }
     }
 
@@ -107,6 +127,12 @@ impl ServerHandle {
     pub fn is_ready(&self) -> bool {
         self.ready_flag.load(Ordering::Acquire)
     }
+
+    /// Returns the actual port the server is bound to.
+    /// This may differ from the requested port if it was already in use.
+    pub fn port(&self) -> u16 {
+        *self.port.lock().unwrap()
+    }
 }
 
 fn setup_networking(
@@ -114,24 +140,36 @@ fn setup_networking(
     channels: Res<RepliconChannels>,
     port: Res<Port>,
     ready_flag: Res<ServerReadyFlag>,
+    port_storage: Res<PortStorage>,
 ) {
+    info!("🟢 setup_networking called - starting server initialization");
     const PROTOCOL_ID: u64 = 0;
 
     let server_channels_config = channels.server_configs();
     let client_channels_config = channels.client_configs();
+    info!("🟢 Channel configs created");
 
     let server = RenetServer::new(ConnectionConfig {
         server_channels_config,
         client_channels_config,
         ..Default::default()
     });
+    info!("🟢 RenetServer created");
 
     let current_time = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .expect("Failed to get system time");
 
-    let socket =
-        UdpSocket::bind((Ipv4Addr::LOCALHOST, port.0)).expect("Failed to bind server socket");
+    // Try to find a free port starting from the requested port
+    let (socket, actual_port) = find_free_port(port.0).expect("Failed to find a free port");
+
+    if actual_port != port.0 {
+        info!(
+            "🟡 Port {} was in use, using port {} instead",
+            port.0, actual_port
+        );
+    }
+    info!("🟢 UDP socket bound to 127.0.0.1:{}", actual_port);
 
     let server_config = ServerConfig {
         current_time,
@@ -143,55 +181,110 @@ fn setup_networking(
 
     let transport = NetcodeServerTransport::new(server_config, socket)
         .expect("Failed to create server transport");
+    info!("🟢 NetcodeServerTransport created");
 
     commands.insert_resource(server);
     commands.insert_resource(transport);
+    // Update the port resource with the actual port we bound to
+    commands.insert_resource(Port(actual_port));
 
-    info!("Server started on port {}", port.0);
+    // Store the actual port so the client can read it
+    *port_storage.0.lock().unwrap() = actual_port;
+
+    info!("🟢 RenetServer and Transport inserted as resources");
+
+    info!("✅ Server fully started on port {}", actual_port);
     ready_flag.0.store(true, Ordering::Release);
 }
 
-fn save_world(mut commands: Commands) -> Result<()> {
+/// Tries to bind to a port, and if it fails, tries the next ports until it finds a free one.
+/// Tries up to 10 ports starting from the given port.
+fn find_free_port(start_port: u16) -> Result<(UdpSocket, u16)> {
+    const MAX_ATTEMPTS: u16 = 10;
+
+    for offset in 0..MAX_ATTEMPTS {
+        let port = start_port + offset;
+        match UdpSocket::bind((Ipv4Addr::LOCALHOST, port)) {
+            Ok(socket) => {
+                return Ok((socket, port));
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+                // Port is in use, try next one
+                continue;
+            }
+            Err(e) => {
+                // Other error, propagate it
+                return Err(e.into());
+            }
+        }
+    }
+
+    Err(std::io::Error::new(
+        std::io::ErrorKind::AddrInUse,
+        format!(
+            "Could not find a free port in range {}-{}",
+            start_port,
+            start_port + MAX_ATTEMPTS - 1
+        ),
+    )
+    .into())
+}
+
+fn save_world(mut _commands: Commands) -> Result<()> {
     // Implement saving logic here
     Ok(())
 }
 
-fn simulate_physics(mut commands: Commands) -> Result<()> {
+fn simulate_physics(mut _commands: Commands) -> Result<()> {
     // Implement physics simulation logic here
-    Ok(())
-}
-fn initialize_world(mut commands: Commands) -> Result<()> {
-    // Implement world initialization logic here
     Ok(())
 }
 
 /// System that handles new client connections.
 ///
 /// When a client connects (ConnectedClient entity is spawned by the backend),
-/// this system spawns a player entity for them.
+/// this system spawns a player entity for them and initializes the world on first connection.
 fn handle_client_connections(
     mut commands: Commands,
     new_clients: Query<Entity, Added<ConnectedClient>>,
     mut color_assigner: ResMut<world::PlayerColorAssigner>,
+    mut world_spawned: ResMut<WorldSpawned>,
 ) {
     for client_entity in &new_clients {
+        info!("🔵 SERVER: New client entity detected: {:?}", client_entity);
+
+        // Spawn world on first client connection
+        if !world_spawned.0 {
+            info!("🔵 SERVER: First client connected, initializing game world");
+            spawn_world(&mut commands);
+            world_spawned.0 = true;
+            info!("🔵 SERVER: World spawned successfully");
+        }
+
         let color = color_assigner.next_color();
         let client_id = ClientId::from(client_entity);
 
         info!(
-            "Client {} connected, spawning player with color {:?}",
+            "🔵 SERVER: Client {} connected, spawning player with color {:?}",
             client_id, color
         );
 
         // Spawn player entity with replicated components
-        commands.spawn((
-            Player { color },
-            PlayerOwner { client_entity }, // Link player to client (not replicated)
-            Position {
-                translation: Vec3::new(0.0, 1.0, 0.0),
-            },
-            Velocity::default(),
-            Replicated, // Mark for replication
-        ));
+        let player_entity = commands
+            .spawn((
+                Player { color },
+                PlayerOwner { client_entity }, // Link player to client (not replicated)
+                Position {
+                    translation: Vec3::new(0.0, 1.0, 0.0),
+                },
+                Velocity::default(),
+                Replicated, // Mark for replication
+            ))
+            .id();
+
+        info!(
+            "🔵 SERVER: Player entity {:?} spawned with Replicated marker",
+            player_entity
+        );
     }
 }
