@@ -1,4 +1,5 @@
 use crate::GameState;
+use app::LOG_CLIENT;
 use bevy::math::primitives::{Capsule3d, Cuboid};
 use bevy::pbr::MeshMaterial3d;
 use bevy::prelude::*;
@@ -73,11 +74,6 @@ fn setup_client_networking(
     const PROTOCOL_ID: u64 = 0;
     let server_port = server_handle.port();
 
-    info!(
-        "🟡 CLIENT: Setting up networking to connect to localhost:{}",
-        server_port
-    );
-
     let server_addr: SocketAddr = SocketAddr::new(Ipv4Addr::LOCALHOST.into(), server_port);
 
     let server_channels_config = channels.server_configs();
@@ -109,7 +105,8 @@ fn setup_client_networking(
     commands.insert_resource(transport);
 
     info!(
-        "🟡 CLIENT: Networking setup complete, connecting to {}",
+        target: LOG_CLIENT,
+       "Networking setup complete, connecting to {}",
         server_addr
     );
 }
@@ -120,8 +117,6 @@ fn setup_client_world(
     ambient_light: Option<ResMut<AmbientLight>>,
     mut camera_query: Query<(Entity, &mut Transform), With<Camera3d>>,
 ) {
-    info!("setup Client World");
-
     if let Some(mut ambient_light) = ambient_light {
         ambient_light.brightness = 2000.0;
         ambient_light.color = Color::srgb(1.0, 1.0, 1.0);
@@ -164,14 +159,18 @@ fn debug_replicated_entities(
     new_players: Query<(Entity, &Player, &Position), Added<Player>>,
 ) {
     for (entity, position) in &new_planes {
+        use bevy::log::tracing_subscriber::filter::targets;
+
         info!(
-            "🟡 CLIENT: New GroundPlane {:?} at {:?}",
+            target: LOG_CLIENT,
+            "New GroundPlane {:?} at {:?}",
             entity, position.translation
         );
     }
     for (entity, player, position) in &new_players {
         info!(
-            "🟡 CLIENT: New Player {:?} color {:?} at {:?}",
+            target: LOG_CLIENT,
+            "New Player {:?} color {:?} at {:?}",
             entity, player.color, position.translation
         );
     }
@@ -190,6 +189,7 @@ fn spawn_ground_plane_visuals(
 ) {
     for (entity, position, size) in &planes {
         info!(
+            target: LOG_CLIENT,
             "Spawning visuals for ground plane at {:?} with size {}x{}x{}",
             position.translation, size.width, size.height, size.depth
         );
@@ -223,6 +223,7 @@ fn spawn_player_visuals(
 ) {
     for (entity, player, position) in &players {
         info!(
+            target: LOG_CLIENT,
             "Spawning visuals for player with color {:?} at {:?}",
             player.color, position.translation
         );

@@ -1,10 +1,10 @@
 use paths::PathContext;
-use std::fs::File;
+// use std::fs::File;
 use std::marker::PhantomData;
 #[cfg(debug_assertions)]
 use std::path::PathBuf;
 use tracing_subscriber::{
-    Layer, filter, filter::LevelFilter, filter::filter_fn, fmt, layer::SubscriberExt,
+    Layer, filter::LevelFilter, filter::filter_fn, fmt, layer::SubscriberExt,
     util::SubscriberInitExt,
 };
 
@@ -194,6 +194,11 @@ impl<A: Application> BevyApp<A> {
         &mut self.app
     }
 }
+pub const LOG_MAIN: &str = "main";
+pub const LOG_CLIENT_HOST: &str = "client/host";
+pub const LOG_CLIENT_APP: &str = "client/app";
+pub const LOG_CLIENT: &str = "client";
+pub const LOG_SERVER: &str = "server";
 
 // ============================================================================
 // Legacy compatibility layer

@@ -5,6 +5,7 @@ edition.workspace = true
 description = "Shared server-side game logic for Forge of Stories"
 
 [dependencies]
+app = { workspace = true }
 bevy = { version = "0.17.2", default-features = false, features = [
     "std",
     "multi_threaded",

@@ -8,6 +8,7 @@
 //! The server runs in its own thread with a complete Bevy App using bevy_replicon
 //! for automatic server-authoritative replication.
 
+use app::LOG_SERVER;
 use bevy::{prelude::*, state::app::StatesPlugin};
 use bevy_replicon::shared::backend::ServerState as RepliconServerState;
 use bevy_replicon::{prelude::*, server::ServerSystems};
@@ -142,19 +143,16 @@ fn setup_networking(
     ready_flag: Res<ServerReadyFlag>,
     port_storage: Res<PortStorage>,
 ) {
-    info!("🟢 setup_networking called - starting server initialization");
     const PROTOCOL_ID: u64 = 0;
 
     let server_channels_config = channels.server_configs();
     let client_channels_config = channels.client_configs();
-    info!("🟢 Channel configs created");
 
     let server = RenetServer::new(ConnectionConfig {
         server_channels_config,
         client_channels_config,
         ..Default::default()
     });
-    info!("🟢 RenetServer created");
 
     let current_time = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -164,12 +162,11 @@ fn setup_networking(
     let (socket, actual_port) = find_free_port(port.0).expect("Failed to find a free port");
 
     if actual_port != port.0 {
-        info!(
-            "🟡 Port {} was in use, using port {} instead",
+        warn!(
+            "Port {} was in use, using port {} instead",
             port.0, actual_port
         );
     }
-    info!("🟢 UDP socket bound to 127.0.0.1:{}", actual_port);
 
     let server_config = ServerConfig {
         current_time,
@@ -181,7 +178,6 @@ fn setup_networking(
 
     let transport = NetcodeServerTransport::new(server_config, socket)
         .expect("Failed to create server transport");
-    info!("🟢 NetcodeServerTransport created");
 
     commands.insert_resource(server);
     commands.insert_resource(transport);
@@ -191,9 +187,7 @@ fn setup_networking(
     // Store the actual port so the client can read it
     *port_storage.0.lock().unwrap() = actual_port;
 
-    info!("🟢 RenetServer and Transport inserted as resources");
-
-    info!("✅ Server fully started on port {}", actual_port);
+    info!(target: LOG_SERVER,"Server fully started on 127.0.0.1:{}", actual_port);
     ready_flag.0.store(true, Ordering::Release);
 }
 
@@ -251,26 +245,22 @@ fn handle_client_connections(
     mut world_spawned: ResMut<WorldSpawned>,
 ) {
     for client_entity in &new_clients {
-        info!("🔵 SERVER: New client entity detected: {:?}", client_entity);
+        info!(target: LOG_SERVER,"New client entity detected: {:?}", client_entity);
 
         // Spawn world on first client connection
         if !world_spawned.0 {
-            info!("🔵 SERVER: First client connected, initializing game world");
+            info!(target: LOG_SERVER,"First client connected, initializing game world");
+            info!(target: LOG_SERVER,"Spawning world...");
             spawn_world(&mut commands);
             world_spawned.0 = true;
-            info!("🔵 SERVER: World spawned successfully");
+            info!(target: LOG_SERVER,"World spawned successfully");
         }
 
         let color = color_assigner.next_color();
-        let client_id = ClientId::from(client_entity);
-
-        info!(
-            "🔵 SERVER: Client {} connected, spawning player with color {:?}",
-            client_id, color
-        );
+        let _client_id = ClientId::from(client_entity);
 
         // Spawn player entity with replicated components
-        let player_entity = commands
+        let _player_entity = commands
             .spawn((
                 Player { color },
                 PlayerOwner { client_entity }, // Link player to client (not replicated)
@@ -281,10 +271,5 @@ fn handle_client_connections(
                 Replicated, // Mark for replication
             ))
             .id();
-
-        info!(
-            "🔵 SERVER: Player entity {:?} spawned with Replicated marker",
-            player_entity
-        );
     }
 }

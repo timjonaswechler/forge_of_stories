@@ -1,7 +1,7 @@
 pub mod normal_vector;
-
 use crate::GameState;
 use crate::utils::cleanup;
+use app::{LOG_CLIENT, LOG_CLIENT_HOST, LOG_MAIN};
 use bevy::{color::palettes::basic::RED, input_focus::InputFocus, prelude::*};
 use normal_vector::draw_normal_arrows_system;
 use tracing::info;
@@ -13,7 +13,10 @@ impl Plugin for UIMenuPlugin {
         app.init_resource::<InputFocus>()
             .init_resource::<InGameMenuState>()
             .add_systems(OnEnter(GameState::Splashscreen), setup_splashscreen)
-            .add_systems(OnEnter(GameState::MainMenu), setup_main_menu)
+            .add_systems(
+                OnEnter(GameState::MainMenu),
+                (ensure_ui_camera, setup_main_menu),
+            )
             .add_systems(OnEnter(GameState::InGame), render_in_game_ui)
             .add_systems(
                 Update,
@@ -33,10 +36,10 @@ impl Plugin for UIMenuPlugin {
                 wait_for_server_ready.run_if(in_state(GameState::ConnectingToServer)),
             )
             .add_systems(Update, draw_normal_arrows_system)
-            .add_systems(OnEnter(GameState::Splashscreen), display_game_state)
-            .add_systems(OnEnter(GameState::MainMenu), display_game_state)
-            .add_systems(OnEnter(GameState::ConnectingToServer), display_game_state)
-            .add_systems(OnEnter(GameState::InGame), display_game_state);
+            // .add_systems(OnEnter(GameState::Splashscreen), display_game_state)
+            .add_systems(OnEnter(GameState::MainMenu), display_game_state);
+        // .add_systems(OnEnter(GameState::ConnectingToServer), display_game_state)
+        // .add_systems(OnEnter(GameState::InGame), display_game_state);
     }
 }
 
@@ -128,6 +131,11 @@ fn setup_main_menu(mut commands: Commands) {
                 });
         });
 }
+fn ensure_ui_camera(mut commands: Commands, any_camera: Query<(), With<Camera>>) {
+    if any_camera.is_empty() {
+        commands.spawn(Camera3d::default());
+    }
+}
 
 fn main_menu_buttons(
     mut commands: Commands,
@@ -153,14 +161,12 @@ fn main_menu_buttons(
 
                 match action {
                     MenuAction::Singleplayer => {
-                        info!("🎮 Singleplayer game requested - starting embedded server");
-
                         // Start embedded server
                         let server =
                             game_server::ServerHandle::start_embedded(game_server::Port(5000));
                         commands.insert_resource(server);
 
-                        info!("🎮 Server starting... transitioning to ConnectingToServer state");
+                        info!(target: LOG_CLIENT_HOST, "Server starting... transitioning to ConnectingToServer state");
                         next_state.set(GameState::ConnectingToServer);
                     }
                 }
@@ -339,10 +345,10 @@ fn handle_in_game_menu_buttons(
                 *border_color = BorderColor::all(RED);
 
                 match action {
-                    InGameMenuAction::Resume => menu.set_open(false),
+                    InGameMenuAction::Resume => menu.set_closed(),
                     InGameMenuAction::LeaveGame => {
-                        info!("Leaving game...");
-                        menu.set_open(false);
+                        info!(target: LOG_CLIENT, "Leaving game...");
+                        menu.set_closed();
                         next_state.set(GameState::MainMenu);
                     }
                 }
@@ -368,9 +374,15 @@ impl InGameMenuState {
     pub fn is_open(&self) -> bool {
         self.open
     }
+    pub fn is_closed(&self) -> bool {
+        !self.open
+    }
 
-    pub fn set_open(&mut self, value: bool) {
-        self.open = value;
+    pub fn set_open(&mut self) {
+        self.open = true;
+    }
+    pub fn set_closed(&mut self) {
+        self.open = false;
     }
 
     pub fn toggle(&mut self) {
@@ -378,12 +390,8 @@ impl InGameMenuState {
     }
 }
 
-pub fn menu_closed(menu: Res<InGameMenuState>) -> bool {
-    !menu.open
-}
-
 fn display_game_state(state: Res<State<GameState>>) {
-    info!("Aktueller Zustand: {:?}", state.get());
+    info!(target: LOG_MAIN, "Aktueller Zustand: {:?}", state.get());
 }
 
 fn wait_for_server_ready(
@@ -392,10 +400,10 @@ fn wait_for_server_ready(
 ) {
     if let Some(server) = server {
         if server.is_ready() {
-            info!("✅ Server is ready! Transitioning to InGame state");
+            info!(target: LOG_CLIENT_HOST, "Server is ready! Transitioning to InGame state");
             next_state.set(GameState::InGame);
         }
     } else {
-        error!("❌ No ServerHandle resource found while waiting for server!");
+        error!(target: LOG_CLIENT_HOST, "No ServerHandle resource found while waiting for server!");
     }
 }

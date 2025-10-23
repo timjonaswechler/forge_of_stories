@@ -12,8 +12,6 @@ use crate::world::{GroundPlane, GroundPlaneSize};
 ///
 /// This is called once during server initialization to set up the static world geometry.
 pub fn spawn_world(commands: &mut Commands) {
-    info!("Server: Spawning world...");
-
     // Spawn ground plane at origin with size
     commands.spawn((
         GroundPlane,
@@ -27,8 +25,4 @@ pub fn spawn_world(commands: &mut Commands) {
         },
         Replicated,
     ));
-
-    // Note: Players are spawned when clients connect via the handle_client_connections system
-
-    info!("Server: World spawned successfully");
 }

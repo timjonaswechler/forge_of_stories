@@ -22,9 +22,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("📁 Base Path: {:?}\n", ctx.base_path());
 
     // Create all necessary directories
-    println!("📂 Creating directory structure...");
+
     ctx.ensure_directories()?;
-    println!("   ✓ Directories created\n");
 
     // === Settings Management ===
     println!("⚙️  Settings Management:");
@@ -51,7 +50,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }"#;
 
     fs::write(&settings_path, settings_content)?;
-    println!("   ✓ Settings file created\n");
 
     // === Keybinding Configuration ===
     println!("🎮 Keybinding Configuration:");
@@ -73,7 +71,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }"#;
 
     fs::write(&keybinding_path, keybinding_content)?;
-    println!("   ✓ Keybinding file created\n");
 
     // === Server Configuration ===
     println!("🌐 Server Configuration:");
@@ -96,7 +93,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }"#;
 
     fs::write(&servers_path, servers_content)?;
-    println!("   ✓ Servers file created\n");
 
     // === Version Management ===
     println!("📦 Version Management:");
@@ -118,7 +114,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     fs::write(&version_path, version_content)?;
-    println!("   ✓ Version file created\n");
 
     // === Save Game Management ===
     println!("💾 Save Game Management:");
@@ -143,7 +138,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }"#;
 
     fs::write(&save_data_path, save_data)?;
-    println!("   ✓ Save files created\n");
 
     // === Mod/DLC Management ===
     println!("🎨 Mod/DLC Management:");
@@ -163,7 +157,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }"#;
 
     fs::write(&mod_info_path, mod_info)?;
-    println!("   ✓ Mod structure created\n");
 
     // === Asset Management ===
     println!("🖼️  Asset Management:");
@@ -182,7 +175,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }"#;
 
     fs::write(&asset_manifest_path, asset_manifest)?;
-    println!("   ✓ Asset manifest created\n");
 
     // === Logging ===
     println!("📝 Logging:");
@@ -192,9 +184,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut log_file = fs::File::create(&log_path)?;
     writeln!(log_file, "[INFO] Application started")?;
     writeln!(log_file, "[INFO] Environment: {:?}", ctx.environment())?;
-    writeln!(log_file, "[INFO] Settings loaded from: {:?}", settings_path)?;
-    writeln!(log_file, "[INFO] All systems initialized")?;
-    println!("   ✓ Log file created\n");
 
     // === Summary ===
     println!("📊 Summary:");
@@ -205,7 +194,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!();
 
     // List all created files
-    println!("📄 Created files:");
+
     let created_files = vec![
         ("Settings", settings_path),
         ("Keybindings", keybinding_path),
