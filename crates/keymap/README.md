@@ -1,375 +1,212 @@
 # Keymap
 
-A Zed-inspired keymap system for context-aware key binding dispatch in Rust.
+A Zed-inspired keymap store focused on *data*: parsing, merging, and
+persisting bindings that can be fed into input runtimes such as
+[`bevy_enhanced_input`](https://crates.io/crates/bevy_enhanced_input).
 
 ## Features
 
-- **Context-based binding resolution**: Key bindings can be scoped to specific UI contexts
-- **Multi-keystroke sequences**: Support for chord bindings like `cmd-k cmd-t`
-- **Hierarchical context matching**: Predicates with `&&`, `||`, `!`, `>` operators
-- **Action dispatch system**: Type-safe action handling with custom data
-- **User/Default precedence**: User bindings override default bindings
-- **Platform-aware**: Automatic OS detection in contexts
+- **Context-driven resolution** – bindings can be scoped to rich predicates
+- **Chord support** – parse multi-step sequences such as `cmd-k cmd-t`
+- **Deterministic precedence** – depth → source → order
+- **JSON persistence** – defaults in code, user overrides on disk
+- **Bridging helpers** – convert keymap keystrokes into enhanced-input bindings
 
 ## Core Concepts
 
-### Actions
+### Action identifiers
 
-Actions represent commands that can be triggered by key bindings.
+Bindings reference logical actions via lightweight IDs. Consumers are free to
+map them to whatever runtime types they need.
 
 ```rust
-use keymap::{action, actions, action_with_data};
+use keymap::ActionId;
 
-// Simple action
-action!(SaveFile);
-
-// Multiple actions at once
-actions![
-    OpenFile,
-    CloseFile,
-    SaveAll,
-];
-
-// Action with custom data
-action_with_data!(GoToLine {
-    line: usize
-});
+let save = ActionId::from("file::Save");
+assert_eq!(save.as_str(), "file::Save");
 ```
 
 ### Keystrokes
 
-Parse and match keyboard input.
+Parse user-supplied strings into structured keystrokes.
 
 ```rust
-use keymap::Keystroke;
+use keymap::{Keystroke, parse_keystroke_sequence};
 
-// Single keystroke
-let ks = Keystroke::parse("cmd-s").unwrap();
-
-// Multi-keystroke sequence
-let seq = keymap::parse_keystroke_sequence("cmd-k cmd-t").unwrap();
+let single = Keystroke::parse("cmd-s").unwrap();
+let seq = parse_keystroke_sequence("cmd-k cmd-t").unwrap();
 ```
 
 Supported modifiers:
-- `ctrl` or `control`
-- `alt` or `option`
+
+- `ctrl` / `control`
+- `alt` / `option`
 - `shift`
-- `cmd`, `command`, or `super`
+- `cmd` / `command` / `super`
 
-### Contexts
+### Contexts & predicates
 
-Contexts represent the current state of the UI and are arranged in a stack.
-
-```rust
-use keymap::KeyContext;
-
-let mut context = KeyContext::new_with_defaults(); // Includes OS
-context.add("Editor");
-context.set("mode", "full");
-context.set("language", "rust");
-
-println!("{:?}", context); // Editor mode=full language=rust os=macos
-```
-
-### Context Predicates
-
-Define when bindings should be active using a simple DSL.
+Contexts capture the active UI state. Predicates decide when bindings apply.
 
 ```rust
-use keymap::KeyBindingContextPredicate;
+use keymap::{KeyContext, KeyBindingContextPredicate};
 
-// Simple identifier
-let pred = KeyBindingContextPredicate::parse("Editor").unwrap();
+let mut ctx = KeyContext::default();
+ctx.add("Editor");
+ctx.set("language", "rust");
 
-// Key-value equality
-let pred = KeyBindingContextPredicate::parse("mode == full").unwrap();
-
-// Logical operators
-let pred = KeyBindingContextPredicate::parse(
-    "Editor && mode == full && !readonly"
-).unwrap();
-
-// Hierarchical (child context)
-let pred = KeyBindingContextPredicate::parse(
-    "Workspace > Editor"
-).unwrap();
+let pred = KeyBindingContextPredicate::parse("Editor && language == rust").unwrap();
+assert!(pred.eval(&[ctx]));
 ```
 
-### Default Actions
+### Bindings
 
-The keymap system provides a comprehensive set of default actions organized by category:
-
-```rust
-use keymap::actions::*;
-
-// File operations
-file::Save, file::SaveAs, file::Open, file::Close, file::Quit
-
-// Edit operations
-edit::Undo, edit::Redo, edit::Cut, edit::Copy, edit::Paste
-
-// Navigation
-navigation::NextTab, navigation::PreviousTab, navigation::FocusEditor
-
-// View
-view::ZoomIn, view::ZoomOut, view::ToggleFullscreen
-
-// Search
-search::Find, search::Replace, search::FindInFiles
-
-// Debug
-debug::ToggleInspector, debug::ReloadKeymap
-
-// Game-specific
-game::Pause, game::QuickSave, game::OpenMenu, game::Screenshot
-```
-
-### Default Keybindings
-
-Platform-appropriate default keybindings are available:
-
-```rust
-use keymap::defaults;
-
-// Automatically select platform defaults (macOS/Windows/Linux)
-let builder = KeymapStore::builder();
-let builder = defaults::register_platform_defaults(builder);
-
-// Or explicitly choose:
-let builder = defaults::register_macos_defaults(builder);
-let builder = defaults::register_windows_linux_defaults(builder);
-```
-
-### Key Bindings
-
-Connect keystrokes to actions with optional context predicates.
-
-```rust
-use keymap::{KeyBinding, KeyBindingMetaIndex, Keystroke};
-use std::sync::Arc;
-
-action!(SaveFile);
-
-let keystrokes = vec![Keystroke::parse("cmd-s").unwrap()];
-let action = Box::new(SaveFile);
-let predicate = Some(Arc::new(
-    KeyBindingContextPredicate::parse("Editor").unwrap()
-));
-
-let binding = KeyBinding::new(keystrokes, action, predicate)
-    .with_meta(KeyBindingMetaIndex::USER);
-```
-
-## Precedence Rules
-
-Key bindings are resolved with the following precedence:
-
-1. **Context Depth**: Deeper contexts take precedence (Editor > Workspace)
-2. **Source Priority**: USER > VIM > BASE > DEFAULT
-3. **Order**: Later bindings override earlier ones at the same depth
-
-## Architecture
-
-```
-keymap/
-├── action.rs       # Action trait & macros
-├── binding.rs      # KeyBinding struct
-├── context.rs      # KeyContext & Predicate
-├── keystroke.rs    # Keystroke parsing
-├── keymap.rs       # Keymap matching logic
-├── store.rs        # Persistence & storage
-├── bevy.rs         # Bevy integration (optional)
-└── lib.rs          # Public API
-```
-
-## Example: Complete Workflow
+Each binding couples physical input with meta-information. Use
+`BindingDescriptor` to author defaults or overrides; `None` `action_id`
+disables the sequence.
 
 ```rust
 use keymap::{
-    KeyBinding, KeyContext, Keystroke, 
-    KeyBindingContextPredicate, action
+    ActionId, BindingDescriptor, BindingInputDescriptor, KeyBindingContextPredicate,
+    KeyBindingMetaIndex, parse_keystroke_sequence,
 };
 use std::sync::Arc;
 
-action!(SaveFile);
-action!(OpenFile);
+let predicate = Some(Arc::new(KeyBindingContextPredicate::parse("Editor").unwrap()));
 
-// Create bindings
-let save_binding = KeyBinding::new(
-    vec![Keystroke::parse("cmd-s").unwrap()],
-    Box::new(SaveFile),
-    Some(Arc::new(KeyBindingContextPredicate::parse("Editor").unwrap()))
-);
+let binding = BindingDescriptor {
+    action_id: Some(ActionId::from("file::Save")),
+    context_id: None,
+    predicate: predicate.as_ref().map(|p| p.to_string()),
+    meta: Some(KeyBindingMetaIndex::DEFAULT),
+    modifiers: Vec::new(),
+    conditions: Vec::new(),
+    settings: None,
+    input: Some(BindingInputDescriptor::keyboard(
+        parse_keystroke_sequence("cmd-s").unwrap(),
+    )),
+};
+```
 
-let open_binding = KeyBinding::new(
-    vec![Keystroke::parse("cmd-o").unwrap()],
-    Box::new(OpenFile),
-    None // Global binding
-);
+## Persistence workflow
 
-// Create context stack
-let workspace_ctx = KeyContext::parse("Workspace").unwrap();
-let editor_ctx = KeyContext::parse("Editor mode=full").unwrap();
-let context_stack = vec![workspace_ctx, editor_ctx];
+`KeymapStore` merges built-in defaults with user overrides stored in JSON and
+exposes both the merged descriptor set and a legacy keymap for keyboard lookup.
 
-// Match keystrokes
-let typed = vec![Keystroke::parse("cmd-s").unwrap()];
-if save_binding.match_keystrokes(&typed) == Some(false) {
-    // Check context
-    if let Some(pred) = save_binding.predicate() {
-        if pred.eval(&context_stack) {
-            println!("Execute SaveFile action!");
-        }
+```rust
+use keymap::{
+    ActionId, BindingDescriptor, BindingInputDescriptor, KeyBindingMetaIndex, KeymapStore,
+    parse_keystroke_sequence,
+};
+
+let store = KeymapStore::builder()
+    .with_user_keymap_path("~/.config/my_app/keymap.json")
+    .add_default_binding(BindingDescriptor {
+        action_id: Some(ActionId::from("file::Save")),
+        context_id: None,
+        predicate: None,
+        meta: Some(KeyBindingMetaIndex::DEFAULT),
+        modifiers: Vec::new(),
+        conditions: Vec::new(),
+        settings: None,
+        input: Some(BindingInputDescriptor::keyboard(
+            parse_keystroke_sequence("cmd-s").unwrap(),
+        )),
+    })
+    .build()
+    .unwrap();
+
+// Load user overrides (if the file exists)
+store.load_user_bindings().unwrap();
+
+// Consume merged view
+store.with_keymap(|keymap| {
+    let (bindings, pending) =
+        keymap.bindings_for_input(&[Keystroke::parse("cmd-s").unwrap()], &[]);
+    assert!(!pending);
+    assert!(!bindings.is_empty());
+});
+```
+
+Serialization format mirrors the descriptor layout:
+
+```json
+{
+  "schema_version": "0.1.0",
+  "spec": {
+    "actions": [],
+    "contexts": [],
+    "bindings": [
+    {
+      "action_id": "file::Save",
+      "meta": 3,
+      "input": {
+        "type": "keyboard",
+        "sequence": [
+          { "modifiers": { "ctrl": false, "alt": false, "shift": false, "cmd": true }, "key": "s" }
+        ]
+      }
     }
+  ]
 }
 ```
 
-## Bevy Integration
+## Enhanced input bridge
 
-The keymap system can be integrated with Bevy using the optional `bevy_plugin` feature.
-
-### Setup
-
-Add to your `Cargo.toml`:
-
-```toml
-keymap = { path = "crates/keymap", features = ["bevy_plugin"] }
-```
-
-### Basic Usage
+The `enhanced` module converts descriptors into
+`bevy_enhanced_input` bindings. Keyboard and mouse inputs are supported out of
+the box; gamepad helpers fall back to readable errors when a mapping is
+unknown, making it easy to extend behaviour on demand.
 
 ```rust
-use bevy::prelude::*;
-use keymap::bevy::{KeymapPlugin, ContextStack, ActionEvent};
-use keymap::actions::file;
+use bevy_enhanced_input::binding::Binding;
+use keymap::{enhanced, BindingDescriptor, BindingInputDescriptor, ActionId, parse_keystroke_sequence};
 
-fn main() {
-    App::new()
-        .add_plugins(DefaultPlugins)
-        .add_plugins(KeymapPlugin::default())
-        .add_systems(Update, handle_actions)
-        .run();
-}
+let descriptor = BindingDescriptor {
+    action_id: Some(ActionId::from("file::Open")),
+    context_id: None,
+    predicate: None,
+    meta: None,
+    modifiers: Vec::new(),
+    conditions: Vec::new(),
+    settings: None,
+    input: Some(BindingInputDescriptor::keyboard(
+        parse_keystroke_sequence("ctrl-p").unwrap(),
+    )),
+};
 
-fn handle_actions(mut events: EventReader<ActionEvent>) {
-    for event in events.read() {
-        // Check action type and handle it
-        if event.action.partial_eq(&file::Save) {
-            println!("Saving file...");
-            // Perform save operation
-        } else if event.action.partial_eq(&file::Open) {
-            println!("Opening file...");
-        }
-    }
-}
+let binding_component: Binding = enhanced::binding_descriptor_to_binding(&descriptor)
+    .unwrap()
+    .expect("descriptor maps to a binding");
 ```
 
-### Action Dispatcher
+## Precedence rules
 
-The plugin automatically dispatches actions as Bevy events when key bindings are triggered:
+When evaluating input, bindings are ordered by:
 
-```rust
-// The ActionEvent contains the triggered action
-#[derive(Event, Clone)]
-pub struct ActionEvent {
-    pub action: Arc<dyn Action>,
-}
+1. **Context depth** – predicates matching deeper in the context stack win
+2. **Source priority** – `USER` > `VIM` > `BASE` > `DEFAULT`
+3. **Insertion order** – last added wins inside the same bucket
 
-// Listen for actions in any system
-fn my_system(mut events: EventReader<ActionEvent>) {
-    for event in events.read() {
-        // Handle the action
-        println!("Action: {}", event.action.debug_name());
-    }
-}
+## Module overview
+
 ```
-
-### Default Actions & Keybindings
-
-The plugin automatically registers all default actions and can load platform defaults:
-
-```rust
-use keymap::bevy::KeymapPlugin;
-use keymap::defaults;
-
-fn main() {
-    App::new()
-        .add_plugins(KeymapPlugin::default()) // Includes all default actions
-        .run();
-}
-
-// Actions are automatically available:
-// - file::Save, file::Open, etc.
-// - edit::Cut, edit::Copy, edit::Paste, etc.
-// - All categories from keymap::actions
-```
-
-### Managing Context
-
-```rust
-fn update_context(mut context_stack: ResMut<ContextStack>) {
-    // Update context based on UI state
-    context_stack.clear();
-    let mut ctx = keymap::KeyContext::new_with_defaults();
-    ctx.add("Editor");
-    context_stack.push(ctx);
-}
-```
-
-### KeyCode → Keystroke Interpreter
-
-The Bevy plugin automatically converts Bevy's `KeyCode` events to our `Keystroke` format:
-
-- Letter keys: `KeyA` → `"a"`
-- Modifiers: Automatically detected from `ButtonInput<KeyCode>`
-- Function keys: `F1` → `"f1"`
-- Special keys: `Escape` → `"escape"`, `Space` → `"space"`, etc.
-
-### Context Stack
-
-The `ContextStack` resource manages hierarchical contexts:
-
-```rust
-fn my_system(mut stack: ResMut<ContextStack>) {
-    // Push context when entering UI element
-    let mut ctx = KeyContext::default();
-    ctx.add("MyPanel");
-    stack.push(ctx);
-    
-    // Pop when leaving
-    stack.pop();
-    
-    // Clear all
-    stack.clear();
-}
+keymap/
+├── binding.rs   # ActionId & KeyBinding definitions
+├── context.rs   # Context & predicate parsing
+├── keystroke.rs # Keystroke parsing utilities
+├── keymap.rs    # Matching engine & precedence logic
+├── store.rs     # Persistence (defaults + overrides)
+├── enhanced.rs  # bevy_enhanced_input conversion helpers
+└── lib.rs       # Public API surface
 ```
 
 ## Testing
 
-```bash
-# Test without Bevy
-cargo test -p keymap
+Run the crate suite:
 
-# Test with Bevy integration
-cargo test -p keymap --features bevy_plugin
+```shell
+cargo test -p keymap
 ```
 
-## Completed Features
-
-- [x] Core Keymap infrastructure (Action, Binding, Context, Predicate)
-- [x] Keystroke parsing system
-- [x] Keymap matching logic with precedence rules
-- [x] KeymapStore with persistence
-- [x] JSON serialization/deserialization
-- [x] Default + User merge logic
-- [x] NoAction support for disabling bindings
-- [x] Bevy Plugin integration (optional)
-- [x] KeyCode → Keystroke interpreter
-- [x] Context stack for hierarchical matching
-- [x] Action Dispatcher (Bevy Event System)
-- [x] Default Actions (file, edit, navigation, view, search, debug, game)
-- [x] Default Keybindings (macOS/Windows/Linux)
-
-## License
-
-See workspace license.
+This exercises parsing, persistence, matching, and the enhanced-input bridge.

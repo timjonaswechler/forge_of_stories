@@ -11,9 +11,12 @@ bevy_replicon_renet = { workspace = true ,features = ["client"]}
 settings.workspace = true
 paths.workspace = true
 game_server.workspace = true
+keymap.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 bincode.workspace = true
 bytes.workspace = true
 uuid.workspace = true
+anyhow.workspace = true
+bevy_enhanced_input = "0.19.1"

@@ -1,59 +1,45 @@
 //! Keymap system for context-aware key binding dispatch.
 //!
-//! This crate provides a Zed-inspired keymap system with:
-//! - Context-based key binding resolution
-//! - Multi-keystroke sequences (e.g., "cmd-k cmd-t")
-//! - Hierarchical context matching with predicates
-//! - Action dispatch system
-//! - User/Default binding precedence
+//! The crate focuses on *data* handling — defining, merging, and persisting
+//! key bindings that can later be applied to input runtimes such as
+//! `bevy_enhanced_input`. Default bindings can be provided in code, user
+//! overrides are stored in JSON, and the merged result is exposed through a
+//! deterministic matching engine.
 //!
 //! # Example
 //!
 //! ```ignore
-//! use keymap::{KeyBinding, KeyContext, Keystroke, action};
+//! use keymap::{ActionId, KeyBinding, KeyContext, parse_keystroke_sequence};
 //!
-//! action!(SaveFile);
-//!
-//! // Create a key binding
-//! let keystrokes = vec![Keystroke::parse("cmd-s").unwrap()];
 //! let binding = KeyBinding::new(
-//!     keystrokes,
-//!     Box::new(SaveFile),
+//!     parse_keystroke_sequence("cmd-s").unwrap(),
+//!     Some(ActionId::from("file::Save")),
 //!     None, // no context restriction
 //! );
 //!
-//! // Create a context
 //! let mut context = KeyContext::default();
 //! context.add("Editor");
 //! ```
 
-pub mod action;
 pub mod binding;
 pub mod context;
 pub mod keymap;
 pub mod keystroke;
 pub mod store;
 
-// Default actions
-pub mod actions;
-
-// Default keybindings
-pub mod defaults;
-
-// Bevy integration (optional)
-#[cfg(feature = "bevy_plugin")]
-pub mod bevy;
+pub mod enhanced;
+pub mod spec;
 
 // Re-export main types
-pub use action::{Action, NoAction, is_no_action};
-pub use binding::{KeyBinding, KeyBindingMetaIndex};
+pub use binding::{ActionId, ContextId, KeyBinding, KeyBindingMetaIndex};
 pub use context::{ContextEntry, KeyBindingContextPredicate, KeyContext};
 pub use keymap::{Keymap, KeymapVersion};
 pub use keystroke::{Keystroke, Modifiers, parse_keystroke_sequence};
-pub use store::{KeymapFile, KeymapSection, KeymapStore, KeymapStoreBuilder};
-
-// Re-export macros
-pub use action as action_macro;
+pub use store::{KeymapFile, KeymapStore, KeymapStoreBuilder};
+pub use spec::{
+    ActionDescriptor, BindingDescriptor, BindingInputDescriptor, ContextDescriptor, KeymapSpec,
+    RegisteredComponent,
+};
 
 /// Library version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -62,8 +48,6 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 mod tests {
     use super::*;
 
-    action!(TestAction);
-
     #[test]
     fn test_basic_workflow() {
         // Create a keystroke
@@ -71,13 +55,10 @@ mod tests {
         assert_eq!(keystroke.key, "s");
         assert!(keystroke.modifiers.cmd);
 
-        // Create an action
-        let action = Box::new(TestAction);
-        assert_eq!(action.name(), "TestAction");
-
         // Create a binding
-        let binding = KeyBinding::new(vec![keystroke], action, None);
+        let binding = KeyBinding::new(vec![keystroke], Some(ActionId::from("Save")), None);
         assert_eq!(binding.keystrokes.len(), 1);
+        assert_eq!(binding.action_id().unwrap().as_str(), "Save");
 
         // Create a context
         let mut context = KeyContext::default();

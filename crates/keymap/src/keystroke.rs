@@ -4,10 +4,11 @@
 //! and multi-key sequences like "cmd-k cmd-t".
 
 use anyhow::{Result, bail};
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Modifier keys that can be combined with regular keys.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Modifiers {
     pub ctrl: bool,
     pub alt: bool,
@@ -65,7 +66,7 @@ impl fmt::Display for Modifiers {
 }
 
 /// A single keystroke (key + modifiers).
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Keystroke {
     pub modifiers: Modifiers,
     pub key: String,

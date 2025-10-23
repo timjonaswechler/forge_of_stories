@@ -3,7 +3,6 @@
 //! This module implements the core matching logic for key bindings,
 //! including precedence rules, context evaluation, and multi-keystroke sequences.
 
-use crate::action::{Action, is_no_action};
 use crate::binding::{KeyBinding, KeyBindingMetaIndex};
 use crate::context::KeyContext;
 use crate::keystroke::Keystroke;
@@ -68,6 +67,9 @@ impl Keymap {
                 if pending {
                     return None; // Don't include partial matches
                 }
+                if binding.is_disabled() {
+                    return None;
+                }
                 Some(binding.clone())
             })
             .collect()
@@ -91,7 +93,7 @@ impl Keymap {
     ) -> (SmallVec<[KeyBinding; 1]>, bool) {
         let mut matched_bindings = SmallVec::<[(usize, usize, &KeyBinding); 1]>::new();
         let mut pending_bindings = SmallVec::<[(usize, &KeyBinding); 1]>::new();
-        let mut no_action_indices = Vec::new();
+        let mut disabled_bindings = Vec::new();
 
         // First pass: collect all matches and track NoAction bindings
         for (ix, binding) in self.bindings().enumerate().rev() {
@@ -103,8 +105,8 @@ impl Keymap {
                 continue;
             };
 
-            if is_no_action(binding.action()) {
-                no_action_indices.push((ix, depth, binding));
+            if binding.is_disabled() {
+                disabled_bindings.push((ix, depth, binding));
                 continue;
             }
 
@@ -117,25 +119,25 @@ impl Keymap {
 
         // Filter out bindings that are disabled by NoAction
         matched_bindings.retain(|(depth, _ix, binding)| {
-            for (_no_action_ix, no_action_depth, no_action_binding) in &no_action_indices {
+            for (_disable_ix, disable_depth, disable_binding) in &disabled_bindings {
                 // NoAction must match the same keystrokes
-                if no_action_binding.keystrokes() != binding.keystrokes() {
+                if disable_binding.keystrokes() != binding.keystrokes() {
                     continue;
                 }
 
                 // Check if NoAction applies to this binding
-                let no_action_applies = match (binding.predicate(), no_action_binding.predicate()) {
+                let is_disabled = match (binding.predicate(), disable_binding.predicate()) {
                     (_, None) => true,        // Global NoAction disables everything
                     (None, Some(_)) => false, // Specific NoAction doesn't disable global bindings
                     (Some(pred), Some(no_pred)) => {
                         // NoAction's predicate must be more specific (superset check reversed)
                         // The binding's predicate should be a superset of NoAction's
                         // meaning NoAction is more specific and should disable the binding
-                        no_action_depth >= depth && pred.is_superset(no_pred)
+                        disable_depth >= depth && pred.is_superset(no_pred)
                     }
                 };
 
-                if no_action_applies {
+                if is_disabled {
                     return false; // This binding is disabled
                 }
             }
@@ -176,12 +178,16 @@ impl Keymap {
         }
     }
 
-    /// Get all bindings for a specific action.
-    pub fn bindings_for_action(&self, action: &dyn Action) -> Vec<&KeyBinding> {
+    /// Get all bindings for a specific action identifier.
+    pub fn bindings_for_action(&self, action_id: impl AsRef<str>) -> Vec<&KeyBinding> {
+        let action_id = action_id.as_ref();
         self.bindings
             .iter()
             .filter(|binding| {
-                binding.action().partial_eq(action) && !is_no_action(binding.action())
+                binding
+                    .action_id()
+                    .map(|id| id.as_str() == action_id)
+                    .unwrap_or(false)
             })
             .collect()
     }
@@ -190,12 +196,23 @@ impl Keymap {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::action::NoAction;
-    use crate::actions;
+    use crate::binding::ActionId;
     use crate::context::KeyBindingContextPredicate;
+    use crate::keystroke::{Keystroke, parse_keystroke_sequence};
     use std::sync::Arc;
 
-    actions![ActionAlpha, ActionBeta];
+    fn binding(
+        sequence: &str,
+        action: Option<&str>,
+        predicate: Option<&str>,
+    ) -> KeyBinding {
+        let keystrokes = parse_keystroke_sequence(sequence).unwrap();
+        let predicate = predicate.map(|expr| {
+            Arc::new(KeyBindingContextPredicate::parse(expr).unwrap())
+        });
+        let action_id = action.map(ActionId::from);
+        KeyBinding::new(keystrokes, action_id, predicate)
+    }
 
     #[test]
     fn test_keymap_creation() {
@@ -207,11 +224,7 @@ mod tests {
     #[test]
     fn test_add_bindings() {
         let mut keymap = Keymap::new();
-        let binding = KeyBinding::new(
-            vec![Keystroke::parse("cmd-s").unwrap()],
-            Box::new(ActionAlpha),
-            None,
-        );
+        let binding = binding("cmd-s", Some("ActionAlpha"), None);
 
         keymap.add_bindings(vec![binding]);
         assert_eq!(keymap.bindings().count(), 1);
@@ -220,19 +233,9 @@ mod tests {
 
     #[test]
     fn test_binding_enabled() {
-        let binding_global = KeyBinding::new(
-            vec![Keystroke::parse("cmd-s").unwrap()],
-            Box::new(ActionAlpha),
-            None,
-        );
+        let binding_global = binding("cmd-s", Some("ActionAlpha"), None);
 
-        let binding_editor = KeyBinding::new(
-            vec![Keystroke::parse("cmd-s").unwrap()],
-            Box::new(ActionBeta),
-            Some(Arc::new(
-                KeyBindingContextPredicate::parse("Editor").unwrap(),
-            )),
-        );
+        let binding_editor = binding("cmd-s", Some("ActionBeta"), Some("Editor"));
 
         let keymap = Keymap::new();
         let empty_ctx: Vec<KeyContext> = vec![];
@@ -256,20 +259,8 @@ mod tests {
     #[test]
     fn test_depth_precedence() {
         let bindings = vec![
-            KeyBinding::new(
-                vec![Keystroke::parse("cmd-s").unwrap()],
-                Box::new(ActionAlpha),
-                Some(Arc::new(
-                    KeyBindingContextPredicate::parse("Workspace").unwrap(),
-                )),
-            ),
-            KeyBinding::new(
-                vec![Keystroke::parse("cmd-s").unwrap()],
-                Box::new(ActionBeta),
-                Some(Arc::new(
-                    KeyBindingContextPredicate::parse("Editor").unwrap(),
-                )),
-            ),
+            binding("cmd-s", Some("ActionAlpha"), Some("Workspace")),
+            binding("cmd-s", Some("ActionBeta"), Some("Editor")),
         ];
 
         let keymap = Keymap::with_bindings(bindings);
@@ -284,27 +275,15 @@ mod tests {
         assert!(!pending);
         assert_eq!(result.len(), 2);
         // Editor binding should come first (deeper context)
-        assert!(result[0].action().partial_eq(&ActionBeta));
-        assert!(result[1].action().partial_eq(&ActionAlpha));
+        assert_eq!(result[0].action_id().unwrap().as_str(), "ActionBeta");
+        assert_eq!(result[1].action_id().unwrap().as_str(), "ActionAlpha");
     }
 
     #[test]
     fn test_no_action_disables_binding() {
         let bindings = vec![
-            KeyBinding::new(
-                vec![Keystroke::parse("cmd-s").unwrap()],
-                Box::new(ActionAlpha),
-                Some(Arc::new(
-                    KeyBindingContextPredicate::parse("Editor").unwrap(),
-                )),
-            ),
-            KeyBinding::new(
-                vec![Keystroke::parse("cmd-s").unwrap()],
-                Box::new(NoAction),
-                Some(Arc::new(
-                    KeyBindingContextPredicate::parse("Editor && mode == full").unwrap(),
-                )),
-            ),
+            binding("cmd-s", Some("ActionAlpha"), Some("Editor")),
+            binding("cmd-s", None, Some("Editor && mode == full")),
         ];
 
         let mut keymap = Keymap::new();
@@ -315,7 +294,7 @@ mod tests {
         let (result, _) =
             keymap.bindings_for_input(&[Keystroke::parse("cmd-s").unwrap()], &normal_ctx);
         assert_eq!(result.len(), 1);
-        assert!(result[0].action().partial_eq(&ActionAlpha));
+        assert_eq!(result[0].action_id().unwrap().as_str(), "ActionAlpha");
 
         // In full mode editor, binding is disabled
         let mut full_ctx = KeyContext::parse("Editor").unwrap();
@@ -327,14 +306,7 @@ mod tests {
 
     #[test]
     fn test_multi_keystroke_pending() {
-        let bindings = vec![KeyBinding::new(
-            vec![
-                Keystroke::parse("cmd-k").unwrap(),
-                Keystroke::parse("cmd-t").unwrap(),
-            ],
-            Box::new(ActionAlpha),
-            None,
-        )];
+        let bindings = vec![binding("cmd-k cmd-t", Some("ActionAlpha"), None)];
 
         let keymap = Keymap::with_bindings(bindings);
         let empty_ctx: Vec<KeyContext> = vec![];
@@ -355,23 +327,15 @@ mod tests {
         );
         assert!(!pending);
         assert_eq!(result.len(), 1);
-        assert!(result[0].action().partial_eq(&ActionAlpha));
+        assert_eq!(result[0].action_id().unwrap().as_str(), "ActionAlpha");
     }
 
     #[test]
     fn test_source_precedence() {
-        let mut binding_default = KeyBinding::new(
-            vec![Keystroke::parse("cmd-s").unwrap()],
-            Box::new(ActionAlpha),
-            None,
-        );
+        let mut binding_default = binding("cmd-s", Some("ActionAlpha"), None);
         binding_default.set_meta(KeyBindingMetaIndex::DEFAULT);
 
-        let mut binding_user = KeyBinding::new(
-            vec![Keystroke::parse("cmd-s").unwrap()],
-            Box::new(ActionBeta),
-            None,
-        );
+        let mut binding_user = binding("cmd-s", Some("ActionBeta"), None);
         binding_user.set_meta(KeyBindingMetaIndex::USER);
 
         let keymap = Keymap::with_bindings(vec![binding_default, binding_user]);
@@ -382,32 +346,20 @@ mod tests {
 
         assert_eq!(result.len(), 2);
         // User binding should come first
-        assert!(result[0].action().partial_eq(&ActionBeta));
-        assert!(result[1].action().partial_eq(&ActionAlpha));
+        assert_eq!(result[0].action_id().unwrap().as_str(), "ActionBeta");
+        assert_eq!(result[1].action_id().unwrap().as_str(), "ActionAlpha");
     }
 
     #[test]
     fn test_bindings_for_action() {
         let bindings = vec![
-            KeyBinding::new(
-                vec![Keystroke::parse("cmd-s").unwrap()],
-                Box::new(ActionAlpha),
-                None,
-            ),
-            KeyBinding::new(
-                vec![Keystroke::parse("ctrl-s").unwrap()],
-                Box::new(ActionAlpha),
-                None,
-            ),
-            KeyBinding::new(
-                vec![Keystroke::parse("cmd-o").unwrap()],
-                Box::new(ActionBeta),
-                None,
-            ),
+            binding("cmd-s", Some("ActionAlpha"), None),
+            binding("ctrl-s", Some("ActionAlpha"), None),
+            binding("cmd-o", Some("ActionBeta"), None),
         ];
 
         let keymap = Keymap::with_bindings(bindings);
-        let alpha_bindings = keymap.bindings_for_action(&ActionAlpha);
+        let alpha_bindings = keymap.bindings_for_action("ActionAlpha");
 
         assert_eq!(alpha_bindings.len(), 2);
     }

@@ -25,6 +25,7 @@ paths.path = "crates/paths"
 settings.path = "crates/settings"
 game_server.path = "crates/game_server"
 steamworks-sys.path = "third_party/steamworks-sys"
+keymap.path = "crates/keymap"
 
 #
 

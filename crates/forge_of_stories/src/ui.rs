@@ -23,7 +23,6 @@ impl Plugin for UIMenuPlugin {
             .add_systems(
                 Update,
                 (
-                    toggle_in_game_menu.run_if(in_state(GameState::InGame)),
                     spawn_in_game_menu_ui.run_if(in_state(GameState::InGame)),
                     handle_in_game_menu_buttons.run_if(in_state(GameState::InGame)),
                 ),
@@ -340,12 +339,10 @@ fn handle_in_game_menu_buttons(
                 *border_color = BorderColor::all(RED);
 
                 match action {
-                    InGameMenuAction::Resume => {
-                        menu.open = false;
-                    }
+                    InGameMenuAction::Resume => menu.set_open(false),
                     InGameMenuAction::LeaveGame => {
                         info!("Leaving game...");
-                        menu.open = false;
+                        menu.set_open(false);
                         next_state.set(GameState::MainMenu);
                     }
                 }
@@ -367,14 +364,22 @@ pub struct InGameMenuState {
     open: bool,
 }
 
-pub fn menu_closed(menu: Res<InGameMenuState>) -> bool {
-    !menu.open
+impl InGameMenuState {
+    pub fn is_open(&self) -> bool {
+        self.open
+    }
+
+    pub fn set_open(&mut self, value: bool) {
+        self.open = value;
+    }
+
+    pub fn toggle(&mut self) {
+        self.open = !self.open;
+    }
 }
 
-fn toggle_in_game_menu(keys: Res<ButtonInput<KeyCode>>, mut menu: ResMut<InGameMenuState>) {
-    if keys.just_pressed(KeyCode::Escape) {
-        menu.open = !menu.open;
-    }
+pub fn menu_closed(menu: Res<InGameMenuState>) -> bool {
+    !menu.open
 }
 
 fn display_game_state(state: Res<State<GameState>>) {

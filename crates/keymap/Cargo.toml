@@ -10,25 +10,20 @@ serde_json = { workspace = true }
 
 # Error handling
 anyhow = { workspace = true }
-thiserror = { workspace = true }
 
 # Utilities
 smallvec = { workspace = true }
+indexmap = "2.2"
 
 # Internal dependencies
 paths = { path = "../paths" }
 settings = { path = "../settings" }
 
-# Optional Bevy integration
-[dependencies.bevy]
-version = "0.17.2"
-optional = true
-default-features = false
-features = ["bevy_winit"]
+bevy = { version = "0.17.2", default-features = false, features = ["bevy_winit"] }
+bevy_enhanced_input = "0.19.1"
 
 [features]
 default = []
-bevy_plugin = ["bevy"]
 
 [dev-dependencies]
 tempfile = "3.0"

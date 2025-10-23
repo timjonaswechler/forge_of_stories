@@ -1,4 +1,5 @@
 mod client;
+mod input;
 mod fos_app;
 mod ui;
 mod utils;
@@ -7,6 +8,7 @@ use crate::client::*;
 use crate::fos_app::FOSApp;
 use app::AppBuilder;
 use bevy::{log::LogPlugin, prelude::*};
+use input::{create_keymap_store, InputPlugin as KeymapInputPlugin, StoreResource as KeymapStoreResource};
 use ui::UIMenuPlugin;
 
 /// Game state tracking where we are in the application flow.
@@ -22,7 +24,10 @@ enum GameState {
 fn main() {
     let mut app = AppBuilder::<FOSApp>::new(env!("CARGO_PKG_VERSION"))
         .expect("Failed to initialize application")
-        .build_with_bevy(|mut app, _ctx| {
+        .build_with_bevy(|mut app, ctx| {
+            let keymap_store =
+                create_keymap_store(ctx.path_context()).expect("failed to create keymap store");
+
             app.add_plugins(
                 DefaultPlugins
                     .build()
@@ -38,9 +43,11 @@ fn main() {
             // Initialize GameState
             app.init_state::<GameState>();
 
+            app.insert_resource(KeymapStoreResource::new(keymap_store));
+
             // Add plugins: UI and Client logic
             // Server logic runs in embedded server thread (via ServerHandle)
-            app.add_plugins((UIMenuPlugin, ClientPlugin));
+            app.add_plugins((UIMenuPlugin, ClientPlugin, KeymapInputPlugin));
 
             app
         });
