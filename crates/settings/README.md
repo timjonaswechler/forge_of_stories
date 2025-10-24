@@ -7,7 +7,6 @@ Forge of Stories keeps its runtime settings in one JSON delta file per product. 
 - Delta persistence (`defaults` overlaid with stored differences only)
 - Schema version tracking and migration hooks per section
 - Safe concurrent reads/updates (`RwLock` protected store, `Arc` snapshots)
-- Optional logging integration that reuses the workspace tracing subscriber
 
 ## Quick start
 ```rust
@@ -79,21 +78,6 @@ impl Settings for Network {
     }
 }
 ```
-
-## Logging integration
-The store uses the workspace tracing subscriber when present. You can install a custom hook either during builder setup or at runtime:
-
-```rust
-let store = SettingsStore::builder("0.2.0")
-    .with_settings_file(paths::config_dir().join("settings.json"))
-    .with_logger(|msg| tracing::info!(target: "settings", "{msg}"))
-    .build()?;
-
-// Later, swap logger if needed
-store.set_logger(|msg| println!("[settings] {msg}"));
-```
-
-If no logger is provided and tracing is not initialised, messages fall back to `eprintln!` for visibility in tests and CLIs.
 
 ## Keeping the delta file tidy
 - `store.prune_stale()` removes keys that no longer appear in the defaults of registered sections.

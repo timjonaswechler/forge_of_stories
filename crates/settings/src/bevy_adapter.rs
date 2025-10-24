@@ -90,7 +90,6 @@ impl AppSettingsExt for App {
 /// Bevy system: reload settings file (if changed externally) and re-run
 /// all registered section updaters. Call this in a schedule (e.g. Update)
 /// when you want polling-based hot reload without the file watcher feature.
-/// Errors are logged via the store logger (or eprintln! fallback).
 pub fn settings_reload_system(world: &mut World) {
     // Clone Arc so we can release world borrow while reloading.
     let store_arc = world.resource::<SettingsStoreRef>().0.clone();
