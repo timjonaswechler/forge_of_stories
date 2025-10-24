@@ -10,7 +10,7 @@ use bevy_replicon_renet::{
     renet::{ConnectionConfig, RenetClient},
 };
 use game_server::{
-    components::{Player, Position},
+    components::{Player, Position, Velocity},
     world::{GroundPlane, GroundPlaneSize},
 };
 use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
@@ -24,7 +24,7 @@ impl Plugin for ClientPlugin {
             // Register replicated components (must match server!)
             .replicate::<Player>()
             .replicate::<Position>()
-            .replicate::<game_server::components::Velocity>()
+            .replicate::<Velocity>()
             .replicate::<GroundPlane>()
             .replicate::<GroundPlaneSize>()
             // Connect to embedded server when entering InGame
@@ -118,14 +118,14 @@ fn setup_client_world(
     mut camera_query: Query<(Entity, &mut Transform), With<Camera3d>>,
 ) {
     if let Some(mut ambient_light) = ambient_light {
-        ambient_light.brightness = 2000.0;
+        ambient_light.brightness = 35_000.0;
         ambient_light.color = Color::srgb(1.0, 1.0, 1.0);
     }
 
     commands.spawn((
         DirectionalLight {
             shadows_enabled: true,
-            illuminance: 35_000.0,
+            illuminance: 3_000.0,
             ..default()
         },
         Transform::from_xyz(-12.0, 18.0, 12.0).looking_at(Vec3::ZERO, Vec3::Y),
@@ -159,8 +159,6 @@ fn debug_replicated_entities(
     new_players: Query<(Entity, &Player, &Position), Added<Player>>,
 ) {
     for (entity, position) in &new_planes {
-        use bevy::log::tracing_subscriber::filter::targets;
-
         info!(
             target: LOG_CLIENT,
             "New GroundPlane {:?} at {:?}",

@@ -13,7 +13,6 @@ bevy = ["dep:bevy"]
 [dependencies]
 
 chrono.workspace = true
-settings.workspace = true
 paths.workspace = true
 tracing.workspace = true
 tracing-appender.workspace = true
