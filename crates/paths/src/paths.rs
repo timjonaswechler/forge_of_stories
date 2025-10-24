@@ -24,7 +24,7 @@ pub struct PathContext {
     /// Project identifier (e.g., "my_game")
     project_id: String,
     /// Application identifier (e.g., "forge_of_stories")
-    app_id: String,
+    app_id: &'static str,
 }
 
 impl PathContext {
@@ -32,7 +32,7 @@ impl PathContext {
     pub fn new(
         studio: impl Into<String>,
         project_id: impl Into<String>,
-        app_id: impl Into<String>,
+        app_id: &'static str,
     ) -> Self {
         let environment = Self::detect_environment();
         let base_path = Self::determine_base_path(environment);
@@ -42,7 +42,7 @@ impl PathContext {
             base_path: base_path.into(),
             studio: studio.into(),
             project_id: project_id.into(),
-            app_id: app_id.into(),
+            app_id: app_id,
         }
     }
 
@@ -51,7 +51,7 @@ impl PathContext {
         base_path: PathBuf,
         studio: impl Into<String>,
         project_id: impl Into<String>,
-        app_id: impl Into<String>,
+        app_id: &'static str,
     ) -> Self {
         let environment = Self::detect_environment();
 
@@ -60,7 +60,7 @@ impl PathContext {
             base_path: base_path.into(),
             studio: studio.into(),
             project_id: project_id.into(),
-            app_id: app_id.into(),
+            app_id: app_id,
         }
     }
 
@@ -148,7 +148,7 @@ impl PathContext {
     }
 
     /// Returns the settings file path: `<studio>/<project_id>/<app_id>.settings.json`
-    pub fn settings_file(&self, app_id: Option<String>) -> PathBuf {
+    pub fn settings_file(&self, app_id: Option<&str>) -> PathBuf {
         self.project_root().join(format!(
             "{}.settings.json",
             app_id.unwrap_or(self.app_id.clone())
