@@ -29,6 +29,7 @@ use std::{
 };
 
 pub mod components;
+pub mod settings;
 pub mod world;
 pub mod world_setup;
 use components::PlayerOwner;

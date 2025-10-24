@@ -24,6 +24,7 @@ bincode.workspace = true
 tokio = { version = "1", features = ["sync"] }
 bytes = "1.5"
 uuid = { workspace = true, features = ["serde"] }
+settings = { workspace = true }
 crossbeam = "0.8.4"
 
 [dev-dependencies]

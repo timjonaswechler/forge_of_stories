@@ -28,6 +28,15 @@ fn main() {
             let keymap_store =
                 create_keymap_store(ctx.path_context()).expect("failed to create keymap store");
 
+            let settings_store = SettingsStore::builder("0.2.0")
+                .with_settings_file(ctx.path_context().settings_file(Some(ctx.app_id())))
+                .build()
+                .expect("failed to build settings store");
+
+            app = app
+                .insert_settings_store(settings_store)
+                .register_settings_section::<Network>();
+
             app.add_plugins(
                 DefaultPlugins
                     .build()
