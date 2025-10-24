@@ -149,10 +149,8 @@ impl PathContext {
 
     /// Returns the settings file path: `<studio>/<project_id>/<app_id>.settings.json`
     pub fn settings_file(&self, app_id: Option<&str>) -> PathBuf {
-        self.project_root().join(format!(
-            "{}.settings.json",
-            app_id.unwrap_or(self.app_id.clone())
-        ))
+        self.project_root()
+            .join(format!("{}.settings.json", app_id.unwrap_or(self.app_id)))
     }
 
     /// Returns the keybinding file path: `<studio>/<project_id>/keybinding.json`
