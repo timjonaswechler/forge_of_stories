@@ -1,3 +1,4 @@
+mod defaults;
 mod first_person;
 mod main_menu;
 mod pan_orbit;
@@ -10,6 +11,7 @@ use bevy::{
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 
+pub use defaults::CameraDefaults;
 pub use first_person::FirstPersonCameraPlugin;
 pub use main_menu::MainMenuCameraPlugin;
 pub use pan_orbit::PanOrbitCameraPlugin;
@@ -70,6 +72,7 @@ impl Plugin for CameraPlugin {
         .add_message::<ToggleCameraEvent>()
         .init_resource::<CameraTransitionState>()
         .init_resource::<ActiveInGameCamera>()
+        .init_resource::<CameraDefaults>() // Defaults registrieren
         .add_systems(
             Update,
             toggle_active_camera.run_if(in_state(GameState::InGame)),
