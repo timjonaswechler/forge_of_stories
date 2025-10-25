@@ -16,6 +16,17 @@ pub struct Player {
     pub color: Color,
 }
 
+/// Identifies which client owns a replicated player entity.
+///
+/// The contained `client_id` is the unique identifier negotiated during the
+/// netcode handshake so that clients can recognise their own replicated entity.
+#[derive(Component, Debug, Clone, Copy, Serialize, Deserialize, Reflect)]
+#[reflect(Component)]
+pub struct PlayerIdentity {
+    /// Globally unique identifier of the owning client (Renet client id).
+    pub client_id: u64,
+}
+
 /// Position component (server authoritative).
 ///
 /// The server maintains this, clients receive updates via replication.

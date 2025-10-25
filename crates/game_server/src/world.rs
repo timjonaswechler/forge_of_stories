@@ -8,7 +8,7 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 // Re-export components from the components module
-pub use crate::components::{Player, Position, Velocity};
+pub use crate::components::{Player, PlayerIdentity, Position, Velocity};
 
 /// Marker component for the ground plane entity.
 #[derive(Component, Debug, Clone, Copy, Serialize, Deserialize, Reflect)]

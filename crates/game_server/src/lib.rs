@@ -11,7 +11,11 @@
 use app::LOG_SERVER;
 use bevy::{prelude::*, state::app::StatesPlugin};
 use bevy_replicon::shared::backend::ServerState as RepliconServerState;
-use bevy_replicon::{prelude::*, server::ServerSystems};
+use bevy_replicon::{
+    prelude::*,
+    server::ServerSystems,
+    shared::backend::connected_client::NetworkId,
+};
 use bevy_replicon_renet::{
     RenetChannelsExt, RepliconRenetPlugins,
     netcode::{NetcodeServerTransport, ServerAuthentication, ServerConfig},
@@ -90,6 +94,7 @@ impl ServerHandle {
                 .init_resource::<WorldSpawned>()
                 .init_resource::<PlayerColorAssigner>()
                 .replicate::<Player>()
+                .replicate::<PlayerIdentity>()
                 .replicate::<Position>()
                 .replicate::<Velocity>()
                 .replicate::<GroundPlane>()
@@ -242,6 +247,7 @@ fn simulate_physics(mut _commands: Commands) -> Result<()> {
 fn handle_client_connections(
     mut commands: Commands,
     new_clients: Query<Entity, Added<ConnectedClient>>,
+    client_ids: Query<&NetworkId>,
     mut color_assigner: ResMut<world::PlayerColorAssigner>,
     mut world_spawned: ResMut<WorldSpawned>,
 ) {
@@ -258,12 +264,18 @@ fn handle_client_connections(
         }
 
         let color = color_assigner.next_color();
-        let _client_id = ClientId::from(client_entity);
+        let network_id = client_ids
+            .get(client_entity)
+            .expect("connected client is missing NetworkId");
+        let client_id_value = network_id.get();
 
         // Spawn player entity with replicated components
         let _player_entity = commands
             .spawn((
                 Player { color },
+                PlayerIdentity {
+                    client_id: client_id_value,
+                },
                 PlayerOwner { client_entity }, // Link player to client (not replicated)
                 Position {
                     translation: Vec3::new(0.0, 1.0, 0.0),
