@@ -5,7 +5,7 @@ version = { workspace = true }
 
 [dependencies]
 app = {workspace = true, features = ["bevy"]}
-bevy = { workspace = true, default-features = true }
+bevy = { workspace = true, default-features = true}
 bevy_replicon = { workspace = true ,features = ["client"]}
 bevy_replicon_renet = { workspace = true ,features = ["client"]}
 settings= {workspace = true, features =  ["bevy"]}
@@ -21,3 +21,5 @@ uuid.workspace = true
 anyhow.workspace = true
 bevy_enhanced_input = "0.19.1"
 serde.workspace = true
+bevy_panorbit_camera = "0.31.0"
+bevy_tweening = "0.14"

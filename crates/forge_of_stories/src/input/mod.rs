@@ -1,11 +1,11 @@
-use crate::{ui::InGameMenuState, GameState};
+use crate::{GameState, ui::components::InGameMenuState};
 use anyhow::Result;
 use bevy::prelude::*;
 use keymap::{
-    enhanced::{binding_descriptor_to_binding, ConversionError},
-    parse_keystroke_sequence, ActionDescriptor, ActionId, BindingDescriptor,
-    BindingInputDescriptor, ContextDescriptor, ContextId, Keystroke, KeyBindingMetaIndex,
-    KeymapSpec, KeymapStore, Modifiers,
+    ActionDescriptor, ActionId, BindingDescriptor, BindingInputDescriptor, ContextDescriptor,
+    ContextId, KeyBindingMetaIndex, KeymapSpec, KeymapStore, Keystroke, Modifiers,
+    enhanced::{ConversionError, binding_descriptor_to_binding},
+    parse_keystroke_sequence,
 };
 use paths::PathContext;
 use tracing::warn;
@@ -52,11 +52,10 @@ pub struct KeymapInputPlugin;
 
 impl Plugin for KeymapInputPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, log_loaded_keymap)
-            .add_systems(
-                Update,
-                toggle_menu_from_keymap.run_if(in_state(GameState::InGame)),
-            );
+        app.add_systems(Startup, log_loaded_keymap).add_systems(
+            Update,
+            toggle_menu_from_keymap.run_if(in_state(GameState::InGame)),
+        );
     }
 }
 
@@ -126,10 +125,7 @@ fn toggle_menu_from_keymap(
     }
 }
 
-fn keycode_to_keystroke(
-    key_code: KeyCode,
-    keys: &ButtonInput<KeyCode>,
-) -> Option<Keystroke> {
+fn keycode_to_keystroke(key_code: KeyCode, keys: &ButtonInput<KeyCode>) -> Option<Keystroke> {
     let key = match key_code {
         KeyCode::KeyA => "a",
         KeyCode::KeyB => "b",
@@ -239,10 +235,14 @@ fn keycode_to_keystroke(
         KeyCode::ScrollLock => "scrolllock",
         KeyCode::PrintScreen => "printscreen",
         KeyCode::Pause => "pause",
-        KeyCode::ControlLeft | KeyCode::ControlRight | KeyCode::ShiftLeft | KeyCode::ShiftRight
-        | KeyCode::AltLeft | KeyCode::AltRight | KeyCode::SuperLeft | KeyCode::SuperRight => {
-            return None
-        }
+        KeyCode::ControlLeft
+        | KeyCode::ControlRight
+        | KeyCode::ShiftLeft
+        | KeyCode::ShiftRight
+        | KeyCode::AltLeft
+        | KeyCode::AltRight
+        | KeyCode::SuperLeft
+        | KeyCode::SuperRight => return None,
         _ => return None,
     };
 
