@@ -61,15 +61,7 @@ fn main() {
 
             app.insert_resource(KeymapStoreResource::new(keymap_store));
 
-            // Add plugins: UI (cameras + scenes), Rendering (lighting + visuals), Client (networking)
-            // Server logic runs in embedded server thread (via ServerHandle)
             app.add_plugins((UIPlugin, RenderingPlugin, ClientPlugin, KeymapInputPlugin));
-
-            // Optional: poll for settings changes on disk and update registered sections.
-            // app.add_systems(
-            //     Update,
-            //     settings::settings_reload_system.run_if(on_timer(Duration::from_secs(1))),
-            // );
 
             app
         });
