@@ -1,4 +1,4 @@
-use super::defaults::CameraDefaults;
+use super::{ActiveInGameCamera, defaults::CameraDefaults};
 use crate::GameState;
 use crate::client::LocalPlayer;
 use crate::utils::cleanup;
@@ -24,7 +24,6 @@ impl Plugin for PanOrbitCameraPlugin {
 
 fn setup(mut commands: Commands, defaults: Res<CameraDefaults>) {
     commands.spawn((
-        // WICHTIG: echte Kamera + Transform
         Camera3d::default(),
         Transform::default(),
         PanOrbitCamera {
@@ -66,10 +65,16 @@ fn follow_local_player_focus(
     >,
     mut cameras: Query<&mut PanOrbitCamera>,
     defaults: Res<CameraDefaults>,
+    active_camera: Res<ActiveInGameCamera>,
 ) {
+    if *active_camera == ActiveInGameCamera::PanOrbit {
+        return;
+    }
+
     let Ok((transform, position)) = local_player.single() else {
         return;
     };
+
     let base_translation = transform
         .map(|t| t.translation)
         .or_else(|| position.map(|p| p.translation))
