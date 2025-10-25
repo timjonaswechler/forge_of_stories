@@ -16,7 +16,7 @@ pub fn spawn_world(commands: &mut Commands) {
     commands.spawn((
         GroundPlane,
         Position {
-            translation: Vec3::ZERO,
+            translation: Vec3::new(0.0, -0.125, 0.0),
         },
         GroundPlaneSize {
             width: 40.0,

@@ -81,7 +81,7 @@ fn spawn_player_visuals(
         commands.entity(entity).insert((
             Mesh3d(assets.player_mesh.clone()),
             MeshMaterial3d(material),
-            Transform::from_translation(position.translation + Vec3::Y * 0.5),
+            Transform::from_translation(position.translation),
             GlobalTransform::default(),
             Visibility::default(),
             InheritedVisibility::default(),
