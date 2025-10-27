@@ -180,6 +180,133 @@ let binding_component: Binding = enhanced::binding_descriptor_to_binding(&descri
     .expect("descriptor maps to a binding");
 ```
 
+### Full integration example
+
+This example shows how to integrate the keymap store with `bevy_enhanced_input` to create
+a type-safe, rebindable input system.
+
+```rust
+use bevy::prelude::*;
+use bevy_enhanced_input::prelude::*;
+use keymap::{
+    ActionId, BindingDescriptor, BindingInputDescriptor, KeymapStore,
+    KeyBindingMetaIndex, enhanced::binding_descriptor_to_binding,
+    parse_keystroke_sequence,
+};
+
+// 1. Define your actions as types
+#[derive(InputAction)]
+#[action_output(bool)]
+struct Jump;
+
+#[derive(InputAction)]
+#[action_output(Vec2)]
+struct Move;
+
+// 2. Create a keymap store with default bindings
+fn create_store() -> KeymapStore {
+    KeymapStore::builder()
+        .with_user_keymap_path("~/.config/my_game/keymap.json")
+        .add_default_binding(BindingDescriptor {
+            action_id: Some(ActionId::from("player::jump")),
+            context_id: None,
+            predicate: None,
+            meta: Some(KeyBindingMetaIndex::DEFAULT),
+            modifiers: Vec::new(),
+            conditions: Vec::new(),
+            settings: None,
+            input: Some(BindingInputDescriptor::keyboard(
+                parse_keystroke_sequence("space").unwrap(),
+            )),
+        })
+        .add_default_binding(BindingDescriptor {
+            action_id: Some(ActionId::from("player::move")),
+            context_id: None,
+            predicate: None,
+            meta: Some(KeyBindingMetaIndex::DEFAULT),
+            modifiers: Vec::new(),
+            conditions: Vec::new(),
+            settings: None,
+            input: Some(BindingInputDescriptor::keyboard(
+                parse_keystroke_sequence("w").unwrap(),
+            )),
+        })
+        .build()
+        .unwrap()
+}
+
+// 3. Convert keymap bindings to enhanced input and spawn the player
+fn spawn_player(mut commands: Commands, keymap_store: Res<KeymapStore>) {
+    let mut jump_bindings = Vec::new();
+    let mut move_bindings = Vec::new();
+
+    // Extract bindings from the keymap store
+    keymap_store.with_spec(|spec| {
+        for descriptor in &spec.bindings {
+            if let Some(action_id) = &descriptor.action_id {
+                if let Ok(Some(binding)) = binding_descriptor_to_binding(descriptor) {
+                    match action_id.as_str() {
+                        "player::jump" => jump_bindings.push(binding),
+                        "player::move" => move_bindings.push(binding),
+                        _ => {}
+                    }
+                }
+            }
+        }
+    });
+
+    // Spawn player with enhanced input context
+    commands.spawn((
+        Player,
+        actions!(Player[
+            (
+                Action::<Jump>::new(),
+                Bindings::spawn(jump_bindings),
+            ),
+            (
+                Action::<Move>::new(),
+                Bindings::spawn(move_bindings),
+            ),
+        ])
+    ));
+}
+
+// 4. React to actions in your game systems
+
+// Observer style: Event-driven reactions
+fn setup(app: &mut App) {
+    app.add_observer(handle_jump);
+}
+
+fn handle_jump(
+    trigger: On<Fire<Jump>>,
+    mut transforms: Query<&mut Transform>,
+) {
+    if let Ok(mut transform) = transforms.get_mut(trigger.context) {
+        transform.translation.y += 2.0;
+    }
+}
+
+// Pull style: Query in update systems
+fn handle_movement(
+    query: Query<(&Action<Move>, &mut Transform), With<Player>>,
+) {
+    for (move_action, mut transform) in &query {
+        if move_action.state == ActionState::Fired {
+            transform.translation += move_action.value.extend(0.0);
+        }
+    }
+}
+
+#[derive(Component)]
+struct Player;
+```
+
+This architecture provides:
+- **Type safety**: Actions are types, not strings
+- **Rebindable inputs**: Users can override bindings via JSON
+- **Separation of concerns**: Keymap handles data, enhanced-input handles evaluation, your code handles logic
+
 ## Precedence rules
 
 When evaluating input, bindings are ordered by:

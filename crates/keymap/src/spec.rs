@@ -33,16 +33,26 @@ pub struct ActionDescriptor {
     /// Identifier of the action.
     pub id: ActionId,
     /// Optional output type hint used when generating `InputAction`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    #[cfg_attr(
+        not(feature = "binary"),
+        serde(skip_serializing_if = "Option::is_none")
+    )]
     pub output: Option<String>,
     /// Optional action-level modifiers to register.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
+    #[cfg_attr(not(feature = "binary"), serde(skip_serializing_if = "Vec::is_empty"))]
     pub modifiers: Vec<RegisteredComponent>,
     /// Optional action-level conditions to register.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
+    #[cfg_attr(not(feature = "binary"), serde(skip_serializing_if = "Vec::is_empty"))]
     pub conditions: Vec<RegisteredComponent>,
     /// Additional settings serialized as arbitrary JSON payload.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    #[cfg_attr(
+        not(feature = "binary"),
+        serde(skip_serializing_if = "Option::is_none")
+    )]
     pub settings: Option<Value>,
 }
 
@@ -52,16 +62,32 @@ pub struct ContextDescriptor {
     /// Identifier of the context.
     pub id: ContextId,
     /// Optional predicate string used by the legacy matching engine.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    #[cfg_attr(
+        not(feature = "binary"),
+        serde(skip_serializing_if = "Option::is_none")
+    )]
     pub predicate: Option<String>,
     /// Optional priority used by enhanced input.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    #[cfg_attr(
+        not(feature = "binary"),
+        serde(skip_serializing_if = "Option::is_none")
+    )]
     pub priority: Option<f32>,
     /// Optional schedule label (e.g. `PreUpdate`).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    #[cfg_attr(
+        not(feature = "binary"),
+        serde(skip_serializing_if = "Option::is_none")
+    )]
     pub schedule: Option<String>,
     /// Serialized representation of additional context settings.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    #[cfg_attr(
+        not(feature = "binary"),
+        serde(skip_serializing_if = "Option::is_none")
+    )]
     pub settings: Option<Value>,
 }
 
@@ -69,28 +95,54 @@ pub struct ContextDescriptor {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BindingDescriptor {
     /// Target action. `None` disables the keystroke sequence.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    #[cfg_attr(
+        not(feature = "binary"),
+        serde(skip_serializing_if = "Option::is_none")
+    )]
     pub action_id: Option<ActionId>,
     /// Identifier of the context this binding belongs to.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    #[cfg_attr(
+        not(feature = "binary"),
+        serde(skip_serializing_if = "Option::is_none")
+    )]
     pub context_id: Option<ContextId>,
     /// Optional predicate string for legacy matching.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    #[cfg_attr(
+        not(feature = "binary"),
+        serde(skip_serializing_if = "Option::is_none")
+    )]
     pub predicate: Option<String>,
     /// Source metadata controlling precedence (defaults to `DEFAULT`).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    #[cfg_attr(
+        not(feature = "binary"),
+        serde(skip_serializing_if = "Option::is_none")
+    )]
     pub meta: Option<KeyBindingMetaIndex>,
     /// Optional binding-specific modifiers.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
+    #[cfg_attr(not(feature = "binary"), serde(skip_serializing_if = "Vec::is_empty"))]
     pub modifiers: Vec<RegisteredComponent>,
     /// Optional binding-specific conditions.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
+    #[cfg_attr(not(feature = "binary"), serde(skip_serializing_if = "Vec::is_empty"))]
     pub conditions: Vec<RegisteredComponent>,
     /// Additional binding settings.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    #[cfg_attr(
+        not(feature = "binary"),
+        serde(skip_serializing_if = "Option::is_none")
+    )]
     pub settings: Option<Value>,
     /// The physical input used to trigger the binding.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    #[cfg_attr(
+        not(feature = "binary"),
+        serde(skip_serializing_if = "Option::is_none")
+    )]
     pub input: Option<BindingInputDescriptor>,
 }
 
@@ -143,7 +195,11 @@ pub struct RegisteredComponent {
     /// Type name that will be resolved through a registry.
     pub ty: String,
     /// Optional JSON payload interpreted by the runtime.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    #[cfg_attr(
+        not(feature = "binary"),
+        serde(skip_serializing_if = "Option::is_none")
+    )]
     pub config: Option<Value>,
 }
 
@@ -166,34 +222,46 @@ pub enum BindingInputDescriptor {
         /// Button identifier (e.g. "left", "right", "middle").
         button: String,
         /// Optional modifier keys required alongside the button.
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        #[serde(default)]
+        #[cfg_attr(not(feature = "binary"), serde(skip_serializing_if = "Vec::is_empty"))]
         modifiers: Vec<String>,
     },
     /// Mouse motion.
     MouseMotion {
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        #[serde(default)]
+        #[cfg_attr(not(feature = "binary"), serde(skip_serializing_if = "Vec::is_empty"))]
         modifiers: Vec<String>,
     },
     /// Mouse wheel (scroll).
     MouseWheel {
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        #[serde(default)]
+        #[cfg_attr(not(feature = "binary"), serde(skip_serializing_if = "Vec::is_empty"))]
         modifiers: Vec<String>,
     },
     /// Gamepad button.
     GamepadButton {
         button: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
+        #[cfg_attr(
+            not(feature = "binary"),
+            serde(skip_serializing_if = "Option::is_none")
+        )]
         threshold: Option<f32>,
     },
     /// Gamepad axis (stick / trigger).
     GamepadAxis {
         axis: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
+        #[cfg_attr(
+            not(feature = "binary"),
+            serde(skip_serializing_if = "Option::is_none")
+        )]
         threshold: Option<f32>,
     },
     /// Any key/mouse/gamepad button.
     AnyKey {
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        #[serde(default)]
+        #[cfg_attr(not(feature = "binary"), serde(skip_serializing_if = "Vec::is_empty"))]
         modifiers: Vec<String>,
     },
     /// Explicitly unbound action.

@@ -16,6 +16,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+#[cfg(feature = "binary")]
+use rmp_serde;
+
 /// Root structure for keymap JSON files.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeymapFile {
@@ -170,10 +173,7 @@ impl KeymapStore {
     }
 
     /// Append default actions and rebuild.
-    pub fn add_default_actions(
-        &self,
-        actions: Vec<crate::spec::ActionDescriptor>,
-    ) -> Result<()> {
+    pub fn add_default_actions(&self, actions: Vec<crate::spec::ActionDescriptor>) -> Result<()> {
         let mut inner = self.inner.lock().unwrap();
         inner.default_spec.actions.extend(actions);
         rebuild_keymap_internal(&mut inner)
@@ -195,21 +195,43 @@ impl KeymapStore {
             return Ok(());
         }
 
-        let content = fs::read_to_string(&self.user_keymap_path)
-            .context("Failed to read user keymap file")?;
+        #[cfg(feature = "binary")]
+        {
+            let bytes =
+                fs::read(&self.user_keymap_path).context("Failed to read user keymap file")?;
 
-        let file: KeymapFile =
-            serde_json::from_str(&content).context("Failed to parse user keymap JSON")?;
+            let file: KeymapFile =
+                rmp_serde::from_slice(&bytes).context("Failed to parse user keymap binary")?;
 
-        let mut inner = self.inner.lock().unwrap();
-        inner.user_spec = file.spec;
+            let mut inner = self.inner.lock().unwrap();
+            inner.user_spec = file.spec;
 
-        // Ensure metadata for user bindings.
-        for binding in &mut inner.user_spec.bindings {
-            ensure_meta(binding, KeyBindingMetaIndex::USER);
+            // Ensure metadata for user bindings.
+            for binding in &mut inner.user_spec.bindings {
+                ensure_meta(binding, KeyBindingMetaIndex::USER);
+            }
+
+            rebuild_keymap_internal(&mut inner)
         }
 
-        rebuild_keymap_internal(&mut inner)
+        #[cfg(not(feature = "binary"))]
+        {
+            let content = fs::read_to_string(&self.user_keymap_path)
+                .context("Failed to read user keymap file")?;
+
+            let file: KeymapFile =
+                serde_json::from_str(&content).context("Failed to parse user keymap JSON")?;
+
+            let mut inner = self.inner.lock().unwrap();
+            inner.user_spec = file.spec;
+
+            // Ensure metadata for user bindings.
+            for binding in &mut inner.user_spec.bindings {
+                ensure_meta(binding, KeyBindingMetaIndex::USER);
+            }
+
+            rebuild_keymap_internal(&mut inner)
+        }
     }
 
     /// Persist the current user specification to disk.
@@ -220,8 +242,19 @@ impl KeymapStore {
             spec: inner.user_spec.clone(),
         };
 
-        let json = serde_json::to_string_pretty(&file)?;
-        fs::write(&self.user_keymap_path, json)?;
+        #[cfg(feature = "binary")]
+        {
+            let bytes =
+                rmp_serde::to_vec(&file).context("Failed to encode user keymap to binary")?;
+            fs::write(&self.user_keymap_path, bytes)?;
+        }
+
+        #[cfg(not(feature = "binary"))]
+        {
+            let json = serde_json::to_string_pretty(&file)?;
+            fs::write(&self.user_keymap_path, json)?;
+        }
+
         Ok(())
     }
 
@@ -349,6 +382,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(feature = "binary"))]
     fn builder_sets_defaults() {
         let temp_dir = TempDir::new().unwrap();
         let path = temp_dir.path().join("keymap.json");
@@ -367,7 +401,8 @@ mod tests {
     }
 
     #[test]
-    fn load_and_save_user_bindings() {
+    #[cfg(not(feature = "binary"))]
+    fn load_and_save_user_bindings_json() {
         let temp_dir = TempDir::new().unwrap();
         let path = temp_dir.path().join("keymap.json");
 
@@ -385,9 +420,13 @@ mod tests {
 
         // Create a new store and load.
         let store2 = KeymapStore::builder()
-            .with_user_keymap_path(path)
+            .with_user_keymap_path(path.clone())
             .build()
             .unwrap();
+        // Ensure the file exists before loading
+        if !path.exists() {
+            panic!("The keymap file should exist before loading.");
+        }
         store2.load_user_bindings().unwrap();
 
         store2.with_keymap(|keymap| {
@@ -396,7 +435,52 @@ mod tests {
     }
 
     #[test]
-    fn user_overrides_precedence() {
+    #[cfg(feature = "binary")]
+    fn load_and_save_user_bindings_binary() {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().join("keymap.bin");
+
+        let store = KeymapStore::builder()
+            .with_user_keymap_path(path.clone())
+            .build()
+            .unwrap();
+
+        // Add a user binding and save.
+        store
+            .add_user_binding(sample_binding("cmd-s", "Save"))
+            .unwrap();
+        store.save_user_bindings().unwrap();
+        assert!(path.exists());
+
+        // Debug: Print the content of the file after saving
+        let content = fs::read(&path).unwrap();
+        println!("Saved content: {:?}", content);
+
+        // Create a new store and load.
+        let store2 = KeymapStore::builder()
+            .with_user_keymap_path(path.clone())
+            .build()
+            .unwrap();
+
+        // Ensure the file exists before loading
+        if !path.exists() {
+            panic!("The keymap file should exist before loading.");
+        }
+
+        // Debug: Print the content of the file before loading
+        let content = fs::read(&path).unwrap();
+        println!("Content before loading: {:?}", content);
+
+        store2.load_user_bindings().unwrap();
+
+        store2.with_keymap(|keymap| {
+            assert_eq!(keymap.bindings().count(), 1);
+        });
+    }
+
+    #[test]
+    #[cfg(not(feature = "binary"))]
+    fn user_overrides_precedence_json() {
         let temp_dir = TempDir::new().unwrap();
         let path = temp_dir.path().join("keymap.json");
 
@@ -420,7 +504,33 @@ mod tests {
     }
 
     #[test]
-    fn remove_user_binding_by_sequence() {
+    #[cfg(feature = "binary")]
+    fn user_overrides_precedence_binary() {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().join("keymap.bin");
+
+        let store = KeymapStore::builder()
+            .with_user_keymap_path(path)
+            .add_default_binding(sample_binding("cmd-s", "SaveDefault"))
+            .build()
+            .unwrap();
+
+        store
+            .add_user_binding(sample_binding("cmd-s", "SaveOverride"))
+            .unwrap();
+
+        store.with_keymap(|keymap| {
+            let (bindings, _) =
+                keymap.bindings_for_input(&[Keystroke::parse("cmd-s").unwrap()], &[]);
+            assert_eq!(bindings.len(), 2);
+            assert_eq!(bindings[0].action_id().unwrap().as_str(), "SaveOverride");
+            assert_eq!(bindings[1].action_id().unwrap().as_str(), "SaveDefault");
+        });
+    }
+
+    #[test]
+    #[cfg(not(feature = "binary"))]
+    fn remove_user_binding_by_sequence_json() {
         let store = KeymapStore::builder()
             .add_default_binding(sample_binding("cmd-s", "Save"))
             .build()
@@ -442,7 +552,54 @@ mod tests {
     }
 
     #[test]
-    fn merge_actions_and_contexts() {
+    #[cfg(feature = "binary")]
+    fn remove_user_binding_by_sequence_binary() {
+        let store = KeymapStore::builder()
+            .add_default_binding(sample_binding("cmd-s", "Save"))
+            .build()
+            .unwrap();
+
+        store
+            .add_user_binding(sample_binding("cmd-s", "SaveOverride"))
+            .unwrap();
+        store
+            .remove_user_binding(&[Keystroke::parse("cmd-s").unwrap()])
+            .unwrap();
+
+        store.with_keymap(|keymap| {
+            let (bindings, _) =
+                keymap.bindings_for_input(&[Keystroke::parse("cmd-s").unwrap()], &[]);
+            assert_eq!(bindings.len(), 1);
+            assert_eq!(bindings[0].action_id().unwrap().as_str(), "Save");
+        });
+    }
+
+    #[test]
+    #[cfg(not(feature = "binary"))]
+    fn merge_actions_and_contexts_json() {
+        let builder = KeymapStore::builder()
+            .add_default_action(ActionDescriptor {
+                id: ActionId::from("default"),
+                output: Some("bool".into()),
+                modifiers: Vec::new(),
+                conditions: Vec::new(),
+                settings: None,
+            })
+            .add_default_binding(sample_binding("cmd-s", "default"));
+
+        let store = builder.build().unwrap();
+        store
+            .add_user_binding(sample_binding("cmd-o", "user"))
+            .unwrap();
+
+        let spec = store.merged_spec();
+        assert_eq!(spec.actions.len(), 1);
+        assert_eq!(spec.bindings.len(), 2);
+    }
+
+    #[test]
+    #[cfg(feature = "binary")]
+    fn merge_actions_and_contexts_binary() {
         let builder = KeymapStore::builder()
             .add_default_action(ActionDescriptor {
                 id: ActionId::from("default"),

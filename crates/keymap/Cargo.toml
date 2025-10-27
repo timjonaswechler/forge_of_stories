@@ -7,6 +7,7 @@ edition.workspace = true
 # Serialization
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+rmp-serde = { version = "1.1", optional = true }
 
 # Error handling
 anyhow = { workspace = true }
@@ -23,7 +24,8 @@ bevy = { version = "0.17.2", default-features = false, features = ["bevy_winit"]
 bevy_enhanced_input = "0.19.1"
 
 [features]
-default = []
+default = ["binary"]
+binary = ["rmp-serde"]
 
 [dev-dependencies]
 tempfile = "3.0"
