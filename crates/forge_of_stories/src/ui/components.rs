@@ -32,3 +32,9 @@ impl InGameMenuState {
         self.open = !self.open;
     }
 }
+
+/// System condition: Returns true if the in-game menu is closed.
+/// Use with `.run_if(menu_allows_input)` to disable systems when menu is open.
+pub fn menu_allows_input(menu: Res<InGameMenuState>) -> bool {
+    menu.is_closed()
+}

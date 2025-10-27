@@ -21,4 +21,3 @@ impl Plugin for UIPlugin {
             .add_systems(Update, draw_normal_arrows_system);
     }
 }
-

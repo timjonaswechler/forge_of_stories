@@ -61,6 +61,9 @@ fn main() {
 
             app.insert_resource(KeymapStoreResource::new(keymap_store));
 
+            // Add EnhancedInputPlugin BEFORE KeymapInputPlugin
+            app.add_plugins(bevy_enhanced_input::EnhancedInputPlugin);
+
             app.add_plugins((UIPlugin, RenderingPlugin, ClientPlugin, KeymapInputPlugin));
 
             app

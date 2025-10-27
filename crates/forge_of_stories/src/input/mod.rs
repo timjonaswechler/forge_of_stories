@@ -1,14 +1,40 @@
-use crate::{GameState, ui::components::InGameMenuState};
+use crate::{
+    GameState,
+    ui::{
+        cameras::{CameraMode, CameraModeChangeEvent, InGameCameraMode},
+        components::InGameMenuState,
+    },
+};
 use anyhow::Result;
 use bevy::prelude::*;
+use bevy_enhanced_input::prelude::*;
 use keymap::{
     ActionDescriptor, ActionId, BindingDescriptor, BindingInputDescriptor, ContextDescriptor,
-    ContextId, KeyBindingMetaIndex, KeymapSpec, KeymapStore, Keystroke, Modifiers,
+    ContextId, KeyBindingMetaIndex, KeymapSpec, KeymapStore,
     enhanced::{ConversionError, binding_descriptor_to_binding},
     parse_keystroke_sequence,
 };
 use paths::PathContext;
 use tracing::warn;
+
+// ============================================================================
+// Action Definitions
+// ============================================================================
+
+/// Toggle the in-game menu
+#[derive(Debug, Component, InputAction)]
+#[action_output(bool)]
+struct ToggleMenu;
+
+/// Switch camera to Pan/Orbit mode
+#[derive(Debug, Component, InputAction)]
+#[action_output(bool)]
+struct SwitchToPanOrbit;
+
+/// Switch camera to First Person mode
+#[derive(Debug, Component, InputAction)]
+#[action_output(bool)]
+struct SwitchToFirstPerson;
 
 /// Resource wrapper around [`KeymapStore`] so Bevy can manage it.
 #[derive(Resource)]
@@ -26,6 +52,36 @@ impl std::ops::Deref for KeymapStoreResource {
     fn deref(&self) -> &Self::Target {
         &self.0
     }
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Extract and convert bindings for a specific action from the keymap store.
+fn extract_bindings_for_action(
+    store: &KeymapStore,
+    action_id: &str,
+) -> Vec<bevy_enhanced_input::binding::Binding> {
+    let mut bindings = Vec::new();
+
+    store.with_spec(|spec| {
+        for descriptor in &spec.bindings {
+            if let Some(id) = &descriptor.action_id {
+                if id.as_str() == action_id {
+                    match binding_descriptor_to_binding(descriptor) {
+                        Ok(Some(binding)) => bindings.push(binding),
+                        Ok(None) => {}
+                        Err(err) => {
+                            warn!("Failed to convert binding for {}: {}", action_id, err);
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    bindings
 }
 
 /// Build a keymap store using the default descriptors bundled with the game.
@@ -48,14 +104,27 @@ pub fn create_keymap_store(path_context: &PathContext) -> Result<KeymapStore> {
     Ok(store)
 }
 
+// ============================================================================
+// Plugin
+// ============================================================================
+
+/// Marker component for the global input context.
+#[derive(Component)]
+struct GlobalInputContext;
+
 pub struct KeymapInputPlugin;
 
 impl Plugin for KeymapInputPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, log_loaded_keymap).add_systems(
-            Update,
-            toggle_menu_from_keymap.run_if(in_state(GameState::InGame)),
-        );
+        app
+            // Register the global input context
+            .add_input_context::<GlobalInputContext>()
+            // Setup systems
+            .add_systems(Startup, (log_loaded_keymap, spawn_global_input_context))
+            // Observers for input actions
+            .add_observer(handle_toggle_menu)
+            .add_observer(handle_switch_to_pan_orbit)
+            .add_observer(handle_switch_to_first_person);
     }
 }
 
@@ -97,173 +166,136 @@ fn log_conversion_error(context: &str, action: &str, err: ConversionError) {
     warn!("  [{context}] {action} => conversion failed: {err}");
 }
 
-fn toggle_menu_from_keymap(
-    keys: Res<ButtonInput<KeyCode>>,
-    store: Res<KeymapStoreResource>,
+// ============================================================================
+// Systems
+// ============================================================================
+
+/// Spawn the global input context with actions loaded from the keymap.
+fn spawn_global_input_context(mut commands: Commands, store: Res<KeymapStoreResource>) {
+    // Extract bindings for all actions from the keymap
+    let toggle_menu_bindings = extract_bindings_for_action(&store, "ui::toggle_menu");
+    let switch_to_pan_orbit_bindings =
+        extract_bindings_for_action(&store, "camera::switch_to_pan_orbit");
+    let switch_to_first_person_bindings =
+        extract_bindings_for_action(&store, "camera::switch_to_first_person");
+
+    info!(
+        "Spawning global input context with {} toggle_menu, {} pan_orbit, {} first_person bindings",
+        toggle_menu_bindings.len(),
+        switch_to_pan_orbit_bindings.len(),
+        switch_to_first_person_bindings.len()
+    );
+
+    // Spawn the global input context with all actions
+    commands.spawn((
+        GlobalInputContext,
+        actions!(GlobalInputContext[
+            (
+                Action::<ToggleMenu>::new(),
+                Bindings::spawn(toggle_menu_bindings),
+            ),
+            (
+                Action::<SwitchToPanOrbit>::new(),
+                Bindings::spawn(switch_to_pan_orbit_bindings),
+            ),
+            (
+                Action::<SwitchToFirstPerson>::new(),
+                Bindings::spawn(switch_to_first_person_bindings),
+            ),
+        ]),
+    ));
+}
+
+/// Observer that handles the ToggleMenu action.
+/// Triggers only once when the button is first pressed (not continuously while held).
+fn handle_toggle_menu(
+    _trigger: On<Start<ToggleMenu>>,
     mut menu: ResMut<InGameMenuState>,
+    game_state: Res<State<GameState>>,
 ) {
-    let mut toggled = false;
-
-    for key in keys.get_just_pressed() {
-        let Some(keystroke) = keycode_to_keystroke(*key, &keys) else {
-            continue;
-        };
-
-        store.with_keymap(|keymap| {
-            let (bindings, _) = keymap.bindings_for_input(&[keystroke.clone()], &[]);
-            toggled |= bindings.iter().any(|binding| {
-                binding
-                    .action_id()
-                    .map(|id| id.as_str() == "ui.toggle_menu")
-                    .unwrap_or(false)
-            });
-        });
-    }
-
-    if toggled {
+    // Only toggle menu when in-game
+    if *game_state.get() == GameState::InGame {
         menu.toggle();
+        info!("Menu toggled via enhanced input");
     }
 }
 
-fn keycode_to_keystroke(key_code: KeyCode, keys: &ButtonInput<KeyCode>) -> Option<Keystroke> {
-    let key = match key_code {
-        KeyCode::KeyA => "a",
-        KeyCode::KeyB => "b",
-        KeyCode::KeyC => "c",
-        KeyCode::KeyD => "d",
-        KeyCode::KeyE => "e",
-        KeyCode::KeyF => "f",
-        KeyCode::KeyG => "g",
-        KeyCode::KeyH => "h",
-        KeyCode::KeyI => "i",
-        KeyCode::KeyJ => "j",
-        KeyCode::KeyK => "k",
-        KeyCode::KeyL => "l",
-        KeyCode::KeyM => "m",
-        KeyCode::KeyN => "n",
-        KeyCode::KeyO => "o",
-        KeyCode::KeyP => "p",
-        KeyCode::KeyQ => "q",
-        KeyCode::KeyR => "r",
-        KeyCode::KeyS => "s",
-        KeyCode::KeyT => "t",
-        KeyCode::KeyU => "u",
-        KeyCode::KeyV => "v",
-        KeyCode::KeyW => "w",
-        KeyCode::KeyX => "x",
-        KeyCode::KeyY => "y",
-        KeyCode::KeyZ => "z",
-        KeyCode::Digit0 => "0",
-        KeyCode::Digit1 => "1",
-        KeyCode::Digit2 => "2",
-        KeyCode::Digit3 => "3",
-        KeyCode::Digit4 => "4",
-        KeyCode::Digit5 => "5",
-        KeyCode::Digit6 => "6",
-        KeyCode::Digit7 => "7",
-        KeyCode::Digit8 => "8",
-        KeyCode::Digit9 => "9",
-        KeyCode::F1 => "f1",
-        KeyCode::F2 => "f2",
-        KeyCode::F3 => "f3",
-        KeyCode::F4 => "f4",
-        KeyCode::F5 => "f5",
-        KeyCode::F6 => "f6",
-        KeyCode::F7 => "f7",
-        KeyCode::F8 => "f8",
-        KeyCode::F9 => "f9",
-        KeyCode::F10 => "f10",
-        KeyCode::F11 => "f11",
-        KeyCode::F12 => "f12",
-        KeyCode::F13 => "f13",
-        KeyCode::F14 => "f14",
-        KeyCode::F15 => "f15",
-        KeyCode::F16 => "f16",
-        KeyCode::F17 => "f17",
-        KeyCode::F18 => "f18",
-        KeyCode::F19 => "f19",
-        KeyCode::F20 => "f20",
-        KeyCode::F21 => "f21",
-        KeyCode::F22 => "f22",
-        KeyCode::F23 => "f23",
-        KeyCode::F24 => "f24",
-        KeyCode::Escape => "escape",
-        KeyCode::Space => "space",
-        KeyCode::Enter => "enter",
-        KeyCode::Tab => "tab",
-        KeyCode::Backspace => "backspace",
-        KeyCode::Delete => "delete",
-        KeyCode::Insert => "insert",
-        KeyCode::Home => "home",
-        KeyCode::End => "end",
-        KeyCode::PageUp => "pageup",
-        KeyCode::PageDown => "pagedown",
-        KeyCode::ArrowUp => "up",
-        KeyCode::ArrowDown => "down",
-        KeyCode::ArrowLeft => "left",
-        KeyCode::ArrowRight => "right",
-        KeyCode::Minus => "-",
-        KeyCode::Equal => "=",
-        KeyCode::BracketLeft => "[",
-        KeyCode::BracketRight => "]",
-        KeyCode::Backslash => "\\",
-        KeyCode::Semicolon => ";",
-        KeyCode::Quote => "'",
-        KeyCode::Comma => ",",
-        KeyCode::Period => ".",
-        KeyCode::Slash => "/",
-        KeyCode::Backquote => "`",
-        KeyCode::Numpad0 => "numpad0",
-        KeyCode::Numpad1 => "numpad1",
-        KeyCode::Numpad2 => "numpad2",
-        KeyCode::Numpad3 => "numpad3",
-        KeyCode::Numpad4 => "numpad4",
-        KeyCode::Numpad5 => "numpad5",
-        KeyCode::Numpad6 => "numpad6",
-        KeyCode::Numpad7 => "numpad7",
-        KeyCode::Numpad8 => "numpad8",
-        KeyCode::Numpad9 => "numpad9",
-        KeyCode::NumpadAdd => "numpad+",
-        KeyCode::NumpadSubtract => "numpad-",
-        KeyCode::NumpadMultiply => "numpad*",
-        KeyCode::NumpadDivide => "numpad/",
-        KeyCode::NumpadDecimal => "numpad.",
-        KeyCode::NumpadEnter => "numpadenter",
-        KeyCode::NumpadEqual => "numpad=",
-        KeyCode::CapsLock => "capslock",
-        KeyCode::NumLock => "numlock",
-        KeyCode::ScrollLock => "scrolllock",
-        KeyCode::PrintScreen => "printscreen",
-        KeyCode::Pause => "pause",
-        KeyCode::ControlLeft
-        | KeyCode::ControlRight
-        | KeyCode::ShiftLeft
-        | KeyCode::ShiftRight
-        | KeyCode::AltLeft
-        | KeyCode::AltRight
-        | KeyCode::SuperLeft
-        | KeyCode::SuperRight => return None,
-        _ => return None,
-    };
+/// Observer that handles switching to Pan/Orbit camera mode.
+fn handle_switch_to_pan_orbit(
+    _trigger: On<Start<SwitchToPanOrbit>>,
+    current_mode: Res<CameraMode>,
+    mut events: MessageWriter<CameraModeChangeEvent>,
+    game_state: Res<State<GameState>>,
+) {
+    if *game_state.get() != GameState::InGame {
+        return;
+    }
 
-    let modifiers = Modifiers {
-        ctrl: keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]),
-        alt: keys.any_pressed([KeyCode::AltLeft, KeyCode::AltRight]),
-        shift: keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]),
-        cmd: keys.any_pressed([KeyCode::SuperLeft, KeyCode::SuperRight]),
-    };
-
-    Some(Keystroke::new(key, modifiers))
+    // Only switch if not already in PanOrbit mode
+    if !matches!(
+        *current_mode,
+        CameraMode::InGame(InGameCameraMode::PanOrbit)
+    ) {
+        events.write(CameraModeChangeEvent {
+            new_mode: CameraMode::InGame(InGameCameraMode::PanOrbit),
+            animate: true,
+        });
+        info!("Switching to Pan/Orbit camera via enhanced input");
+    }
 }
+
+/// Observer that handles switching to First Person camera mode.
+fn handle_switch_to_first_person(
+    _trigger: On<Start<SwitchToFirstPerson>>,
+    current_mode: Res<CameraMode>,
+    mut events: MessageWriter<CameraModeChangeEvent>,
+    game_state: Res<State<GameState>>,
+) {
+    if *game_state.get() != GameState::InGame {
+        return;
+    }
+
+    // Only switch if not already in FirstPerson mode
+    if !matches!(
+        *current_mode,
+        CameraMode::InGame(InGameCameraMode::FirstPerson)
+    ) {
+        events.write(CameraModeChangeEvent {
+            new_mode: CameraMode::InGame(InGameCameraMode::FirstPerson),
+            animate: true,
+        });
+        info!("Switching to First Person camera via enhanced input");
+    }
+}
+
+// ============================================================================
+// Default Keymap Specification
+// ============================================================================
 
 fn default_keymap_spec() -> KeymapSpec {
-    let actions = vec![ActionDescriptor {
-        id: ActionId::from("ui.toggle_menu"),
-        output: Some("bool".into()),
-        modifiers: Vec::new(),
-        conditions: Vec::new(),
-        settings: None,
-    }];
+    let actions = vec![
+        ActionDescriptor {
+            id: ActionId::from("ui::toggle_menu"),
+            output: Some("bool".into()),
+            modifiers: Vec::new(),
+            conditions: Vec::new(),
+            settings: None,
+        },
+        ActionDescriptor {
+            id: ActionId::from("camera::switch_to_pan_orbit"),
+            output: Some("bool".into()),
+            modifiers: Vec::new(),
+            conditions: Vec::new(),
+            settings: None,
+        },
+        ActionDescriptor {
+            id: ActionId::from("camera::switch_to_first_person"),
+            output: Some("bool".into()),
+            modifiers: Vec::new(),
+            conditions: Vec::new(),
+            settings: None,
+        },
+    ];
 
     let contexts = vec![ContextDescriptor {
         id: ContextId::from("global"),
@@ -275,7 +307,7 @@ fn default_keymap_spec() -> KeymapSpec {
 
     let bindings = vec![
         BindingDescriptor {
-            action_id: Some(ActionId::from("ui.toggle_menu")),
+            action_id: Some(ActionId::from("ui::toggle_menu")),
             context_id: Some(ContextId::from("global")),
             predicate: None,
             meta: Some(KeyBindingMetaIndex::DEFAULT),
@@ -287,20 +319,7 @@ fn default_keymap_spec() -> KeymapSpec {
             )),
         },
         BindingDescriptor {
-            action_id: Some(ActionId::from("ui.toggle_menu")),
-            context_id: Some(ContextId::from("global")),
-            predicate: None,
-            meta: Some(KeyBindingMetaIndex::DEFAULT),
-            modifiers: Vec::new(),
-            conditions: Vec::new(),
-            settings: None,
-            input: Some(BindingInputDescriptor::MouseButton {
-                button: "right".into(),
-                modifiers: vec!["shift".into()],
-            }),
-        },
-        BindingDescriptor {
-            action_id: Some(ActionId::from("ui.toggle_menu")),
+            action_id: Some(ActionId::from("ui::toggle_menu")),
             context_id: Some(ContextId::from("global")),
             predicate: None,
             meta: Some(KeyBindingMetaIndex::DEFAULT),
@@ -311,6 +330,31 @@ fn default_keymap_spec() -> KeymapSpec {
                 button: "start".into(),
                 threshold: None,
             }),
+        },
+        // Camera switching
+        BindingDescriptor {
+            action_id: Some(ActionId::from("camera::switch_to_pan_orbit")),
+            context_id: Some(ContextId::from("global")),
+            predicate: None,
+            meta: Some(KeyBindingMetaIndex::DEFAULT),
+            modifiers: Vec::new(),
+            conditions: Vec::new(),
+            settings: None,
+            input: Some(BindingInputDescriptor::keyboard(
+                parse_keystroke_sequence("c").expect("static key sequence"),
+            )),
+        },
+        BindingDescriptor {
+            action_id: Some(ActionId::from("camera::switch_to_first_person")),
+            context_id: Some(ContextId::from("global")),
+            predicate: None,
+            meta: Some(KeyBindingMetaIndex::DEFAULT),
+            modifiers: Vec::new(),
+            conditions: Vec::new(),
+            settings: None,
+            input: Some(BindingInputDescriptor::keyboard(
+                parse_keystroke_sequence("c").expect("static key sequence"),
+            )),
         },
     ];
 

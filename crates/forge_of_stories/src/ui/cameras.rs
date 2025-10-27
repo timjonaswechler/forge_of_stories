@@ -6,7 +6,7 @@ mod pan_orbit;
 mod transition;
 mod ui_camera;
 
-use crate::GameState;
+use crate::{GameState, ui::components::menu_allows_input};
 use bevy::{
     camera::CameraUpdateSystems,
     prelude::*,
@@ -77,16 +77,12 @@ impl Plugin for CameraPlugin {
             .add_systems(
                 Update,
                 (
-                    handle_camera_mode_changes,
+                    handle_camera_mode_changes.run_if(menu_allows_input),
                     // Läuft während Transition, updated Translation
                     handle_transition_completion,
                 ),
             )
-            // InGame Toggle
-            .add_systems(
-                Update,
-                toggle_ingame_camera_mode.run_if(in_state(GameState::InGame)),
-            )
+            // InGame Toggle - now handled by Enhanced Input observers in input/mod.rs
             // FirstPerson Mode Update-Systems
             .add_systems(
                 Update,
@@ -99,7 +95,8 @@ impl Plugin for CameraPlugin {
                     .run_if(resource_exists::<CameraMode>)
                     .run_if(|mode: Res<CameraMode>| {
                         matches!(*mode, CameraMode::InGame(InGameCameraMode::FirstPerson))
-                    }),
+                    })
+                    .run_if(menu_allows_input),
             )
             // PanOrbit Mode Update-Systems
             .add_systems(
@@ -121,7 +118,9 @@ impl Plugin for CameraPlugin {
                         matches!(*mode, CameraMode::InGame(InGameCameraMode::PanOrbit))
                     })
                     // WICHTIG: Während Transition nicht laufen lassen!
-                    .run_if(|transition: Res<CameraTransitionState>| !transition.active),
+                    .run_if(|transition: Res<CameraTransitionState>| !transition.active)
+                    // Block when menu is open
+                    .run_if(menu_allows_input),
             )
             .add_systems(
                 Update,
@@ -130,7 +129,8 @@ impl Plugin for CameraPlugin {
                     .run_if(resource_exists::<CameraMode>)
                     .run_if(|mode: Res<CameraMode>| {
                         matches!(*mode, CameraMode::InGame(InGameCameraMode::PanOrbit))
-                    }),
+                    })
+                    .run_if(menu_allows_input),
             )
             // Plugins
             .add_plugins((
@@ -139,7 +139,13 @@ impl Plugin for CameraPlugin {
             ))
             // Cursor-Management
             .add_systems(OnEnter(GameState::InGame), apply_cursor_for_active_camera)
-            .add_systems(OnExit(GameState::InGame), release_cursor);
+            .add_systems(OnExit(GameState::InGame), release_cursor)
+            .add_systems(
+                Update,
+                release_cursor_when_menu_opens
+                    .run_if(in_state(GameState::InGame))
+                    .run_if(resource_changed::<crate::ui::components::InGameMenuState>),
+            );
     }
 }
 
@@ -172,32 +178,6 @@ fn switch_to_ingame_mode(mut events: MessageWriter<CameraModeChangeEvent>) {
     });
 }
 
-// Toggle zwischen FirstPerson/PanOrbit
-fn toggle_ingame_camera_mode(
-    keys: Res<ButtonInput<KeyCode>>,
-    transition_state: Res<CameraTransitionState>,
-    current_mode: Res<CameraMode>,
-    mut events: MessageWriter<CameraModeChangeEvent>,
-) {
-    if transition_state.active {
-        return;
-    }
-
-    if keys.just_pressed(KeyCode::KeyC) {
-        if let CameraMode::InGame(ingame_mode) = current_mode.as_ref() {
-            let new_ingame_mode = match ingame_mode {
-                InGameCameraMode::FirstPerson => InGameCameraMode::PanOrbit,
-                InGameCameraMode::PanOrbit => InGameCameraMode::FirstPerson,
-            };
-
-            events.write(CameraModeChangeEvent {
-                new_mode: CameraMode::InGame(new_ingame_mode),
-                animate: true, // MIT Transition innerhalb InGame
-            });
-        }
-    }
-}
-
 fn apply_cursor_for_active_camera(
     camera_mode: Res<CameraMode>,
     mut window_query: Query<(&mut Window, &mut CursorOptions), With<PrimaryWindow>>,
@@ -213,6 +193,18 @@ fn release_cursor(mut window_query: Query<&mut CursorOptions, With<PrimaryWindow
     if let Ok(mut cursor) = window_query.single_mut() {
         cursor.grab_mode = CursorGrabMode::None;
         cursor.visible = true;
+    }
+}
+
+fn release_cursor_when_menu_opens(
+    menu: Res<crate::ui::components::InGameMenuState>,
+    mut window_query: Query<&mut CursorOptions, With<PrimaryWindow>>,
+) {
+    if menu.is_open() {
+        if let Ok(mut cursor) = window_query.single_mut() {
+            cursor.grab_mode = CursorGrabMode::None;
+            cursor.visible = true;
+        }
     }
 }
 

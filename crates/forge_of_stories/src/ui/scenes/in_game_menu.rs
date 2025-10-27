@@ -13,7 +13,7 @@ impl Plugin for InGameMenuScenePlugin {
         app.add_systems(
             Update,
             (
-                handle_esc_key,
+                // Note: ESC key handling is now done via Enhanced Input in the KeymapInputPlugin
                 spawn_in_game_menu_ui,
                 handle_in_game_menu_buttons,
             )
@@ -33,12 +33,6 @@ enum InGameMenuAction {
     LeaveGame,
 }
 
-fn handle_esc_key(keyboard: Res<ButtonInput<KeyCode>>, mut menu_state: ResMut<InGameMenuState>) {
-    if keyboard.just_pressed(KeyCode::Escape) {
-        menu_state.toggle();
-    }
-}
-
 fn spawn_in_game_menu_ui(
     mut commands: Commands,
     menu: Res<InGameMenuState>,
@@ -48,7 +42,16 @@ fn spawn_in_game_menu_ui(
         return;
     }
 
+    // Despawn existing menu if closed
     if !menu.is_open() {
+        for entity in &existing {
+            commands.entity(entity).despawn();
+        }
+        return;
+    }
+
+    // Don't spawn if already exists
+    if !existing.is_empty() {
         return;
     }
 
