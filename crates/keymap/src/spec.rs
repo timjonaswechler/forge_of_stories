@@ -5,10 +5,9 @@
 //! merging, the descriptors can be translated into `bevy_enhanced_input`
 //! entities.
 
-use crate::binding::{ActionId, ContextId, KeyBinding, KeyBindingMetaIndex};
-use crate::context::KeyBindingContextPredicate;
+use crate::binding::{ActionId, KeyBinding, KeyBindingMetaIndex};
 use crate::keystroke::{Keystroke, Modifiers};
-use anyhow::{Context as _, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt;
@@ -19,9 +18,6 @@ pub struct KeymapSpec {
     /// Actions that can be referenced by bindings.
     #[serde(default)]
     pub actions: Vec<ActionDescriptor>,
-    /// Input contexts, each identified by [`ContextId`].
-    #[serde(default)]
-    pub contexts: Vec<ContextDescriptor>,
     /// Binding descriptions connecting inputs to actions.
     #[serde(default)]
     pub bindings: Vec<BindingDescriptor>,
@@ -56,41 +52,6 @@ pub struct ActionDescriptor {
     pub settings: Option<Value>,
 }
 
-/// Description of an input context.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ContextDescriptor {
-    /// Identifier of the context.
-    pub id: ContextId,
-    /// Optional predicate string used by the legacy matching engine.
-    #[serde(default)]
-    #[cfg_attr(
-        not(feature = "binary"),
-        serde(skip_serializing_if = "Option::is_none")
-    )]
-    pub predicate: Option<String>,
-    /// Optional priority used by enhanced input.
-    #[serde(default)]
-    #[cfg_attr(
-        not(feature = "binary"),
-        serde(skip_serializing_if = "Option::is_none")
-    )]
-    pub priority: Option<f32>,
-    /// Optional schedule label (e.g. `PreUpdate`).
-    #[serde(default)]
-    #[cfg_attr(
-        not(feature = "binary"),
-        serde(skip_serializing_if = "Option::is_none")
-    )]
-    pub schedule: Option<String>,
-    /// Serialized representation of additional context settings.
-    #[serde(default)]
-    #[cfg_attr(
-        not(feature = "binary"),
-        serde(skip_serializing_if = "Option::is_none")
-    )]
-    pub settings: Option<Value>,
-}
-
 /// Describes how a binding should be spawned.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BindingDescriptor {
@@ -101,20 +62,6 @@ pub struct BindingDescriptor {
         serde(skip_serializing_if = "Option::is_none")
     )]
     pub action_id: Option<ActionId>,
-    /// Identifier of the context this binding belongs to.
-    #[serde(default)]
-    #[cfg_attr(
-        not(feature = "binary"),
-        serde(skip_serializing_if = "Option::is_none")
-    )]
-    pub context_id: Option<ContextId>,
-    /// Optional predicate string for legacy matching.
-    #[serde(default)]
-    #[cfg_attr(
-        not(feature = "binary"),
-        serde(skip_serializing_if = "Option::is_none")
-    )]
-    pub predicate: Option<String>,
     /// Source metadata controlling precedence (defaults to `DEFAULT`).
     #[serde(default)]
     #[cfg_attr(
@@ -161,17 +108,6 @@ impl BindingDescriptor {
         }
     }
 
-    /// Parse the predicate string, if any.
-    pub fn predicate(&self) -> Result<Option<KeyBindingContextPredicate>> {
-        match self.predicate.as_ref() {
-            Some(raw) => Ok(Some(
-                KeyBindingContextPredicate::parse(raw)
-                    .with_context(|| format!("invalid predicate '{raw}'"))?,
-            )),
-            None => Ok(None),
-        }
-    }
-
     /// Convert the descriptor into a [`KeyBinding`] for the legacy keymap engine,
     /// if it targets the keyboard.
     pub fn to_key_binding(&self) -> Result<Option<KeyBinding>> {
@@ -180,11 +116,10 @@ impl BindingDescriptor {
             None => return Ok(None),
         };
 
-        let predicate = self.predicate()?.map(|p| std::sync::Arc::new(p));
         let action_id = self.action_id.clone();
 
         Ok(Some(
-            KeyBinding::new(sequence.to_vec(), action_id, predicate).with_meta(self.meta()),
+            KeyBinding::new(sequence.to_vec(), action_id).with_meta(self.meta()),
         ))
     }
 }

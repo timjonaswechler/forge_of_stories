@@ -6,9 +6,11 @@
 
 use crate::binding::KeyBinding;
 use crate::keystroke::{Keystroke, Modifiers};
-use crate::spec::{modifiers_from_strings, BindingDescriptor, BindingInputDescriptor};
-use bevy::input::{gamepad::GamepadAxis, gamepad::GamepadButton, keyboard::KeyCode, mouse::MouseButton};
-use bevy_enhanced_input::binding::{mod_keys::ModKeys, Binding};
+use crate::spec::{BindingDescriptor, BindingInputDescriptor, modifiers_from_strings};
+use bevy::input::{
+    gamepad::GamepadAxis, gamepad::GamepadButton, keyboard::KeyCode, mouse::MouseButton,
+};
+use bevy_enhanced_input::binding::{Binding, mod_keys::ModKeys};
 use std::error::Error;
 use std::fmt;
 
@@ -360,8 +362,6 @@ mod tests {
     fn keyboard_descriptor(seq: &str) -> BindingDescriptor {
         BindingDescriptor {
             action_id: Some(ActionId::from("test")),
-            context_id: None,
-            predicate: None,
             meta: None,
             modifiers: Vec::new(),
             conditions: Vec::new(),

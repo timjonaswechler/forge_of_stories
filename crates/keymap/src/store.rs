@@ -72,12 +72,6 @@ impl KeymapStoreBuilder {
         self
     }
 
-    /// Add a default context descriptor.
-    pub fn add_default_context(mut self, context: crate::spec::ContextDescriptor) -> Self {
-        self.default_spec.contexts.push(context);
-        self
-    }
-
     /// Add a default binding descriptor.
     pub fn add_default_binding(mut self, mut binding: BindingDescriptor) -> Self {
         ensure_meta(&mut binding, KeyBindingMetaIndex::DEFAULT);
@@ -176,16 +170,6 @@ impl KeymapStore {
     pub fn add_default_actions(&self, actions: Vec<crate::spec::ActionDescriptor>) -> Result<()> {
         let mut inner = self.inner.lock().unwrap();
         inner.default_spec.actions.extend(actions);
-        rebuild_keymap_internal(&mut inner)
-    }
-
-    /// Append default contexts and rebuild.
-    pub fn add_default_contexts(
-        &self,
-        contexts: Vec<crate::spec::ContextDescriptor>,
-    ) -> Result<()> {
-        let mut inner = self.inner.lock().unwrap();
-        inner.default_spec.contexts.extend(contexts);
         rebuild_keymap_internal(&mut inner)
     }
 
@@ -341,16 +325,6 @@ fn merge_specs(default_spec: &KeymapSpec, user_spec: &KeymapSpec) -> KeymapSpec 
     }
     merged.actions = actions.into_values().collect();
 
-    // Merge contexts by id (user overrides replace defaults).
-    let mut contexts: IndexMap<crate::binding::ContextId, _> = IndexMap::new();
-    for context in &default_spec.contexts {
-        contexts.insert(context.id.clone(), context.clone());
-    }
-    for context in &user_spec.contexts {
-        contexts.insert(context.id.clone(), context.clone());
-    }
-    merged.contexts = contexts.into_values().collect();
-
     // Bindings: defaults first, then user overrides (higher precedence).
     merged.bindings.extend(default_spec.bindings.clone());
     merged.bindings.extend(user_spec.bindings.clone());
@@ -369,8 +343,6 @@ mod tests {
     fn sample_binding(sequence: &str, action: &str) -> BindingDescriptor {
         BindingDescriptor {
             action_id: Some(ActionId::from(action)),
-            context_id: None,
-            predicate: None,
             meta: None,
             modifiers: Vec::new(),
             conditions: Vec::new(),
@@ -496,7 +468,7 @@ mod tests {
 
         store.with_keymap(|keymap| {
             let (bindings, _) =
-                keymap.bindings_for_input(&[Keystroke::parse("cmd-s").unwrap()], &[]);
+                keymap.bindings_for_input(&[Keystroke::parse("cmd-s").unwrap()]);
             assert_eq!(bindings.len(), 2);
             assert_eq!(bindings[0].action_id().unwrap().as_str(), "SaveOverride");
             assert_eq!(bindings[1].action_id().unwrap().as_str(), "SaveDefault");
@@ -520,8 +492,7 @@ mod tests {
             .unwrap();
 
         store.with_keymap(|keymap| {
-            let (bindings, _) =
-                keymap.bindings_for_input(&[Keystroke::parse("cmd-s").unwrap()], &[]);
+            let (bindings, _) = keymap.bindings_for_input(&[Keystroke::parse("cmd-s").unwrap()]);
             assert_eq!(bindings.len(), 2);
             assert_eq!(bindings[0].action_id().unwrap().as_str(), "SaveOverride");
             assert_eq!(bindings[1].action_id().unwrap().as_str(), "SaveDefault");
@@ -545,7 +516,7 @@ mod tests {
 
         store.with_keymap(|keymap| {
             let (bindings, _) =
-                keymap.bindings_for_input(&[Keystroke::parse("cmd-s").unwrap()], &[]);
+                keymap.bindings_for_input(&[Keystroke::parse("cmd-s").unwrap()]);
             assert_eq!(bindings.len(), 1);
             assert_eq!(bindings[0].action_id().unwrap().as_str(), "Save");
         });
@@ -567,8 +538,7 @@ mod tests {
             .unwrap();
 
         store.with_keymap(|keymap| {
-            let (bindings, _) =
-                keymap.bindings_for_input(&[Keystroke::parse("cmd-s").unwrap()], &[]);
+            let (bindings, _) = keymap.bindings_for_input(&[Keystroke::parse("cmd-s").unwrap()]);
             assert_eq!(bindings.len(), 1);
             assert_eq!(bindings[0].action_id().unwrap().as_str(), "Save");
         });

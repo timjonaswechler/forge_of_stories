@@ -4,7 +4,6 @@
 //! including precedence rules, context evaluation, and multi-keystroke sequences.
 
 use crate::binding::{KeyBinding, KeyBindingMetaIndex};
-use crate::context::KeyContext;
 use crate::keystroke::Keystroke;
 use smallvec::SmallVec;
 
@@ -81,101 +80,60 @@ impl Keymap {
     /// Bindings are returned in precedence order (higher precedence first).
     ///
     /// Precedence is defined by:
-    /// 1. Context depth (deeper contexts win)
-    /// 2. Source priority (USER > VIM > BASE > DEFAULT)
-    /// 3. Order (later bindings win)
+    /// 1. Source priority (`meta` field: USER > VIM > BASE > DEFAULT)
+    /// 2. Order (later bindings win)
     ///
-    /// If a user has disabled a binding with `NoAction`, it will not be returned.
-    pub fn bindings_for_input(
-        &self,
-        input: &[Keystroke],
-        context_stack: &[KeyContext],
-    ) -> (SmallVec<[KeyBinding; 1]>, bool) {
-        let mut matched_bindings = SmallVec::<[(usize, usize, &KeyBinding); 1]>::new();
-        let mut pending_bindings = SmallVec::<[(usize, &KeyBinding); 1]>::new();
-        let mut disabled_bindings = Vec::new();
+    /// If a binding with higher precedence has `action_id: None`, it disables
+    /// any lower-precedence bindings for the same keystroke sequence.
+    pub fn bindings_for_input(&self, input: &[Keystroke]) -> (SmallVec<[KeyBinding; 1]>, bool) {
+        let mut matched_bindings = SmallVec::<[(usize, &KeyBinding); 1]>::new();
+        let mut pending_bindings = SmallVec::<[&KeyBinding; 1]>::new();
+        let mut disabled_keystrokes = std::collections::HashSet::new();
 
-        // First pass: collect all matches and track NoAction bindings
+        // Iterate in reverse to handle precedence (later bindings win).
         for (ix, binding) in self.bindings().enumerate().rev() {
-            let Some(depth) = self.binding_enabled(binding, context_stack) else {
-                continue;
-            };
-
             let Some(pending) = binding.match_keystrokes(input) else {
                 continue;
             };
 
+            // If a higher-precedence binding disables this keystroke, record it.
             if binding.is_disabled() {
-                disabled_bindings.push((ix, depth, binding));
+                if !pending {
+                    disabled_keystrokes.insert(binding.keystrokes());
+                }
+                continue;
+            }
+
+            // If these exact keystrokes have been disabled, skip.
+            if disabled_keystrokes.contains(binding.keystrokes()) {
                 continue;
             }
 
             if !pending {
-                matched_bindings.push((depth, ix, binding));
+                matched_bindings.push((ix, binding));
             } else {
-                pending_bindings.push((ix, binding));
+                pending_bindings.push(binding);
             }
         }
 
-        // Filter out bindings that are disabled by NoAction
-        matched_bindings.retain(|(depth, _ix, binding)| {
-            for (_disable_ix, disable_depth, disable_binding) in &disabled_bindings {
-                // NoAction must match the same keystrokes
-                if disable_binding.keystrokes() != binding.keystrokes() {
-                    continue;
-                }
-
-                // Check if NoAction applies to this binding
-                let is_disabled = match (binding.predicate(), disable_binding.predicate()) {
-                    (_, None) => true,        // Global NoAction disables everything
-                    (None, Some(_)) => false, // Specific NoAction doesn't disable global bindings
-                    (Some(pred), Some(no_pred)) => {
-                        // NoAction's predicate must be more specific (superset check reversed)
-                        // The binding's predicate should be a superset of NoAction's
-                        // meaning NoAction is more specific and should disable the binding
-                        disable_depth >= depth && pred.is_superset(no_pred)
-                    }
-                };
-
-                if is_disabled {
-                    return false; // This binding is disabled
-                }
-            }
-            true
-        });
-
-        // Sort by precedence: depth DESC, then meta ASC, then index DESC
-        matched_bindings.sort_by(|(depth_a, ix_a, binding_a), (depth_b, ix_b, binding_b)| {
-            depth_b
-                .cmp(depth_a)
-                .then_with(|| {
-                    let meta_a = binding_a.metadata().unwrap_or(KeyBindingMetaIndex::DEFAULT);
-                    let meta_b = binding_b.metadata().unwrap_or(KeyBindingMetaIndex::DEFAULT);
-                    meta_a.cmp(&meta_b)
-                })
-                .then(ix_b.cmp(ix_a))
+        // Sort by precedence: meta ASC, then index DESC.
+        matched_bindings.sort_by(|(ix_a, binding_a), (ix_b, binding_b)| {
+            let meta_a = binding_a.metadata().unwrap_or(KeyBindingMetaIndex::DEFAULT);
+            let meta_b = binding_b.metadata().unwrap_or(KeyBindingMetaIndex::DEFAULT);
+            meta_a.cmp(&meta_b).then(ix_b.cmp(ix_a))
         });
 
         let bindings: SmallVec<[_; 1]> = matched_bindings
             .into_iter()
-            .map(|(_, _, binding)| binding.clone())
+            .map(|(_, binding)| binding.clone())
             .collect();
 
-        // Determine if there are pending matches
-        let has_pending = !pending_bindings.is_empty();
+        // Determine if there are pending matches that are not disabled.
+        let has_pending = pending_bindings
+            .iter()
+            .any(|b| !disabled_keystrokes.contains(b.keystrokes()));
 
         (bindings, has_pending)
-    }
-
-    /// Check if the given binding is enabled, given a certain key context stack.
-    /// Returns the deepest depth at which the binding matches, or None if it doesn't match.
-    fn binding_enabled(&self, binding: &KeyBinding, contexts: &[KeyContext]) -> Option<usize> {
-        if let Some(predicate) = binding.predicate() {
-            predicate.depth_of(contexts)
-        } else {
-            // Bindings with no context predicate are enabled at the deepest level
-            Some(contexts.len())
-        }
     }
 
     /// Get all bindings for a specific action identifier.
@@ -197,21 +155,12 @@ impl Keymap {
 mod tests {
     use super::*;
     use crate::binding::ActionId;
-    use crate::context::KeyBindingContextPredicate;
     use crate::keystroke::{Keystroke, parse_keystroke_sequence};
-    use std::sync::Arc;
 
-    fn binding(
-        sequence: &str,
-        action: Option<&str>,
-        predicate: Option<&str>,
-    ) -> KeyBinding {
+    fn binding(sequence: &str, action: Option<&str>) -> KeyBinding {
         let keystrokes = parse_keystroke_sequence(sequence).unwrap();
-        let predicate = predicate.map(|expr| {
-            Arc::new(KeyBindingContextPredicate::parse(expr).unwrap())
-        });
         let action_id = action.map(ActionId::from);
-        KeyBinding::new(keystrokes, action_id, predicate)
+        KeyBinding::new(keystrokes, action_id)
     }
 
     #[test]
@@ -224,7 +173,7 @@ mod tests {
     #[test]
     fn test_add_bindings() {
         let mut keymap = Keymap::new();
-        let binding = binding("cmd-s", Some("ActionAlpha"), None);
+        let binding = binding("cmd-s", Some("ActionAlpha"));
 
         keymap.add_bindings(vec![binding]);
         assert_eq!(keymap.bindings().count(), 1);
@@ -232,99 +181,65 @@ mod tests {
     }
 
     #[test]
-    fn test_binding_enabled() {
-        let binding_global = binding("cmd-s", Some("ActionAlpha"), None);
-
-        let binding_editor = binding("cmd-s", Some("ActionBeta"), Some("Editor"));
-
-        let keymap = Keymap::new();
-        let empty_ctx: Vec<KeyContext> = vec![];
-        let editor_ctx = vec![KeyContext::parse("Editor").unwrap()];
-
-        // Global binding enabled everywhere
-        assert_eq!(keymap.binding_enabled(&binding_global, &empty_ctx), Some(0));
-        assert_eq!(
-            keymap.binding_enabled(&binding_global, &editor_ctx),
-            Some(1)
-        );
-
-        // Editor binding only enabled in Editor context
-        assert_eq!(keymap.binding_enabled(&binding_editor, &empty_ctx), None);
-        assert_eq!(
-            keymap.binding_enabled(&binding_editor, &editor_ctx),
-            Some(1)
-        );
-    }
-
-    #[test]
-    fn test_depth_precedence() {
+    fn test_order_precedence() {
         let bindings = vec![
-            binding("cmd-s", Some("ActionAlpha"), Some("Workspace")),
-            binding("cmd-s", Some("ActionBeta"), Some("Editor")),
+            binding("cmd-s", Some("ActionAlpha")),
+            binding("cmd-s", Some("ActionBeta")),
         ];
 
         let keymap = Keymap::with_bindings(bindings);
-        let context_stack = vec![
-            KeyContext::parse("Workspace").unwrap(),
-            KeyContext::parse("Editor").unwrap(),
-        ];
 
-        let (result, pending) =
-            keymap.bindings_for_input(&[Keystroke::parse("cmd-s").unwrap()], &context_stack);
+        let (result, pending) = keymap.bindings_for_input(&[Keystroke::parse("cmd-s").unwrap()]);
 
         assert!(!pending);
         assert_eq!(result.len(), 2);
-        // Editor binding should come first (deeper context)
+        // Later binding ("Beta") should have higher precedence.
         assert_eq!(result[0].action_id().unwrap().as_str(), "ActionBeta");
         assert_eq!(result[1].action_id().unwrap().as_str(), "ActionAlpha");
     }
 
     #[test]
     fn test_no_action_disables_binding() {
+        // The `None` binding has higher precedence (added later)
         let bindings = vec![
-            binding("cmd-s", Some("ActionAlpha"), Some("Editor")),
-            binding("cmd-s", None, Some("Editor && mode == full")),
+            binding("cmd-s", Some("ActionAlpha")),
+            binding("cmd-s", None),
         ];
 
-        let mut keymap = Keymap::new();
-        keymap.add_bindings(bindings);
+        let keymap = Keymap::with_bindings(bindings);
 
-        // In normal editor, binding is active
-        let normal_ctx = vec![KeyContext::parse("Editor").unwrap()];
-        let (result, _) =
-            keymap.bindings_for_input(&[Keystroke::parse("cmd-s").unwrap()], &normal_ctx);
+        // The "None" binding should prevent the "ActionAlpha" binding from matching.
+        let (result, _) = keymap.bindings_for_input(&[Keystroke::parse("cmd-s").unwrap()]);
+        assert_eq!(result.len(), 0);
+
+        // Test the other way around: if the disabling binding has lower precedence
+        let bindings_reversed = vec![
+            binding("cmd-s", None),
+            binding("cmd-s", Some("ActionAlpha")),
+        ];
+
+        let keymap_reversed = Keymap::with_bindings(bindings_reversed);
+        let (result, _) = keymap_reversed.bindings_for_input(&[Keystroke::parse("cmd-s").unwrap()]);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].action_id().unwrap().as_str(), "ActionAlpha");
-
-        // In full mode editor, binding is disabled
-        let mut full_ctx = KeyContext::parse("Editor").unwrap();
-        full_ctx.set("mode", "full");
-        let (result, _) =
-            keymap.bindings_for_input(&[Keystroke::parse("cmd-s").unwrap()], &[full_ctx]);
-        assert_eq!(result.len(), 0);
     }
 
     #[test]
     fn test_multi_keystroke_pending() {
-        let bindings = vec![binding("cmd-k cmd-t", Some("ActionAlpha"), None)];
+        let bindings = vec![binding("cmd-k cmd-t", Some("ActionAlpha"))];
 
         let keymap = Keymap::with_bindings(bindings);
-        let empty_ctx: Vec<KeyContext> = vec![];
 
         // First keystroke: pending
-        let (result, pending) =
-            keymap.bindings_for_input(&[Keystroke::parse("cmd-k").unwrap()], &empty_ctx);
+        let (result, pending) = keymap.bindings_for_input(&[Keystroke::parse("cmd-k").unwrap()]);
         assert!(pending);
         assert_eq!(result.len(), 0);
 
         // Complete sequence: match
-        let (result, pending) = keymap.bindings_for_input(
-            &[
-                Keystroke::parse("cmd-k").unwrap(),
-                Keystroke::parse("cmd-t").unwrap(),
-            ],
-            &empty_ctx,
-        );
+        let (result, pending) = keymap.bindings_for_input(&[
+            Keystroke::parse("cmd-k").unwrap(),
+            Keystroke::parse("cmd-t").unwrap(),
+        ]);
         assert!(!pending);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].action_id().unwrap().as_str(), "ActionAlpha");
@@ -332,17 +247,15 @@ mod tests {
 
     #[test]
     fn test_source_precedence() {
-        let mut binding_default = binding("cmd-s", Some("ActionAlpha"), None);
+        let mut binding_default = binding("cmd-s", Some("ActionAlpha"));
         binding_default.set_meta(KeyBindingMetaIndex::DEFAULT);
 
-        let mut binding_user = binding("cmd-s", Some("ActionBeta"), None);
+        let mut binding_user = binding("cmd-s", Some("ActionBeta"));
         binding_user.set_meta(KeyBindingMetaIndex::USER);
 
         let keymap = Keymap::with_bindings(vec![binding_default, binding_user]);
-        let empty_ctx: Vec<KeyContext> = vec![];
 
-        let (result, _) =
-            keymap.bindings_for_input(&[Keystroke::parse("cmd-s").unwrap()], &empty_ctx);
+        let (result, _) = keymap.bindings_for_input(&[Keystroke::parse("cmd-s").unwrap()]);
 
         assert_eq!(result.len(), 2);
         // User binding should come first
@@ -353,9 +266,9 @@ mod tests {
     #[test]
     fn test_bindings_for_action() {
         let bindings = vec![
-            binding("cmd-s", Some("ActionAlpha"), None),
-            binding("ctrl-s", Some("ActionAlpha"), None),
-            binding("cmd-o", Some("ActionBeta"), None),
+            binding("cmd-s", Some("ActionAlpha")),
+            binding("ctrl-s", Some("ActionAlpha")),
+            binding("cmd-o", Some("ActionBeta")),
         ];
 
         let keymap = Keymap::with_bindings(bindings);

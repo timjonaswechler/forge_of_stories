@@ -9,8 +9,8 @@ use anyhow::Result;
 use bevy::prelude::*;
 use bevy_enhanced_input::prelude::*;
 use keymap::{
-    ActionDescriptor, ActionId, BindingDescriptor, BindingInputDescriptor, ContextDescriptor,
-    ContextId, KeyBindingMetaIndex, KeymapSpec, KeymapStore,
+    ActionDescriptor, ActionId, BindingDescriptor, BindingInputDescriptor, KeyBindingMetaIndex,
+    KeymapSpec, KeymapStore,
     enhanced::{ConversionError, binding_descriptor_to_binding},
     parse_keystroke_sequence,
 };
@@ -308,8 +308,6 @@ fn default_keymap_spec() -> KeymapSpec {
     let bindings = vec![
         BindingDescriptor {
             action_id: Some(ActionId::from("ui::toggle_menu")),
-            context_id: Some(ContextId::from("global")),
-            predicate: None,
             meta: Some(KeyBindingMetaIndex::DEFAULT),
             modifiers: Vec::new(),
             conditions: Vec::new(),
@@ -320,8 +318,6 @@ fn default_keymap_spec() -> KeymapSpec {
         },
         BindingDescriptor {
             action_id: Some(ActionId::from("ui::toggle_menu")),
-            context_id: Some(ContextId::from("global")),
-            predicate: None,
             meta: Some(KeyBindingMetaIndex::DEFAULT),
             modifiers: Vec::new(),
             conditions: Vec::new(),
@@ -334,8 +330,6 @@ fn default_keymap_spec() -> KeymapSpec {
         // Camera switching
         BindingDescriptor {
             action_id: Some(ActionId::from("camera::switch_to_pan_orbit")),
-            context_id: Some(ContextId::from("global")),
-            predicate: None,
             meta: Some(KeyBindingMetaIndex::DEFAULT),
             modifiers: Vec::new(),
             conditions: Vec::new(),
@@ -346,8 +340,6 @@ fn default_keymap_spec() -> KeymapSpec {
         },
         BindingDescriptor {
             action_id: Some(ActionId::from("camera::switch_to_first_person")),
-            context_id: Some(ContextId::from("global")),
-            predicate: None,
             meta: Some(KeyBindingMetaIndex::DEFAULT),
             modifiers: Vec::new(),
             conditions: Vec::new(),
@@ -358,11 +350,7 @@ fn default_keymap_spec() -> KeymapSpec {
         },
     ];
 
-    KeymapSpec {
-        actions,
-        contexts,
-        bindings,
-    }
+    KeymapSpec { actions, bindings }
 }
 
 pub use KeymapInputPlugin as InputPlugin;

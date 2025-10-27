@@ -3,7 +3,6 @@
 //! This module defines the core [`KeyBinding`] type that connects keystrokes to
 //! logical action identifiers with optional context predicates.
 
-use crate::context::KeyBindingContextPredicate;
 use crate::keystroke::Keystroke;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
@@ -63,60 +62,6 @@ impl<'de> Deserialize<'de> for ActionId {
     }
 }
 
-/// Identifier used to refer to an input context.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct ContextId(Arc<str>);
-
-impl ContextId {
-    /// Create a new context identifier.
-    pub fn new(id: impl Into<String>) -> Self {
-        let id: String = id.into();
-        Self(Arc::<str>::from(id.into_boxed_str()))
-    }
-
-    /// Borrow the identifier as a string slice.
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl From<&str> for ContextId {
-    fn from(value: &str) -> Self {
-        Self(Arc::<str>::from(value))
-    }
-}
-
-impl From<String> for ContextId {
-    fn from(value: String) -> Self {
-        Self(Arc::<str>::from(value.into_boxed_str()))
-    }
-}
-
-impl fmt::Display for ContextId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl Serialize for ContextId {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(&self.0)
-    }
-}
-
-impl<'de> Deserialize<'de> for ContextId {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let value = String::deserialize(deserializer)?;
-        Ok(ContextId::new(value))
-    }
-}
-
 /// Metadata index for tracking the source of a key binding.
 ///
 /// This is used to implement precedence rules where user bindings
@@ -148,23 +93,16 @@ pub struct KeyBinding {
     pub keystrokes: Vec<Keystroke>,
     /// Identifier of the action to execute, or `None` when this binding disables the sequence.
     pub action_id: Option<ActionId>,
-    /// Optional context predicate that must match for this binding to be active.
-    pub context_predicate: Option<Arc<KeyBindingContextPredicate>>,
     /// Metadata about the source of this binding (for precedence).
     pub meta: Option<KeyBindingMetaIndex>,
 }
 
 impl KeyBinding {
     /// Create a new key binding.
-    pub fn new(
-        keystrokes: Vec<Keystroke>,
-        action_id: Option<ActionId>,
-        context_predicate: Option<Arc<KeyBindingContextPredicate>>,
-    ) -> Self {
+    pub fn new(keystrokes: Vec<Keystroke>, action_id: Option<ActionId>) -> Self {
         Self {
             keystrokes,
             action_id,
-            context_predicate,
             meta: None,
         }
     }
@@ -215,11 +153,6 @@ impl KeyBinding {
         self.action_id.as_ref()
     }
 
-    /// Get the context predicate for this binding.
-    pub fn predicate(&self) -> Option<&KeyBindingContextPredicate> {
-        self.context_predicate.as_ref().map(|p| p.as_ref())
-    }
-
     /// Get the metadata for this binding.
     pub fn metadata(&self) -> Option<KeyBindingMetaIndex> {
         self.meta
@@ -231,7 +164,6 @@ impl fmt::Debug for KeyBinding {
         f.debug_struct("KeyBinding")
             .field("keystrokes", &self.keystrokes)
             .field("action_id", &self.action_id)
-            .field("context_predicate", &self.context_predicate)
             .field("meta", &self.meta)
             .finish()
     }
@@ -254,7 +186,7 @@ mod tests {
     #[test]
     fn key_binding_creation() {
         let keystrokes = vec![Keystroke::parse("cmd-s").unwrap()];
-        let binding = KeyBinding::new(keystrokes, Some(ActionId::from("Save")), None);
+        let binding = KeyBinding::new(keystrokes, Some(ActionId::from("Save")));
 
         assert_eq!(binding.keystrokes.len(), 1);
         assert_eq!(binding.action_id().unwrap().as_str(), "Save");
@@ -264,7 +196,7 @@ mod tests {
     #[test]
     fn disabled_binding() {
         let keystrokes = vec![Keystroke::parse("cmd-s").unwrap()];
-        let binding = KeyBinding::new(keystrokes, None, None);
+        let binding = KeyBinding::new(keystrokes, None);
 
         assert!(binding.is_disabled());
     }
@@ -272,7 +204,7 @@ mod tests {
     #[test]
     fn match_single_keystroke() {
         let keystrokes = vec![Keystroke::parse("cmd-s").unwrap()];
-        let binding = KeyBinding::new(keystrokes, Some(ActionId::from("Save")), None);
+        let binding = KeyBinding::new(keystrokes, Some(ActionId::from("Save")));
 
         let typed = vec![Keystroke::parse("cmd-s").unwrap()];
         assert_eq!(binding.match_keystrokes(&typed), Some(false));
@@ -287,7 +219,7 @@ mod tests {
             Keystroke::parse("cmd-k").unwrap(),
             Keystroke::parse("cmd-t").unwrap(),
         ];
-        let binding = KeyBinding::new(keystrokes, Some(ActionId::from("OpenThing")), None);
+        let binding = KeyBinding::new(keystrokes, Some(ActionId::from("OpenThing")));
 
         let typed = vec![Keystroke::parse("cmd-k").unwrap()];
         assert_eq!(binding.match_keystrokes(&typed), Some(true));

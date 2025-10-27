@@ -6,9 +6,8 @@ persisting bindings that can be fed into input runtimes such as
 
 ## Features
 
-- **Context-driven resolution** – bindings can be scoped to rich predicates
 - **Chord support** – parse multi-step sequences such as `cmd-k cmd-t`
-- **Deterministic precedence** – depth → source → order
+- **Deterministic precedence** – source → order
 - **JSON persistence** – defaults in code, user overrides on disk
 - **Bridging helpers** – convert keymap keystrokes into enhanced-input bindings
 
@@ -44,21 +43,6 @@ Supported modifiers:
 - `shift`
 - `cmd` / `command` / `super`
 
-### Contexts & predicates
-
-Contexts capture the active UI state. Predicates decide when bindings apply.
-
-```rust
-use keymap::{KeyContext, KeyBindingContextPredicate};
-
-let mut ctx = KeyContext::default();
-ctx.add("Editor");
-ctx.set("language", "rust");
-
-let pred = KeyBindingContextPredicate::parse("Editor && language == rust").unwrap();
-assert!(pred.eval(&[ctx]));
-```
-
 ### Bindings
 
 Each binding couples physical input with meta-information. Use
@@ -67,17 +51,13 @@ disables the sequence.
 
 ```rust
 use keymap::{
-    ActionId, BindingDescriptor, BindingInputDescriptor, KeyBindingContextPredicate,
+    ActionId, BindingDescriptor, BindingInputDescriptor,
     KeyBindingMetaIndex, parse_keystroke_sequence,
 };
 use std::sync::Arc;
 
-let predicate = Some(Arc::new(KeyBindingContextPredicate::parse("Editor").unwrap()));
-
 let binding = BindingDescriptor {
     action_id: Some(ActionId::from("file::Save")),
-    context_id: None,
-    predicate: predicate.as_ref().map(|p| p.to_string()),
     meta: Some(KeyBindingMetaIndex::DEFAULT),
     modifiers: Vec::new(),
     conditions: Vec::new(),
@@ -96,15 +76,13 @@ exposes both the merged descriptor set and a legacy keymap for keyboard lookup.
 ```rust
 use keymap::{
     ActionId, BindingDescriptor, BindingInputDescriptor, KeyBindingMetaIndex, KeymapStore,
-    parse_keystroke_sequence,
+    parse_keystroke_sequence, Keystroke,
 };
 
 let store = KeymapStore::builder()
     .with_user_keymap_path("~/.config/my_app/keymap.json")
     .add_default_binding(BindingDescriptor {
         action_id: Some(ActionId::from("file::Save")),
-        context_id: None,
-        predicate: None,
         meta: Some(KeyBindingMetaIndex::DEFAULT),
         modifiers: Vec::new(),
         conditions: Vec::new(),
@@ -122,7 +100,7 @@ store.load_user_bindings().unwrap();
 // Consume merged view
 store.with_keymap(|keymap| {
     let (bindings, pending) =
-        keymap.bindings_for_input(&[Keystroke::parse("cmd-s").unwrap()], &[]);
+        keymap.bindings_for_input(&[Keystroke::parse("cmd-s").unwrap()]);
     assert!(!pending);
     assert!(!bindings.is_empty());
 });
@@ -135,7 +113,6 @@ Serialization format mirrors the descriptor layout:
   "schema_version": "0.1.0",
   "spec": {
     "actions": [],
-    "contexts": [],
     "bindings": [
     {
       "action_id": "file::Save",
@@ -164,8 +141,6 @@ use keymap::{enhanced, BindingDescriptor, BindingInputDescriptor, ActionId, pars
 
 let descriptor = BindingDescriptor {
     action_id: Some(ActionId::from("file::Open")),
-    context_id: None,
-    predicate: None,
     meta: None,
     modifiers: Vec::new(),
     conditions: Vec::new(),
@@ -209,8 +184,6 @@ fn create_store() -> KeymapStore {
         .with_user_keymap_path("~/.config/my_game/keymap.json")
         .add_default_binding(BindingDescriptor {
             action_id: Some(ActionId::from("player::jump")),
-            context_id: None,
-            predicate: None,
             meta: Some(KeyBindingMetaIndex::DEFAULT),
             modifiers: Vec::new(),
             conditions: Vec::new(),
@@ -221,8 +194,6 @@ fn create_store() -> KeymapStore {
         })
         .add_default_binding(BindingDescriptor {
             action_id: Some(ActionId::from("player::move")),
-            context_id: None,
-            predicate: None,
             meta: Some(KeyBindingMetaIndex::DEFAULT),
             modifiers: Vec::new(),
             conditions: Vec::new(),
@@ -311,16 +282,14 @@ This architecture provides:
 
 When evaluating input, bindings are ordered by:
 
-1. **Context depth** – predicates matching deeper in the context stack win
-2. **Source priority** – `USER` > `VIM` > `BASE` > `DEFAULT`
-3. **Insertion order** – last added wins inside the same bucket
+1. **Source priority** – `USER` > `VIM` > `BASE` > `DEFAULT`
+2. **Insertion order** – last added wins inside the same bucket
 
 ## Module overview
 
 ```
 keymap/
 ├── binding.rs   # ActionId & KeyBinding definitions
-├── context.rs   # Context & predicate parsing
 ├── keystroke.rs # Keystroke parsing utilities
 ├── keymap.rs    # Matching engine & precedence logic
 ├── store.rs     # Persistence (defaults + overrides)

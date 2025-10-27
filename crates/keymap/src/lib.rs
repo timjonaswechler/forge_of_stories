@@ -9,37 +9,31 @@
 //! # Example
 //!
 //! ```ignore
-//! use keymap::{ActionId, KeyBinding, KeyContext, parse_keystroke_sequence};
+//! use keymap::{ActionId, KeyBinding, keymap::Keymap, parse_keystroke_sequence};
 //!
 //! let binding = KeyBinding::new(
 //!     parse_keystroke_sequence("cmd-s").unwrap(),
 //!     Some(ActionId::from("file::Save")),
-//!     None, // no context restriction
 //! );
 //!
-//! let mut context = KeyContext::default();
-//! context.add("Editor");
+//! let keymap = Keymap::with_bindings(vec![binding]);
 //! ```
 
 pub mod binding;
-pub mod context;
+pub mod enhanced;
 pub mod keymap;
 pub mod keystroke;
+pub mod spec;
 pub mod store;
 
-pub mod enhanced;
-pub mod spec;
-
 // Re-export main types
-pub use binding::{ActionId, ContextId, KeyBinding, KeyBindingMetaIndex};
-pub use context::{ContextEntry, KeyBindingContextPredicate, KeyContext};
+pub use binding::{ActionId, KeyBinding, KeyBindingMetaIndex};
 pub use keymap::{Keymap, KeymapVersion};
 pub use keystroke::{Keystroke, Modifiers, parse_keystroke_sequence};
-pub use store::{KeymapFile, KeymapStore, KeymapStoreBuilder};
 pub use spec::{
-    ActionDescriptor, BindingDescriptor, BindingInputDescriptor, ContextDescriptor, KeymapSpec,
-    RegisteredComponent,
+    ActionDescriptor, BindingDescriptor, BindingInputDescriptor, KeymapSpec, RegisteredComponent,
 };
+pub use store::{KeymapFile, KeymapStore, KeymapStoreBuilder};
 
 /// Library version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -56,31 +50,9 @@ mod tests {
         assert!(keystroke.modifiers.cmd);
 
         // Create a binding
-        let binding = KeyBinding::new(vec![keystroke], Some(ActionId::from("Save")), None);
+        let binding = KeyBinding::new(vec![keystroke], Some(ActionId::from("Save")));
         assert_eq!(binding.keystrokes.len(), 1);
         assert_eq!(binding.action_id().unwrap().as_str(), "Save");
-
-        // Create a context
-        let mut context = KeyContext::default();
-        context.add("Editor");
-        assert!(context.contains("Editor"));
-    }
-
-    #[test]
-    fn test_context_predicate() {
-        let predicate = KeyBindingContextPredicate::parse("Editor && mode == full").unwrap();
-
-        let mut context = KeyContext::default();
-        context.add("Editor");
-        context.set("mode", "full");
-
-        assert!(predicate.eval(&[context.clone()]));
-
-        let mut wrong_context = KeyContext::default();
-        wrong_context.add("Editor");
-        wrong_context.set("mode", "minimal");
-
-        assert!(!predicate.eval(&[wrong_context]));
     }
 
     #[test]
