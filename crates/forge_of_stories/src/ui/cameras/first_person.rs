@@ -1,11 +1,10 @@
-use super::{ActiveInGameCamera, CameraDefaults, CameraTransitionState, FirstPersonCamera};
-use crate::{GameState, client::LocalPlayer, utils::cleanup};
+use super::{CameraMode, CameraTransitionState, InGameCameraMode, SceneCamera};
+use crate::client::LocalPlayer;
 use bevy::{
     input::mouse::MouseMotion,
     math::EulerRot,
     prelude::{MessageReader, *},
 };
-use bevy_panorbit_camera::PanOrbitCamera;
 use game_server::components::Position;
 use std::f32::consts::{FRAC_PI_2, TAU};
 
@@ -14,16 +13,16 @@ const PITCH_LIMIT: f32 = FRAC_PI_2 - 0.01;
 
 /// Component describing how the first-person camera should follow the local player.
 #[derive(Component)]
-pub(super) struct FollowLocalPlayer {
-    offset: Vec3,
+pub struct FollowLocalPlayer {
+    pub offset: Vec3,
 }
 
 /// Stores current yaw/pitch for the first-person camera.
 #[derive(Component)]
-pub(super) struct FirstPersonView {
-    yaw: f32,
-    pitch: f32,
-    sensitivity: f32,
+pub struct FirstPersonView {
+    pub yaw: f32,
+    pub pitch: f32,
+    pub sensitivity: f32,
 }
 
 impl Default for FirstPersonView {
@@ -36,48 +35,12 @@ impl Default for FirstPersonView {
     }
 }
 
-/// Plugin that spawns and updates the first-person camera.
-pub struct FirstPersonCameraPlugin;
-
-impl Plugin for FirstPersonCameraPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(GameState::InGame), spawn_first_person_camera)
-            .add_systems(
-                Update,
-                (
-                    update_first_person_view_from_input,
-                    apply_first_person_orientation,
-                    follow_local_player,
-                    sync_camera_activation,
-                )
-                    .run_if(in_state(GameState::InGame)),
-            )
-            .add_systems(OnExit(GameState::InGame), cleanup::<FirstPersonCamera>);
-    }
-}
-
-fn spawn_first_person_camera(mut commands: Commands, defaults: Res<CameraDefaults>) {
-    commands.spawn((
-        Camera3d::default(),
-        Transform::default(),
-        FirstPersonCamera,
-        FollowLocalPlayer {
-            offset: Vec3::new(0.0, defaults.first_person.height_offset, 0.0),
-        },
-        FirstPersonView {
-            sensitivity: defaults.first_person.mouse_sensitivity,
-            ..Default::default()
-        },
-        Name::new("First-Person Camera"),
-    ));
-}
-
-fn follow_local_player(
+pub(super) fn follow_local_player(
     local_player: Query<
         (Option<&Transform>, Option<&Position>),
-        (With<LocalPlayer>, Without<FirstPersonCamera>),
+        (With<LocalPlayer>, Without<SceneCamera>),
     >,
-    mut camera_query: Query<(&FollowLocalPlayer, &mut Transform), With<FirstPersonCamera>>,
+    mut camera_query: Query<(&FollowLocalPlayer, &mut Transform), With<SceneCamera>>,
     transition_state: Res<CameraTransitionState>,
 ) {
     if transition_state.active {
@@ -99,13 +62,19 @@ fn follow_local_player(
     camera_transform.translation = base_translation + follow.offset;
 }
 
-fn update_first_person_view_from_input(
+pub(super) fn update_first_person_view_from_input(
     mut mouse_motion: MessageReader<MouseMotion>,
-    active_camera: Res<ActiveInGameCamera>,
-    mut view_query: Query<&mut FirstPersonView, With<FirstPersonCamera>>,
+    camera_mode: Res<CameraMode>,
+    mut view_query: Query<&mut FirstPersonView, With<SceneCamera>>,
     transition_state: Res<CameraTransitionState>,
 ) {
-    if transition_state.active || *active_camera != ActiveInGameCamera::FirstPerson {
+    // Nur aktiv im FirstPerson-Mode
+    let is_active = matches!(
+        *camera_mode,
+        CameraMode::InGame(InGameCameraMode::FirstPerson)
+    );
+
+    if transition_state.active || !is_active {
         // Drain events so they don't accumulate when camera is inactive.
         for _ in mouse_motion.read() {}
         return;
@@ -124,8 +93,8 @@ fn update_first_person_view_from_input(
     }
 }
 
-fn apply_first_person_orientation(
-    mut query: Query<(&FirstPersonView, &mut Transform), With<FirstPersonCamera>>,
+pub(super) fn apply_first_person_orientation(
+    mut query: Query<(&FirstPersonView, &mut Transform), With<SceneCamera>>,
     transition_state: Res<CameraTransitionState>,
 ) {
     if transition_state.active {
@@ -139,27 +108,6 @@ fn apply_first_person_orientation(
     let yaw = Quat::from_rotation_y(view.yaw);
     let pitch = Quat::from_rotation_x(view.pitch);
     transform.rotation = yaw * pitch;
-}
-
-fn sync_camera_activation(
-    active_camera: Res<ActiveInGameCamera>,
-    mut first_person: Query<&mut Camera, With<FirstPersonCamera>>,
-    mut pan_orbit: Query<&mut Camera, (With<PanOrbitCamera>, Without<FirstPersonCamera>)>,
-    transition_state: Res<CameraTransitionState>,
-) {
-    if transition_state.active {
-        return;
-    }
-
-    let activate_first_person = *active_camera == ActiveInGameCamera::FirstPerson;
-    if let Ok(mut camera) = first_person.single_mut() {
-        camera.is_active = activate_first_person;
-    }
-
-    let activate_pan_orbit = *active_camera == ActiveInGameCamera::PanOrbit;
-    for mut camera in &mut pan_orbit {
-        camera.is_active = activate_pan_orbit;
-    }
 }
 
 pub(super) fn first_person_transform_from_view(

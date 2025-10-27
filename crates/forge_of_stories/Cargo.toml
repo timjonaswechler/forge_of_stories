@@ -21,5 +21,4 @@ uuid.workspace = true
 anyhow.workspace = true
 bevy_enhanced_input = "0.19.1"
 serde.workspace = true
-bevy_panorbit_camera = "0.31.0"
 bevy_tweening = "0.14"

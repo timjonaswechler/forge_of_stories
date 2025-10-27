@@ -1,10 +1,14 @@
+// DEPRECATED: Dieses ganze Modul ist veraltet und muss neu geschrieben werden
+// für das Single-Camera-System mit CameraMode
+
 use super::{
-    ActiveInGameCamera, CameraDefaults, CameraTransitionState, FirstPersonCamera,
-    ToggleCameraEvent,
+    CameraDefaults, CameraMode, CameraModeChangeEvent, CameraTransitionState, InGameCameraMode,
+    SceneCamera,
     first_person::{
         FirstPersonView, FollowLocalPlayer, first_person_transform_from_view,
         set_view_from_rotation,
     },
+    pan_orbit::PanOrbitCamera,
     set_cursor_state,
 };
 use crate::{GameState, client::LocalPlayer};
@@ -13,25 +17,11 @@ use bevy::{
     prelude::*,
     window::{CursorOptions, PrimaryWindow},
 };
-use bevy_panorbit_camera::PanOrbitCamera;
 use bevy_tweening::{AnimCompletedEvent, Tween, TweenAnim, TweeningPlugin, lens::Lens};
 use game_server::components::Position;
 use std::time::Duration;
 
 const TRANSITION_DURATION: f32 = 0.6;
-
-pub struct CameraTransitionPlugin;
-
-impl Plugin for CameraTransitionPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_plugins(TweeningPlugin).add_systems(
-            Update,
-            (start_transitions, finish_transitions)
-                .chain()
-                .run_if(in_state(GameState::InGame)),
-        );
-    }
-}
 
 #[derive(Clone)]
 struct TransformTweenLens {
@@ -47,12 +37,14 @@ impl Lens<Transform> for TransformTweenLens {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Component, Clone)]
 struct CameraTransition {
-    to: ActiveInGameCamera,
+    to: CameraMode,
     additional: TransitionAdditional,
 }
 
+#[allow(dead_code)]
 #[derive(Clone)]
 enum TransitionAdditional {
     ToPanOrbit {
@@ -65,11 +57,13 @@ enum TransitionAdditional {
     },
 }
 
+// TODO: Dieses System muss komplett neu geschrieben werden für Single-Camera
+#[allow(dead_code)]
 fn start_transitions(
     mut commands: Commands,
-    mut toggle_events: MessageReader<ToggleCameraEvent>,
+    mut toggle_events: MessageReader<CameraModeChangeEvent>,
     mut transition_state: ResMut<CameraTransitionState>,
-    active_camera: Res<ActiveInGameCamera>,
+    camera_mode: Res<CameraMode>,
     defaults: Res<CameraDefaults>,
     mut camera_queries: ParamSet<(
         Query<
@@ -79,13 +73,10 @@ fn start_transitions(
                 &FollowLocalPlayer,
                 &mut FirstPersonView,
             ),
-            With<FirstPersonCamera>,
+            With<SceneCamera>,
         >,
         Query<(Entity, &mut Transform, &mut PanOrbitCamera), With<PanOrbitCamera>>,
-        Query<
-            (Option<&Transform>, Option<&Position>),
-            (With<LocalPlayer>, Without<FirstPersonCamera>),
-        >,
+        Query<(Option<&Transform>, Option<&Position>), (With<LocalPlayer>, Without<SceneCamera>)>,
     )>,
     mut window_query: Query<(&mut Window, &mut CursorOptions), With<PrimaryWindow>>,
 ) {
@@ -106,8 +97,8 @@ fn start_transitions(
         local_player_translation(&query).unwrap_or(Vec3::ZERO)
     };
 
-    match *active_camera {
-        ActiveInGameCamera::FirstPerson => {
+    match &*camera_mode {
+        CameraMode::InGame(InGameCameraMode::FirstPerson) => {
             // Hole aktuelle FP-Transform
             let (fp_entity, fp_transform) = {
                 let mut query = camera_queries.p0();
@@ -154,7 +145,7 @@ fn start_transitions(
 
             commands.entity(fp_entity).insert((
                 CameraTransition {
-                    to: ActiveInGameCamera::PanOrbit,
+                    to: CameraMode::InGame(InGameCameraMode::PanOrbit),
                     additional: TransitionAdditional::ToPanOrbit {
                         pan_orbit_entity: po_entity,
                         previous_enabled,
@@ -163,7 +154,7 @@ fn start_transitions(
                 TweenAnim::new(tween),
             ));
         }
-        ActiveInGameCamera::PanOrbit => {
+        CameraMode::InGame(InGameCameraMode::PanOrbit) => {
             // Hole aktuelle PanOrbit-Transform
             let (po_entity, po_transform, previous_enabled) = {
                 let mut query = camera_queries.p1();
@@ -212,7 +203,7 @@ fn start_transitions(
 
             commands.entity(po_entity).insert((
                 CameraTransition {
-                    to: ActiveInGameCamera::FirstPerson,
+                    to: CameraMode::InGame(InGameCameraMode::FirstPerson),
                     additional: TransitionAdditional::ToFirstPerson {
                         first_person_entity: fp_entity,
                         previous_enabled,
@@ -221,13 +212,18 @@ fn start_transitions(
                 TweenAnim::new(tween),
             ));
         }
+        // Transitions sind nur für InGame-Modi relevant
+        CameraMode::Splashscreen | CameraMode::MainMenu => {
+            // Keine Transitions
+        }
     }
 }
 
+#[allow(dead_code)]
 fn finish_transitions(
     mut commands: Commands,
     mut completed: MessageReader<AnimCompletedEvent>,
-    mut active_camera: ResMut<ActiveInGameCamera>,
+    mut camera_mode: ResMut<CameraMode>,
     mut transition_state: ResMut<CameraTransitionState>,
     transitions: Query<&CameraTransition>,
     mut camera_query: Query<&mut Camera>,
@@ -281,8 +277,11 @@ fn finish_transitions(
             }
         }
 
-        let grab = matches!(transition.to, ActiveInGameCamera::FirstPerson);
-        *active_camera = transition.to;
+        let grab = matches!(
+            transition.to,
+            CameraMode::InGame(InGameCameraMode::FirstPerson)
+        );
+        *camera_mode = transition.to;
         set_cursor_state(grab, &mut window_query);
 
         commands.entity(event.anim_entity).remove::<TweenAnim>();
@@ -296,7 +295,7 @@ fn finish_transitions(
 fn local_player_translation(
     query: &Query<
         (Option<&Transform>, Option<&Position>),
-        (With<LocalPlayer>, Without<FirstPersonCamera>),
+        (With<LocalPlayer>, Without<SceneCamera>),
     >,
 ) -> Option<Vec3> {
     let (transform, position) = query.single().ok()?;
