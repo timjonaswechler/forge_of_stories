@@ -8,6 +8,26 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use std::sync::Arc;
 
+/// Metadata index for key binding precedence.
+///
+/// This determines the priority when multiple bindings match the same keystroke.
+/// Lower values have higher precedence (are checked first).
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct KeyBindingMetaIndex(u32);
+
+impl KeyBindingMetaIndex {
+    /// Default bindings (lowest precedence).
+    pub const DEFAULT: Self = Self(100);
+
+    /// User-defined bindings (highest precedence).
+    pub const USER: Self = Self(0);
+
+    /// Create a new metadata index with custom precedence.
+    pub const fn new(precedence: u32) -> Self {
+        Self(precedence)
+    }
+}
+
 /// Identifier used to refer to a logical action.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ActionId(Arc<str>);
@@ -62,30 +82,6 @@ impl<'de> Deserialize<'de> for ActionId {
     }
 }
 
-/// Metadata index for tracking the source of a key binding.
-///
-/// This is used to implement precedence rules where user bindings
-/// take precedence over default bindings.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct KeyBindingMetaIndex(pub u32);
-
-impl KeyBindingMetaIndex {
-    /// User-defined bindings (highest precedence).
-    pub const USER: Self = Self(0);
-    /// Vim mode bindings.
-    pub const VIM: Self = Self(1);
-    /// Base/plugin bindings.
-    pub const BASE: Self = Self(2);
-    /// Default built-in bindings (lowest precedence).
-    pub const DEFAULT: Self = Self(3);
-}
-
-impl Default for KeyBindingMetaIndex {
-    fn default() -> Self {
-        Self::DEFAULT
-    }
-}
-
 /// A key binding that maps keystrokes to an action identifier.
 #[derive(Clone)]
 pub struct KeyBinding {
@@ -93,8 +89,8 @@ pub struct KeyBinding {
     pub keystrokes: Vec<Keystroke>,
     /// Identifier of the action to execute, or `None` when this binding disables the sequence.
     pub action_id: Option<ActionId>,
-    /// Metadata about the source of this binding (for precedence).
-    pub meta: Option<KeyBindingMetaIndex>,
+    /// Metadata for binding precedence.
+    meta: Option<KeyBindingMetaIndex>,
 }
 
 impl KeyBinding {
@@ -105,17 +101,6 @@ impl KeyBinding {
             action_id,
             meta: None,
         }
-    }
-
-    /// Create a key binding with metadata.
-    pub fn with_meta(mut self, meta: KeyBindingMetaIndex) -> Self {
-        self.meta = Some(meta);
-        self
-    }
-
-    /// Set the metadata for this binding.
-    pub fn set_meta(&mut self, meta: KeyBindingMetaIndex) {
-        self.meta = Some(meta);
     }
 
     /// Returns `true` if this binding disables the associated keystroke sequence.
@@ -153,9 +138,14 @@ impl KeyBinding {
         self.action_id.as_ref()
     }
 
-    /// Get the metadata for this binding.
+    /// Get the metadata index for this binding.
     pub fn metadata(&self) -> Option<KeyBindingMetaIndex> {
         self.meta
+    }
+
+    /// Set the metadata index for this binding.
+    pub fn set_meta(&mut self, meta: KeyBindingMetaIndex) {
+        self.meta = Some(meta);
     }
 }
 
@@ -164,7 +154,6 @@ impl fmt::Debug for KeyBinding {
         f.debug_struct("KeyBinding")
             .field("keystrokes", &self.keystrokes)
             .field("action_id", &self.action_id)
-            .field("meta", &self.meta)
             .finish()
     }
 }

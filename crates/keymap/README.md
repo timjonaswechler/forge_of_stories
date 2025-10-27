@@ -1,308 +1,274 @@
 # Keymap
 
-A Zed-inspired keymap store focused on *data*: parsing, merging, and
-persisting bindings that can be fed into input runtimes such as
-[`bevy_enhanced_input`](https://crates.io/crates/bevy_enhanced_input).
+A **decentralized, user-customizable key binding system** for Forge of Stories, designed to integrate seamlessly with [`bevy_enhanced_input`](https://crates.io/crates/bevy_enhanced_input).
 
-## Features
+## Core Principles
 
-- **Chord support** – parse multi-step sequences such as `cmd-k cmd-t`
-- **Deterministic precedence** – source → order
-- **JSON persistence** – defaults in code, user overrides on disk
-- **Bridging helpers** – convert keymap keystrokes into enhanced-input bindings
+1. **Simple API**: Only the keystroke is changeable, not the action itself
+2. **Central Store**: A single `KeymapStore` (Bevy Resource) is the source of truth
+3. **Decentralized Definition**: Each module defines its own default keybindings
+4. **Easy Integration**: Seamless conversion to `bevy_enhanced_input` bindings
 
-## Core Concepts
+## Quick Start
 
-### Action identifiers
-
-Bindings reference logical actions via lightweight IDs. Consumers are free to
-map them to whatever runtime types they need.
+### 1. Add the Plugin
 
 ```rust
-use keymap::ActionId;
+use bevy::prelude::*;
+use keymap::KeymapPlugin;
 
-let save = ActionId::from("file::Save");
-assert_eq!(save.as_str(), "file::Save");
-```
-
-### Keystrokes
-
-Parse user-supplied strings into structured keystrokes.
-
-```rust
-use keymap::{Keystroke, parse_keystroke_sequence};
-
-let single = Keystroke::parse("cmd-s").unwrap();
-let seq = parse_keystroke_sequence("cmd-k cmd-t").unwrap();
-```
-
-Supported modifiers:
-
-- `ctrl` / `control`
-- `alt` / `option`
-- `shift`
-- `cmd` / `command` / `super`
-
-### Bindings
-
-Each binding couples physical input with meta-information. Use
-`BindingDescriptor` to author defaults or overrides; `None` `action_id`
-disables the sequence.
-
-```rust
-use keymap::{
-    ActionId, BindingDescriptor, BindingInputDescriptor,
-    KeyBindingMetaIndex, parse_keystroke_sequence,
-};
-use std::sync::Arc;
-
-let binding = BindingDescriptor {
-    action_id: Some(ActionId::from("file::Save")),
-    meta: Some(KeyBindingMetaIndex::DEFAULT),
-    modifiers: Vec::new(),
-    conditions: Vec::new(),
-    settings: None,
-    input: Some(BindingInputDescriptor::keyboard(
-        parse_keystroke_sequence("cmd-s").unwrap(),
-    )),
-};
-```
-
-## Persistence workflow
-
-`KeymapStore` merges built-in defaults with user overrides stored in JSON and
-exposes both the merged descriptor set and a legacy keymap for keyboard lookup.
-
-```rust
-use keymap::{
-    ActionId, BindingDescriptor, BindingInputDescriptor, KeyBindingMetaIndex, KeymapStore,
-    parse_keystroke_sequence, Keystroke,
-};
-
-let store = KeymapStore::builder()
-    .with_user_keymap_path("~/.config/my_app/keymap.json")
-    .add_default_binding(BindingDescriptor {
-        action_id: Some(ActionId::from("file::Save")),
-        meta: Some(KeyBindingMetaIndex::DEFAULT),
-        modifiers: Vec::new(),
-        conditions: Vec::new(),
-        settings: None,
-        input: Some(BindingInputDescriptor::keyboard(
-            parse_keystroke_sequence("cmd-s").unwrap(),
-        )),
-    })
-    .build()
-    .unwrap();
-
-// Load user overrides (if the file exists)
-store.load_user_bindings().unwrap();
-
-// Consume merged view
-store.with_keymap(|keymap| {
-    let (bindings, pending) =
-        keymap.bindings_for_input(&[Keystroke::parse("cmd-s").unwrap()]);
-    assert!(!pending);
-    assert!(!bindings.is_empty());
-});
-```
-
-Serialization format mirrors the descriptor layout:
-
-```json
-{
-  "schema_version": "0.1.0",
-  "spec": {
-    "actions": [],
-    "bindings": [
-    {
-      "action_id": "file::Save",
-      "meta": 3,
-      "input": {
-        "type": "keyboard",
-        "sequence": [
-          { "modifiers": { "ctrl": false, "alt": false, "shift": false, "cmd": true }, "key": "s" }
-        ]
-      }
-    }
-  ]
+fn main() {
+    App::new()
+        .add_plugins(DefaultPlugins)
+        .add_plugins(KeymapPlugin::default())
+        .add_plugins(YourGamePlugins)
+        .run();
 }
 ```
 
-## Enhanced input bridge
+### 2. Define Your Keybindings
 
-The `enhanced` module converts descriptors into
-`bevy_enhanced_input` bindings. Keyboard and mouse inputs are supported out of
-the box; gamepad helpers fall back to readable errors when a mapping is
-unknown, making it easy to extend behaviour on demand.
+Each module defines its own default keybindings:
 
 ```rust
-use bevy_enhanced_input::binding::Binding;
-use keymap::{enhanced, BindingDescriptor, BindingInputDescriptor, ActionId, parse_keystroke_sequence};
+use bevy::prelude::*;
+use keymap::{ActionBinding, KeymapStore};
 
-let descriptor = BindingDescriptor {
-    action_id: Some(ActionId::from("file::Open")),
-    meta: None,
-    modifiers: Vec::new(),
-    conditions: Vec::new(),
-    settings: None,
-    input: Some(BindingInputDescriptor::keyboard(
-        parse_keystroke_sequence("ctrl-p").unwrap(),
-    )),
-};
+struct PlayerPlugin;
 
-let binding_component: Binding = enhanced::binding_descriptor_to_binding(&descriptor)
-    .unwrap()
-    .expect("descriptor maps to a binding");
+const PLAYER_BINDINGS: &[ActionBinding] = &[
+    ActionBinding {
+        action_id: "player.jump",
+        default_keystroke: "space",
+    },
+    ActionBinding {
+        action_id: "player.sprint",
+        default_keystroke: "shift",
+    },
+];
+
+impl Plugin for PlayerPlugin {
+    fn build(&self, app: &mut App) {
+        // Register defaults with the central store
+        let mut store = app.world_mut().resource_mut::<KeymapStore>();
+        store.register_defaults(PLAYER_BINDINGS);
+        
+        app.add_systems(Startup, setup_player_actions);
+    }
+}
 ```
 
-### Full integration example
-
-This example shows how to integrate the keymap store with `bevy_enhanced_input` to create
-a type-safe, rebindable input system.
+### 3. Use at Runtime
 
 ```rust
 use bevy::prelude::*;
 use bevy_enhanced_input::prelude::*;
-use keymap::{
-    ActionId, BindingDescriptor, BindingInputDescriptor, KeymapStore,
-    KeyBindingMetaIndex, enhanced::binding_descriptor_to_binding,
-    parse_keystroke_sequence,
-};
+use keymap::{KeymapStore, enhanced};
 
-// 1. Define your actions as types
-#[derive(InputAction)]
-#[action_output(bool)]
-struct Jump;
-
-#[derive(InputAction)]
-#[action_output(Vec2)]
-struct Move;
-
-// 2. Create a keymap store with default bindings
-fn create_store() -> KeymapStore {
-    KeymapStore::builder()
-        .with_user_keymap_path("~/.config/my_game/keymap.json")
-        .add_default_binding(BindingDescriptor {
-            action_id: Some(ActionId::from("player::jump")),
-            meta: Some(KeyBindingMetaIndex::DEFAULT),
-            modifiers: Vec::new(),
-            conditions: Vec::new(),
-            settings: None,
-            input: Some(BindingInputDescriptor::keyboard(
-                parse_keystroke_sequence("space").unwrap(),
-            )),
-        })
-        .add_default_binding(BindingDescriptor {
-            action_id: Some(ActionId::from("player::move")),
-            meta: Some(KeyBindingMetaIndex::DEFAULT),
-            modifiers: Vec::new(),
-            conditions: Vec::new(),
-            settings: None,
-            input: Some(BindingInputDescriptor::keyboard(
-                parse_keystroke_sequence("w").unwrap(),
-            )),
-        })
-        .build()
-        .unwrap()
-}
-
-// 3. Convert keymap bindings to enhanced input and spawn the player
-fn spawn_player(mut commands: Commands, keymap_store: Res<KeymapStore>) {
-    let mut jump_bindings = Vec::new();
-    let mut move_bindings = Vec::new();
-
-    // Extract bindings from the keymap store
-    keymap_store.with_spec(|spec| {
-        for descriptor in &spec.bindings {
-            if let Some(action_id) = &descriptor.action_id {
-                if let Ok(Some(binding)) = binding_descriptor_to_binding(descriptor) {
-                    match action_id.as_str() {
-                        "player::jump" => jump_bindings.push(binding),
-                        "player::move" => move_bindings.push(binding),
-                        _ => {}
-                    }
-                }
-            }
-        }
-    });
-
-    // Spawn player with enhanced input context
+fn setup_player_actions(
+    mut commands: Commands,
+    keymap: Res<KeymapStore>
+) {
+    // Get the final keystroke (user override or default)
+    let jump_key = keymap.get_binding("player.jump").unwrap();
+    
+    // Convert to bevy_enhanced_input binding
+    let binding = enhanced::keystroke_to_keyboard(&jump_key).unwrap();
+    
+    // Spawn the action
     commands.spawn((
-        Player,
-        actions!(Player[
-            (
-                Action::<Jump>::new(),
-                Bindings::spawn(jump_bindings),
-            ),
-            (
-                Action::<Move>::new(),
-                Bindings::spawn(move_bindings),
-            ),
-        ])
+        Action::<Jump>::new(),
+        Bindings::new([binding]),
     ));
 }
 
-// 4. React to actions in your game systems
-
-// Observer style: Event-driven reactions
-fn setup(app: &mut App) {
-    app.add_observer(handle_jump);
-}
-
-fn handle_jump(
-    trigger: On<Fire<Jump>>,
-    mut transforms: Query<&mut Transform>,
-) {
-    if let Ok(mut transform) = transforms.get_mut(trigger.context) {
-        transform.translation.y += 2.0;
-    }
-}
-
-// Pull style: Query in update systems
-fn handle_movement(
-    query: Query<(&Action<Move>, &mut Transform), With<Player>>,
-) {
-    for (move_action, mut transform) in &query {
-        if move_action.state == ActionState::Fired {
-            transform.translation += move_action.value.extend(0.0);
-        }
-    }
-}
-
-#[derive(Component)]
-struct Player;
+#[derive(InputAction)]
+#[action_output(bool)]
+struct Jump;
 ```
 
-This architecture provides:
-- **Type safety**: Actions are types, not strings
-- **Rebindable inputs**: Users can override bindings via JSON
-- **Separation of concerns**: Keymap handles data, enhanced-input handles evaluation, your code handles logic
+## User Customization
 
-## Precedence rules
+Users can customize keybindings by editing `keymap.json`:
 
-When evaluating input, bindings are ordered by:
+```json
+{
+  "user_overrides": {
+    "player.jump": "j",
+    "player.sprint": "ctrl-shift",
+    "ui.toggle_menu": "escape"
+  }
+}
+```
 
-1. **Source priority** – `USER` > `VIM` > `BASE` > `DEFAULT`
-2. **Insertion order** – last added wins inside the same bucket
+Changes are automatically:
+- Loaded at startup
+- Saved when modified via `set_user_override`
 
-## Module overview
+## Keystroke Syntax
+
+Keystrokes are parsed from simple strings:
+
+| Example         | Description                    |
+|-----------------|--------------------------------|
+| `"s"`           | S key, no modifiers            |
+| `"space"`       | Space bar                      |
+| `"cmd-s"`       | S with Command/Super modifier  |
+| `"ctrl-shift-p"`| P with Control + Shift         |
+| `"f1"`          | Function key F1                |
+
+### Supported Modifiers
+
+- `ctrl` / `control` - Control key
+- `alt` / `option` - Alt/Option key
+- `shift` - Shift key
+- `cmd` / `command` / `super` - Command (macOS) / Super (Linux) / Windows key
+
+## API Overview
+
+### `ActionBinding`
+
+Simple struct for defining action-to-keystroke mappings:
+
+```rust
+pub struct ActionBinding {
+    pub action_id: &'static str,
+    pub default_keystroke: &'static str,
+}
+```
+
+### `KeymapStore`
+
+Central Bevy Resource managing all keybindings:
+
+```rust
+// Register default bindings (called by plugins)
+store.register_defaults(&[
+    ActionBinding {
+        action_id: "action.name",
+        default_keystroke: "key",
+    },
+]);
+
+// Get effective binding (user override or default)
+let keystroke = store.get_binding("action.name");
+
+// Set user override
+store.set_user_override("action.name".to_string(), new_keystroke);
+
+// Persistence
+store.load_user_overrides()?;
+store.save_user_overrides()?;
+```
+
+### `enhanced` Module
+
+Convert keymap data to `bevy_enhanced_input` bindings:
+
+```rust
+use keymap::enhanced;
+
+// Single keystroke to binding
+let binding = enhanced::keystroke_to_keyboard(&keystroke)?;
+
+// Descriptor to binding (supports mouse, gamepad)
+let binding = enhanced::binding_descriptor_to_binding(&descriptor)?;
+```
+
+## Architecture
 
 ```
-keymap/
-├── binding.rs   # ActionId & KeyBinding definitions
-├── keystroke.rs # Keystroke parsing utilities
-├── keymap.rs    # Matching engine & precedence logic
-├── store.rs     # Persistence (defaults + overrides)
-├── enhanced.rs  # bevy_enhanced_input conversion helpers
-└── lib.rs       # Public API surface
+┌─────────────────────────────────────────────────────────────┐
+│                      KeymapPlugin                           │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │              KeymapStore (Resource)                   │  │
+│  │  ┌─────────────────┐   ┌──────────────────────────┐  │  │
+│  │  │ Default Bindings│   │   User Overrides         │  │  │
+│  │  │  (from plugins) │   │ (loaded from keymap.json)│  │  │
+│  │  └─────────────────┘   └──────────────────────────┘  │  │
+│  └───────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           │ get_binding()
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Game Modules                             │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
+│  │PlayerPlugin │  │  UiPlugin   │  │   CameraPlugin      │ │
+│  │             │  │             │  │                     │ │
+│  │ Registers:  │  │ Registers:  │  │ Registers:          │ │
+│  │ player.*    │  │ ui.*        │  │ camera.*            │ │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           │ enhanced::keystroke_to_keyboard()
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│               bevy_enhanced_input                           │
+│         (Runtime Input Processing)                          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Features
+
+- ✅ **Decentralized registration**: Each module owns its bindings
+- ✅ **User customization**: JSON-based override system
+- ✅ **Auto-persistence**: Changes saved automatically
+- ✅ **Type-safe**: Works with `bevy_enhanced_input` actions
+- ✅ **Simple API**: Minimal boilerplate
+- ✅ **Well-tested**: Comprehensive test coverage
+
+## Examples
+
+See `examples/decentralized_registration.rs` for a complete working example:
+
+```bash
+cargo run --example decentralized_registration
+```
+
+## Module Structure
+
+```
+crates/keymap/
+├── src/
+│   ├── lib.rs           # Public API and re-exports
+│   ├── binding.rs       # KeyBinding, ActionId, precedence
+│   ├── keystroke.rs     # Keystroke parsing and matching
+│   ├── spec.rs          # ActionBinding definition
+│   ├── store.rs         # KeymapStore (central state)
+│   ├── plugin.rs        # Bevy plugin integration
+│   ├── enhanced.rs      # bevy_enhanced_input conversion
+│   └── keymap.rs        # Advanced matching engine
+├── examples/
+│   └── decentralized_registration.rs
+├── ARCHITECTURE.md      # Detailed architecture docs
+├── Cargo.toml
+└── README.md            # This file
 ```
 
 ## Testing
 
-Run the crate suite:
+Run the test suite:
 
-```shell
+```bash
 cargo test -p keymap
 ```
 
-This exercises parsing, persistence, matching, and the enhanced-input bridge.
+All tests include:
+- Keystroke parsing
+- Binding precedence
+- Store operations
+- Enhanced input conversion
+
+## Future Enhancements
+
+- [ ] In-game rebinding UI
+- [ ] Conflict detection
+- [ ] Context-aware bindings (menu vs gameplay)
+- [ ] Multiple keybinding profiles
+- [ ] Multi-keystroke sequences (chords)
+- [ ] Migration system for config changes
+
+## License
+
+Part of Forge of Stories project.

@@ -5,20 +5,24 @@
 //! merging, the descriptors can be translated into `bevy_enhanced_input`
 //! entities.
 
-use crate::binding::{ActionId, KeyBinding, KeyBindingMetaIndex};
+use crate::binding::{ActionId, KeyBinding};
 use crate::keystroke::{Keystroke, Modifiers};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt;
 
-/// Complete specification of actions, contexts, and bindings.
+#[derive(Clone, Debug)]
+pub struct ActionBinding {
+    pub action_id: &'static str,
+    pub default_keystroke: &'static str,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct KeymapSpec {
-    /// Actions that can be referenced by bindings.
     #[serde(default)]
     pub actions: Vec<ActionDescriptor>,
-    /// Binding descriptions connecting inputs to actions.
+
     #[serde(default)]
     pub bindings: Vec<BindingDescriptor>,
 }
@@ -28,13 +32,6 @@ pub struct KeymapSpec {
 pub struct ActionDescriptor {
     /// Identifier of the action.
     pub id: ActionId,
-    /// Optional output type hint used when generating `InputAction`.
-    #[serde(default)]
-    #[cfg_attr(
-        not(feature = "binary"),
-        serde(skip_serializing_if = "Option::is_none")
-    )]
-    pub output: Option<String>,
     /// Optional action-level modifiers to register.
     #[serde(default)]
     #[cfg_attr(not(feature = "binary"), serde(skip_serializing_if = "Vec::is_empty"))]
@@ -43,13 +40,6 @@ pub struct ActionDescriptor {
     #[serde(default)]
     #[cfg_attr(not(feature = "binary"), serde(skip_serializing_if = "Vec::is_empty"))]
     pub conditions: Vec<RegisteredComponent>,
-    /// Additional settings serialized as arbitrary JSON payload.
-    #[serde(default)]
-    #[cfg_attr(
-        not(feature = "binary"),
-        serde(skip_serializing_if = "Option::is_none")
-    )]
-    pub settings: Option<Value>,
 }
 
 /// Describes how a binding should be spawned.
@@ -62,28 +52,17 @@ pub struct BindingDescriptor {
         serde(skip_serializing_if = "Option::is_none")
     )]
     pub action_id: Option<ActionId>,
-    /// Source metadata controlling precedence (defaults to `DEFAULT`).
-    #[serde(default)]
-    #[cfg_attr(
-        not(feature = "binary"),
-        serde(skip_serializing_if = "Option::is_none")
-    )]
-    pub meta: Option<KeyBindingMetaIndex>,
+
     /// Optional binding-specific modifiers.
     #[serde(default)]
     #[cfg_attr(not(feature = "binary"), serde(skip_serializing_if = "Vec::is_empty"))]
     pub modifiers: Vec<RegisteredComponent>,
+
     /// Optional binding-specific conditions.
     #[serde(default)]
     #[cfg_attr(not(feature = "binary"), serde(skip_serializing_if = "Vec::is_empty"))]
     pub conditions: Vec<RegisteredComponent>,
-    /// Additional binding settings.
-    #[serde(default)]
-    #[cfg_attr(
-        not(feature = "binary"),
-        serde(skip_serializing_if = "Option::is_none")
-    )]
-    pub settings: Option<Value>,
+
     /// The physical input used to trigger the binding.
     #[serde(default)]
     #[cfg_attr(
@@ -94,11 +73,6 @@ pub struct BindingDescriptor {
 }
 
 impl BindingDescriptor {
-    /// Returns the metadata or [`KeyBindingMetaIndex::DEFAULT`] if absent.
-    pub fn meta(&self) -> KeyBindingMetaIndex {
-        self.meta.unwrap_or(KeyBindingMetaIndex::DEFAULT)
-    }
-
     /// Extract the keyboard keystroke sequence if the input is keyboard-based.
     pub fn keyboard_sequence(&self) -> Option<&[Keystroke]> {
         match self.input.as_ref()? {
@@ -118,9 +92,7 @@ impl BindingDescriptor {
 
         let action_id = self.action_id.clone();
 
-        Ok(Some(
-            KeyBinding::new(sequence.to_vec(), action_id).with_meta(self.meta()),
-        ))
+        Ok(Some(KeyBinding::new(sequence.to_vec(), action_id)))
     }
 }
 

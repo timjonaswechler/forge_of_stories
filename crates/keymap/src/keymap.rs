@@ -32,11 +32,6 @@ impl Keymap {
         keymap
     }
 
-    /// Get the current version of the keymap.
-    pub fn version(&self) -> KeymapVersion {
-        self.version
-    }
-
     /// Add more bindings to the keymap.
     pub fn add_bindings<T: IntoIterator<Item = KeyBinding>>(&mut self, bindings: T) {
         for binding in bindings {
@@ -167,7 +162,6 @@ mod tests {
     fn test_keymap_creation() {
         let keymap = Keymap::new();
         assert_eq!(keymap.bindings().count(), 0);
-        assert_eq!(keymap.version(), KeymapVersion(0));
     }
 
     #[test]
@@ -177,7 +171,6 @@ mod tests {
 
         keymap.add_bindings(vec![binding]);
         assert_eq!(keymap.bindings().count(), 1);
-        assert_eq!(keymap.version(), KeymapVersion(1));
     }
 
     #[test]

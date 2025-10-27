@@ -362,10 +362,8 @@ mod tests {
     fn keyboard_descriptor(seq: &str) -> BindingDescriptor {
         BindingDescriptor {
             action_id: Some(ActionId::from("test")),
-            meta: None,
             modifiers: Vec::new(),
             conditions: Vec::new(),
-            settings: None,
             input: Some(BindingInputDescriptor::keyboard(
                 crate::parse_keystroke_sequence(seq).unwrap(),
             )),

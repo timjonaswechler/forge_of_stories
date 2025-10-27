@@ -20,7 +20,7 @@ indexmap = "2.2"
 paths = { path = "../paths" }
 settings = { path = "../settings" }
 
-bevy = { version = "0.17.2", default-features = false, features = ["bevy_winit"] }
+bevy = { version = "0.17.2", default-features = false, features = ["bevy_winit", "bevy_log"] }
 bevy_enhanced_input = "0.19.1"
 
 [features]

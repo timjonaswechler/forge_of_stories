@@ -1,18 +1,4 @@
-pub mod binding;
-pub mod enhanced;
-pub mod keymap;
-pub mod keystroke;
-pub mod plugin;
-pub mod spec;
-pub mod store;
-
-// Re-export main types
-pub use binding::{ActionId, KeyBinding, KeyBindingMetaIndex};
-pub use keymap::{Keymap, KeymapVersion};
-pub use keystroke::{Keystroke, Modifiers, parse_keystroke_sequence};
-pub use spec::ActionBinding;
-pub use store::KeymapStore;
-
+use crate::store::KeymapStore;
 use bevy::prelude::*;
 use std::path::PathBuf;
 
