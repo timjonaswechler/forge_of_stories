@@ -2,6 +2,7 @@ use crate::GameState;
 use crate::utils::{cleanup, remove};
 use app::LOG_MAIN;
 use bevy::prelude::*;
+use bevy_enhanced_input::prelude::*;
 
 /// Plugin for managing the splashscreen scene
 pub struct SplashscreenScenePlugin;
@@ -17,13 +18,18 @@ impl Plugin for SplashscreenScenePlugin {
             .add_systems(
                 OnExit(GameState::Splashscreen),
                 (cleanup::<SplashscreenEntity>, remove::<SplashscreenTimer>),
-            );
+            )
+            .add_input_context::<SplashscreenContext>();
     }
 }
 
 /// Marker component for splashscreen entities
 #[derive(Component)]
 struct SplashscreenEntity;
+
+/// Context for splashscreen
+#[derive(Component)]
+struct SplashscreenContext;
 
 /// Timer for automatic transition to main menu
 #[derive(Resource)]
@@ -38,6 +44,7 @@ fn setup_splashscreen(mut commands: Commands) {
         Mesh3d(Handle::default()), // Will be replaced with actual mesh
         Transform::from_xyz(0.0, 0.0, 0.0),
         SplashscreenEntity,
+        SplashscreenContext,
         LogoAnimator {
             rotation_speed: 1.0,
         },

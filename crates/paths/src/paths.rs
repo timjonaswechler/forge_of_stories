@@ -155,7 +155,7 @@ impl PathContext {
 
     /// Returns the keybinding file path: `<studio>/<project_id>/keybinding.json`
     pub fn keybinding_file(&self) -> PathBuf {
-        self.project_root().join("keybinding.json")
+        self.project_root().join("keybinding") // binary
     }
 
     /// Returns the data directory path: `<studio>/<project_id>/data/`

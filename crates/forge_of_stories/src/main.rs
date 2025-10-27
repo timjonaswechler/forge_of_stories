@@ -1,6 +1,5 @@
 mod client;
 mod fos_app;
-mod input;
 mod rendering;
 mod ui;
 mod utils;
@@ -11,10 +10,9 @@ use crate::rendering::RenderingPlugin;
 use crate::ui::UIPlugin;
 use app::AppBuilder;
 use bevy::{log::LogPlugin, prelude::*};
+use bevy_enhanced_input::prelude::*;
 use game_server::settings::Network;
-use input::{
-    InputPlugin as KeymapInputPlugin, StoreResource as KeymapStoreResource, create_keymap_store,
-};
+use keymap::KeymapPlugin;
 use settings::{AppSettingsExt, SettingsStore};
 
 /// Game state tracking where we are in the application flow.
@@ -31,9 +29,6 @@ fn main() {
     let mut app = AppBuilder::<FOSApp>::new(env!("CARGO_PKG_VERSION"))
         .expect("Failed to initialize application")
         .build_with_bevy(|mut app, ctx| {
-            let keymap_store =
-                create_keymap_store(ctx.path_context()).expect("failed to create keymap store");
-
             let settings_store = SettingsStore::builder("0.1.0")
                 .with_settings_file(ctx.path_context().settings_file(Some(ctx.app_id())))
                 .build()
@@ -59,12 +54,14 @@ fn main() {
             // Initialize GameState
             app.init_state::<GameState>();
 
-            app.insert_resource(KeymapStoreResource::new(keymap_store));
-
             // Add EnhancedInputPlugin BEFORE KeymapInputPlugin
-            app.add_plugins(bevy_enhanced_input::EnhancedInputPlugin);
-
-            app.add_plugins((UIPlugin, RenderingPlugin, ClientPlugin, KeymapInputPlugin));
+            app.add_plugins((
+                KeymapPlugin::with_config_path(ctx.path_context().keybinding_file()),
+                EnhancedInputPlugin, // TODO: in port in keymap plugin
+                UIPlugin,
+                RenderingPlugin,
+                ClientPlugin,
+            ));
 
             app
         });

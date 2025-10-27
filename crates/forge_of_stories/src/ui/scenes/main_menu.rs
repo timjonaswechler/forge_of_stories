@@ -5,6 +5,7 @@ use app::{LOG_CLIENT_HOST, LOG_MAIN};
 use bevy::color::palettes::basic::RED;
 use bevy::input_focus::InputFocus;
 use bevy::prelude::*;
+use bevy_enhanced_input::prelude::InputContextAppExt;
 
 /// Plugin for managing the main menu scene
 pub struct MainMenuScenePlugin;
@@ -23,13 +24,18 @@ impl Plugin for MainMenuScenePlugin {
             )
                 .run_if(in_state(GameState::MainMenu).or(in_state(GameState::ConnectingToServer))),
         )
-        .add_systems(OnExit(GameState::MainMenu), cleanup::<MainMenuUI>);
+        .add_systems(OnExit(GameState::MainMenu), cleanup::<MainMenuUI>)
+        .add_input_context::<MainMenuContext>();
     }
 }
 
 /// Marker component for main menu UI entities
 #[derive(Component)]
 struct MainMenuUI;
+
+/// Marker component for menu buttons
+#[derive(Component)]
+struct MainMenuContext;
 
 /// Component identifying menu button actions
 #[derive(Component, Clone, Copy, PartialEq, Eq)]
@@ -50,6 +56,7 @@ fn setup_main_menu(mut commands: Commands) {
                 ..default()
             },
             MainMenuUI,
+            MainMenuContext,
         ))
         .with_children(|parent| {
             // Title
@@ -120,12 +127,6 @@ fn handle_menu_button_interactions(
 
                 match action {
                     MenuAction::Singleplayer => {
-                        // // Send camera pan event (OnClick camera movement)
-                        // camera_pan_events.send(CameraPanEvent {
-                        //     target_position: Vec3::new(-8.0, 10.0, 12.0),
-                        //     target_look_at: Vec3::ZERO,
-                        // });
-
                         // Start embedded server
                         let server =
                             game_server::ServerHandle::start_embedded(game_server::Port(5000));
