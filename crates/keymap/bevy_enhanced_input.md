@@ -185,3 +185,219 @@ struct InCar;
 - **Schedules**: Mit `add_input_context_to::<ScheduleName>()` kannst du den Schedule spezifizieren
 
 Das Context-System ermöglicht es dir, Input-Logik zu organisieren und zu layeren, wodurch komplexe Input-Szenarien wie Fahrzeug- oder Rüstungswechsel viel einfacher zu handhaben sind.
+
+
+Es gibt **zwei Hauptansätze**, um Contexts state-abhängig zu machen:
+
+### **Ansatz 1: Context Entity nur in bestimmten States spawnen (empfohlen)**
+
+Das ist der idiomatischste Weg - du spawns und despawnst Context-Entities basierend auf States:
+
+```rust
+use bevy::prelude::*;
+use bevy_enhanced_input::prelude::*;
+
+impl Plugin for InGameInputPlugin {
+    fn build(&self, app: &mut App) {
+        app
+            // Context registrieren (einmalig)
+            .add_input_context::<InGameContext>()
+
+            // Context-Entity beim State-Enter spawnen
+            .add_systems(OnEnter(GameState::InGame), spawn_ingame_context)
+
+            // Context-Entity beim State-Exit despawnen
+            .add_systems(OnExit(GameState::InGame), cleanup::<InGameContext>);
+    }
+}
+
+#[derive(Component)]
+struct InGameContext;
+
+fn spawn_ingame_context(mut commands: Commands) {
+    commands.spawn((
+        Name::new("InGame Input Context"),
+        InGameContext, // Marker für Cleanup
+
+        // Context ist automatisch aktiv
+        // ContextActivity::<InGameContext>::ACTIVE, // Optional, ist Standard
+        // ContextPriority::<InGameContext>::new(0), // Optional, ist Standard
+
+        // Actions für diesen Context
+        Action::<InGameContext, Move>::default(),
+        Action::<InGameContext, Jump>::default(),
+        Action::<InGameContext, Attack>::default(),
+
+        // Bindings
+        // ... deine Bindings
+    ));
+}
+```
+
+### **Ansatz 2: Context-Activity mit States steuern**
+
+Wenn du die Entity beibehalten willst (z.B. für schnelles Umschalten oder um Bindings zu behalten):
+
+```rust
+impl Plugin for PlayerInputPlugin {
+    fn build(&self, app: &mut App) {
+        app
+            .add_input_context::<PlayerContext>()
+
+            // Context aktivieren/deaktivieren basierend auf State
+            .add_systems(OnEnter(GameState::InGame), activate_player_context)
+            .add_systems(OnExit(GameState::InGame), deactivate_player_context)
+
+            // Context-Entity einmalig beim Startup spawnen
+            .add_systems(Startup, setup_player_context);
+    }
+}
+
+#[derive(Component)]
+struct PlayerContext;
+
+fn setup_player_context(mut commands: Commands) {
+    commands.spawn((
+        Name::new("Player Input Context"),
+        PlayerContext,
+
+        // Initial inaktiv
+        ContextActivity::<PlayerContext>::INACTIVE,
+
+        // Actions und Bindings
+        // ...
+    ));
+}
+
+fn activate_player_context(
+    mut contexts: Query<&mut ContextActivity<PlayerContext>>,
+) {
+    for mut activity in &mut contexts {
+        *activity = ContextActivity::<PlayerContext>::ACTIVE;
+    }
+}
+
+fn deactivate_player_context(
+    mut contexts: Query<&mut ContextActivity<PlayerContext>>,
+) {
+    for mut activity in &mut contexts {
+        *activity = ContextActivity::<PlayerContext>::INACTIVE;
+    }
+}
+```
+
+### **Ansatz 3: Mehrere Contexts für verschiedene States (fortgeschritten)**
+
+Für komplexe Szenarien mit mehreren States und überlappenden Contexts:
+
+```rust
+impl Plugin for GameInputPlugin {
+    fn build(&self, app: &mut App) {
+        app
+            // Alle Contexts registrieren
+            .add_input_context::<MainMenuContext>()
+            .add_input_context::<InGameContext>()
+            .add_input_context::<PauseMenuContext>()
+
+            // MainMenu Context
+            .add_systems(OnEnter(GameState::MainMenu), spawn_main_menu_context)
+            .add_systems(OnExit(GameState::MainMenu), cleanup::<MainMenuContext>)
+
+            // InGame Context
+            .add_systems(OnEnter(GameState::InGame), spawn_ingame_context)
+            .add_systems(OnExit(GameState::InGame), cleanup::<InGameContext>)
+
+            // Pause Menu Context (höhere Priorität als InGame)
+            .add_systems(OnEnter(GameState::Paused), spawn_pause_menu_context)
+            .add_systems(OnExit(GameState::Paused), cleanup::<PauseMenuContext>);
+    }
+}
+
+#[derive(Component)]
+struct MainMenuContext;
+
+#[derive(Component)]
+struct InGameContext;
+
+#[derive(Component)]
+struct PauseMenuContext;
+
+fn spawn_pause_menu_context(mut commands: Commands) {
+    commands.spawn((
+        Name::new("Pause Menu Context"),
+        PauseMenuContext,
+
+        // Höhere Priorität, damit Pause-Inputs InGame-Inputs überlagern
+        ContextPriority::<PauseMenuContext>::new(10),
+
+        // Actions für Pause Menu
+        Action::<PauseMenuContext, Resume>::default(),
+        Action::<PauseMenuContext, Quit>::default(),
+
+        // Bindings
+        // ...
+    ));
+}
+```
+
+### **Dein spezifisches Beispiel (basierend auf deinem Code)**
+
+So würdest du es in deinem Projekt machen:
+
+```rust
+// In src/ui/scenes/main_menu.rs
+impl Plugin for MainMenuScenePlugin {
+    fn build(&self, app: &mut App) {
+        app
+            // Context registrieren
+            .add_input_context::<MainMenuContext>()
+
+            .add_systems(
+                OnEnter(GameState::MainMenu),
+                (setup_main_menu, spawn_main_menu_input, log_state_entry),
+            )
+            .add_systems(
+                Update,
+                handle_menu_button_interactions
+                    .run_if(in_state(GameState::MainMenu)),
+            )
+            .add_systems(
+                OnExit(GameState::MainMenu),
+                (cleanup::<MainMenuUI>, cleanup::<MainMenuContext>), // Context auch cleanupen
+            );
+    }
+}
+
+#[derive(Component)]
+struct MainMenuContext;
+
+fn spawn_main_menu_input(mut commands: Commands) {
+    commands.spawn((
+        Name::new("Main Menu Input"),
+        MainMenuContext, // Wichtig: für Cleanup
+
+        // Actions
+        Action::<MainMenuContext, NavigateUp>::default(),
+        Action::<MainMenuContext, NavigateDown>::default(),
+        Action::<MainMenuContext, Confirm>::default(),
+        Action::<MainMenuContext, Back>::default(),
+
+        // Bindings würden hier folgen
+        // ...
+    ));
+}
+```
+
+### **Best Practices**
+
+1. **Registriere den Context nur einmal** (in `build()`)
+2. **Spawne die Context-Entity state-abhängig** (OnEnter/OnExit)
+3. **Cleanup beim Exit** - nutze den Marker-Component für cleanup
+4. **Nutze `ContextPriority`** wenn mehrere Contexts gleichzeitig aktiv sind
+5. **`ContextActivity` vs. Despawn**:
+   - `INACTIVE`: Für schnelles Umschalten, Entity bleibt
+   - Despawn: Wenn der Context wirklich weg ist
+
+### **Zusammenfassung**
+
+**TL;DR**: Du registrierst den Context einmal mit `.add_input_context::<T>()` und spawns/despawnst dann die Context-Entity mit `OnEnter`/`OnExit` je nach State. Das ist genau das Pattern, das du bereits für UI verwendest!

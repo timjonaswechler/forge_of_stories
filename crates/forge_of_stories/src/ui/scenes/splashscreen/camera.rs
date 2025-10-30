@@ -1,32 +1,31 @@
-//! Splashscreen Camera Layer
-//!
-//! Handles camera positioning and configuration for the splashscreen.
-//! Currently uses the global scene camera managed by the CameraPlugin.
+// scenes/splashscreen/camera.rs
 
 use crate::GameState;
 use bevy::prelude::*;
 
-/// Plugin for splashscreen camera setup
 pub(super) struct SplashscreenCameraPlugin;
 
 impl Plugin for SplashscreenCameraPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(GameState::Splashscreen), setup_camera);
+        app.add_systems(OnEnter(GameState::Splashscreen), spawn_camera)
+            .add_systems(OnExit(GameState::Splashscreen), cleanup);
     }
 }
 
-/// Sets up camera position for the splashscreen
-///
-/// Currently this is handled by the global CameraPlugin's mode switching system.
-/// This module exists for future scene-specific camera customization if needed.
-fn setup_camera() {
-    // Camera positioning is currently handled by:
-    // - cameras::CameraPlugin (global camera management)
-    // - cameras::switch_to_splashscreen_mode (triggered by OnEnter(GameState::Splashscreen))
-    // - cameras::handle_camera_mode_changes (applies CameraDefaults.splashscreen)
+#[derive(Component)]
+struct SplashscreenCamera;
 
-    // Future enhancements could include:
-    // - Scene-specific camera animations
-    // - Custom camera effects (bloom, vignette, etc.)
-    // - Dynamic camera positioning based on logo placement
+fn spawn_camera(mut commands: Commands) {
+    commands.spawn((
+        Camera3d::default(),
+        Transform::from_xyz(0.0, 2.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
+        SplashscreenCamera,
+        Name::new("Splashscreen Camera"),
+    ));
+}
+
+fn cleanup(mut commands: Commands, cameras: Query<Entity, With<SplashscreenCamera>>) {
+    for entity in &cameras {
+        commands.entity(entity).despawn();
+    }
 }

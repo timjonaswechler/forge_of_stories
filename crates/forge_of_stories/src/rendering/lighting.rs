@@ -16,7 +16,7 @@ impl Plugin for LightingPlugin {
 #[derive(Component)]
 struct LightingEntity;
 
-fn setup_lighting(mut commands: Commands, mut ambient_light: Option<ResMut<AmbientLight>>) {
+fn setup_lighting(mut commands: Commands, ambient_light: Option<ResMut<AmbientLight>>) {
     // Configure ambient light
     if let Some(mut ambient_light) = ambient_light {
         ambient_light.brightness = 3_000.0;
@@ -27,7 +27,7 @@ fn setup_lighting(mut commands: Commands, mut ambient_light: Option<ResMut<Ambie
     commands.spawn((
         DirectionalLight {
             shadows_enabled: true,
-            illuminance: 3_000.0,
+            illuminance: 100_000.0,
             ..default()
         },
         Transform::from_xyz(-12.0, 18.0, 12.0).looking_at(Vec3::ZERO, Vec3::Y),

@@ -19,6 +19,6 @@ bincode.workspace = true
 bytes.workspace = true
 uuid.workspace = true
 anyhow.workspace = true
-bevy_enhanced_input = "0.19.1"
+bevy_enhanced_input = "0.19.2"
 serde.workspace = true
 bevy_tweening = "0.14"

@@ -381,7 +381,7 @@ pub fn active_viewport_data(
     touches: Res<Touches>,
     primary_windows: Query<&Window, With<PrimaryWindow>>,
     other_windows: Query<&Window, Without<PrimaryWindow>>,
-    orbit_cameras: Query<(Entity, &Camera, &PanOrbitCamera)>,
+    orbit_cameras: Query<(Entity, &Camera3d, &PanOrbitCamera)>,
 ) {
     let mut new_resource = ActiveCameraData::default();
     let mut max_cam_order = 0;

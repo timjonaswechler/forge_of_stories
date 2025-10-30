@@ -4,7 +4,7 @@ pub mod normal_vector;
 pub mod scenes;
 
 use bevy::{input_focus::InputFocus, prelude::*};
-use cameras::CameraPlugin;
+use cameras::cursor::{CursorState, apply_cursor_state};
 use components::InGameMenuState;
 use normal_vector::draw_normal_arrows_system;
 use scenes::ScenePlugin;
@@ -14,10 +14,11 @@ pub struct UIPlugin;
 
 impl Plugin for UIPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((CameraPlugin, ScenePlugin))
+        app.add_plugins((ScenePlugin))
             .init_resource::<InGameMenuState>()
             .init_resource::<InputFocus>()
+            .init_resource::<CursorState>()
             // Debug helper for normal vectors
-            .add_systems(Update, draw_normal_arrows_system);
+            .add_systems(Update, (draw_normal_arrows_system, apply_cursor_state));
     }
 }

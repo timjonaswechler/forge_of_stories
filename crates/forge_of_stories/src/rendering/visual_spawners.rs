@@ -44,7 +44,7 @@ fn spawn_ground_plane_visuals(
         let mesh = meshes.add(Mesh::from(Cuboid::new(size.width, size.height, size.depth)));
         let material = materials.add(StandardMaterial {
             base_color: Color::srgb(0.25, 0.45, 0.25),
-            perceptual_roughness: 0.7,
+            perceptual_roughness: 1.1,
             ..default()
         });
 

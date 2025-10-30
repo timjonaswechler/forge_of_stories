@@ -1,33 +1,43 @@
-//! Main Menu Camera Layer
-//!
-//! Handles camera positioning and configuration for the main menu.
-//! Currently uses the global scene camera managed by the CameraPlugin.
+// scenes/main_menu/camera.rs
 
 use crate::GameState;
 use bevy::prelude::*;
 
-/// Plugin for main menu camera setup
 pub(super) struct MainMenuCameraPlugin;
 
 impl Plugin for MainMenuCameraPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(GameState::MainMenu), setup_camera);
+        app.add_systems(OnEnter(GameState::MainMenu), spawn_camera)
+            .add_systems(Update, animate_orbit.run_if(in_state(GameState::MainMenu)))
+            .add_systems(OnExit(GameState::MainMenu), cleanup);
     }
 }
 
-/// Sets up camera position for the main menu
-///
-/// Currently this is handled by the global CameraPlugin's mode switching system.
-/// This module exists for future scene-specific camera customization if needed.
-fn setup_camera() {
-    // Camera positioning is currently handled by:
-    // - cameras::CameraPlugin (global camera management)
-    // - cameras::switch_to_main_menu_mode (triggered by OnEnter(GameState::MainMenu))
-    // - cameras::handle_camera_mode_changes (applies CameraDefaults.main_menu)
+#[derive(Component)]
+struct MainMenuCamera;
 
-    // Future enhancements could include:
-    // - Cinematic camera movements (pan around the background scene)
-    // - Dynamic camera positioning based on UI layout
-    // - Custom camera effects (depth of field, bloom, etc.)
-    // - Camera shake or parallax effects on button hover
+fn spawn_camera(mut commands: Commands) {
+    commands.spawn((
+        Camera3d::default(),
+        Transform::from_xyz(0.0, 1.5, 8.0).looking_at(Vec3::ZERO, Vec3::Y),
+        MainMenuCamera,
+        Name::new("Main Menu Camera"),
+    ));
+}
+
+fn animate_orbit(time: Res<Time>, mut cameras: Query<&mut Transform, With<MainMenuCamera>>) {
+    for mut transform in &mut cameras {
+        let radius = 8.0;
+        let speed = 0.1;
+        let angle = time.elapsed_secs() * speed;
+
+        transform.translation = Vec3::new(angle.cos() * radius, 1.5, angle.sin() * radius);
+        transform.look_at(Vec3::ZERO, Vec3::Y);
+    }
+}
+
+fn cleanup(mut commands: Commands, cameras: Query<Entity, With<MainMenuCamera>>) {
+    for entity in &cameras {
+        commands.entity(entity).despawn();
+    }
 }
