@@ -1,12 +1,10 @@
 mod client;
 mod fos_app;
-mod rendering;
 mod ui;
 mod utils;
 
 use crate::client::ClientPlugin;
 use crate::fos_app::FOSApp;
-use crate::rendering::RenderingPlugin;
 use crate::ui::UIPlugin;
 use app::AppBuilder;
 use bevy::{log::LogPlugin, prelude::*};
@@ -59,7 +57,6 @@ fn main() {
                 KeymapPlugin::with_config_path(ctx.path_context().keybinding_file()),
                 EnhancedInputPlugin, // TODO: in port in keymap plugin
                 UIPlugin,
-                RenderingPlugin,
                 ClientPlugin,
             ));
 

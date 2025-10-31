@@ -4,6 +4,7 @@
 
 use crate::GameState;
 use crate::ui::components::{HOVERED_BUTTON, NORMAL_BUTTON, PRESSED_BUTTON};
+use crate::utils::cleanup;
 use app::LOG_CLIENT_HOST;
 use bevy::color::palettes::basic::RED;
 use bevy::input_focus::InputFocus;
@@ -18,7 +19,8 @@ impl Plugin for MainMenuUIPlugin {
             .add_systems(
                 Update,
                 handle_button_interactions.run_if(in_state(GameState::MainMenu)),
-            );
+            )
+            .add_systems(OnExit(GameState::MainMenu), cleanup::<MainMenuUI>);
     }
 }
 

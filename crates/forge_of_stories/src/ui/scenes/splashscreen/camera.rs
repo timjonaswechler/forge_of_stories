@@ -1,6 +1,7 @@
 // scenes/splashscreen/camera.rs
 
 use crate::GameState;
+use crate::utils::cleanup;
 use bevy::prelude::*;
 
 pub(super) struct SplashscreenCameraPlugin;
@@ -8,7 +9,10 @@ pub(super) struct SplashscreenCameraPlugin;
 impl Plugin for SplashscreenCameraPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(OnEnter(GameState::Splashscreen), spawn_camera)
-            .add_systems(OnExit(GameState::Splashscreen), cleanup);
+            .add_systems(
+                OnExit(GameState::Splashscreen),
+                cleanup::<SplashscreenCamera>,
+            );
     }
 }
 
@@ -22,10 +26,4 @@ fn spawn_camera(mut commands: Commands) {
         SplashscreenCamera,
         Name::new("Splashscreen Camera"),
     ));
-}
-
-fn cleanup(mut commands: Commands, cameras: Query<Entity, With<SplashscreenCamera>>) {
-    for entity in &cameras {
-        commands.entity(entity).despawn();
-    }
 }

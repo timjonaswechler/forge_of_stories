@@ -1,13 +1,14 @@
 //! In-game HUD (Heads-Up Display)
 
-use crate::GameState;
+use crate::{GameState, utils::cleanup};
 use bevy::prelude::*;
 
 pub(super) struct InGameHUDPlugin;
 
 impl Plugin for InGameHUDPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(GameState::InGame), spawn_hud);
+        app.add_systems(OnEnter(GameState::InGame), spawn_hud)
+            .add_systems(OnExit(GameState::InGame), cleanup::<InGameHUD>);
     }
 }
 

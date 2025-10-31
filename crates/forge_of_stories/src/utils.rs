@@ -5,6 +5,7 @@ use bevy::{
 
 pub fn cleanup<C: Component>(mut commands: Commands, query: Query<Entity, With<C>>) {
     for entity in &query {
+        commands.entity(entity).despawn_children();
         commands.entity(entity).despawn();
     }
 }

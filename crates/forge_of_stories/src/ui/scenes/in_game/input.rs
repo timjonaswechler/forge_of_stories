@@ -50,7 +50,7 @@ fn setup_input(mut commands: Commands) {
 
 /// Handles user input to skip the InGame
 fn handle_skip_input(
-    mut commands: Commands,
+    // mut commands: Commands,
     actions: Query<(&ActionValue, &ActionOf<InGameContext>)>,
     mut next_state: ResMut<NextState<GameState>>,
 ) {

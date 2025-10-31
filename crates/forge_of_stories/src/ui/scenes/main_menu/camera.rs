@@ -1,6 +1,7 @@
 // scenes/main_menu/camera.rs
 
 use crate::GameState;
+use crate::utils::cleanup;
 use bevy::prelude::*;
 
 pub(super) struct MainMenuCameraPlugin;
@@ -9,7 +10,7 @@ impl Plugin for MainMenuCameraPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(OnEnter(GameState::MainMenu), spawn_camera)
             .add_systems(Update, animate_orbit.run_if(in_state(GameState::MainMenu)))
-            .add_systems(OnExit(GameState::MainMenu), cleanup);
+            .add_systems(OnExit(GameState::MainMenu), cleanup::<MainMenuCamera>);
     }
 }
 
@@ -33,11 +34,5 @@ fn animate_orbit(time: Res<Time>, mut cameras: Query<&mut Transform, With<MainMe
 
         transform.translation = Vec3::new(angle.cos() * radius, 1.5, angle.sin() * radius);
         transform.look_at(Vec3::ZERO, Vec3::Y);
-    }
-}
-
-fn cleanup(mut commands: Commands, cameras: Query<Entity, With<MainMenuCamera>>) {
-    for entity in &cameras {
-        commands.entity(entity).despawn();
     }
 }

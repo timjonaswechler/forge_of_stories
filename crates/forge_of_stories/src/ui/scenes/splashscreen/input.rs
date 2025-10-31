@@ -2,7 +2,7 @@
 //!
 //! Handles input processing and auto-transition logic for the splashscreen.
 
-use crate::GameState;
+use crate::{GameState, utils::cleanup, utils::remove};
 use app::LOG_MAIN;
 use bevy::prelude::*;
 use bevy_enhanced_input::prelude::*;
@@ -16,10 +16,13 @@ impl Plugin for SplashscreenInputPlugin {
             .add_systems(OnEnter(GameState::Splashscreen), setup_input)
             .add_systems(
                 Update,
-                (handle_skip_input, auto_transition_to_main_menu)
-                    .run_if(in_state(GameState::Splashscreen)),
+                // (handle_skip_input, auto_transition_to_main_menu)
+                handle_skip_input.run_if(in_state(GameState::Splashscreen)),
             )
-            .add_systems(OnExit(GameState::Splashscreen), cleanup_input_resources);
+            .add_systems(
+                OnExit(GameState::Splashscreen),
+                (remove::<SplashscreenTimer>, cleanup::<SplashscreenContext>),
+            );
     }
 }
 

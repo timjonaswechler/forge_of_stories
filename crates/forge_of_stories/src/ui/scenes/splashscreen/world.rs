@@ -3,6 +3,8 @@
 //! Contains all 3D entities for the splashscreen (logo mesh, lighting, animations).
 
 use crate::GameState;
+use crate::utils::cleanup;
+use bevy::color::palettes::css::*;
 use bevy::prelude::*;
 
 /// Plugin for splashscreen 3D world content
@@ -14,6 +16,10 @@ impl Plugin for SplashscreenWorldPlugin {
             .add_systems(
                 Update,
                 animate_logo.run_if(in_state(GameState::Splashscreen)),
+            )
+            .add_systems(
+                OnExit(GameState::Splashscreen),
+                cleanup::<SplashscreenWorld>,
             );
     }
 }
@@ -29,16 +35,25 @@ struct LogoAnimator {
 }
 
 /// Spawns the 3D world content (logo, lights, etc.)
-fn spawn_world(mut commands: Commands) {
+fn spawn_world(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
     // Spawn the logo mesh
+    // circular base
     commands.spawn((
-        Mesh3d(Handle::default()), // TODO: Replace with actual logo mesh asset
-        Transform::from_xyz(0.0, 0.0, 0.0),
+        Mesh3d(meshes.add(Circle::new(4.0))),
+        MeshMaterial3d(materials.add(Color::srgb(BLACK.red, BLACK.green, BLACK.blue))),
+        Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
         SplashscreenWorld,
-        LogoAnimator {
-            rotation_speed: 1.0,
-        },
-        Name::new("Logo"),
+    ));
+    // cube
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
+        MeshMaterial3d(materials.add(Color::srgb(HOT_PINK.red, HOT_PINK.green, HOT_PINK.blue))),
+        Transform::from_xyz(0.0, 0.5, 0.0),
+        SplashscreenWorld,
     ));
 
     // Spawn directional light
@@ -54,15 +69,15 @@ fn spawn_world(mut commands: Commands) {
     ));
 
     // Optional: Spawn ambient light
-    commands.spawn((
-        AmbientLight {
-            color: Color::srgb(0.8, 0.8, 1.0),
-            brightness: 200.0,
-            affects_lightmapped_meshes: false,
-        },
-        SplashscreenWorld,
-        Name::new("Ambient Light"),
-    ));
+    // commands.spawn((
+    //     AmbientLight {
+    //         color: Color::srgb(0.8, 0.8, 1.0),
+    //         brightness: 200.0,
+    //         affects_lightmapped_meshes: false,
+    //     },
+    //     SplashscreenWorld,
+    //     Name::new("Ambient Light"),
+    // ));
 }
 
 /// Animates the logo rotation

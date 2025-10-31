@@ -2,7 +2,8 @@
 //!
 //! Contains all 3D entities for the main menu (background scene, environment, effects).
 
-use crate::GameState;
+use crate::{GameState, utils::cleanup};
+use bevy::color::palettes::css::*;
 use bevy::prelude::*;
 
 /// Plugin for main menu 3D world content
@@ -14,6 +15,10 @@ impl Plugin for MainMenuWorldPlugin {
             .add_systems(
                 Update,
                 (animate_background, rotate_ambient_objects).run_if(in_state(GameState::MainMenu)),
+            )
+            .add_systems(
+                OnExit(GameState::MainMenu),
+                (cleanup::<MainMenuWorld>, verify_cleanup_after).chain(),
             );
     }
 }
@@ -38,19 +43,26 @@ struct AmbientRotator {
 }
 
 /// Spawns the 3D world content (background scene, lighting, effects)
-fn spawn_world(mut commands: Commands) {
-    // Spawn background sphere or environment
-    // TODO: Replace with actual background mesh (planet, space scene, etc.)
+fn spawn_world(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    // circular base
     commands.spawn((
-        Mesh3d(Handle::default()),
-        Transform::from_xyz(0.0, 0.0, -10.0).with_scale(Vec3::splat(5.0)),
+        Mesh3d(meshes.add(Circle::new(4.0))),
+        MeshMaterial3d(materials.add(Color::srgb(RED.red, RED.green, RED.blue))),
+        Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
         MainMenuWorld,
-        BackgroundAnimator {
-            rotation_speed: 0.1,
-            float_amplitude: 0.5,
-            float_frequency: 0.5,
-        },
-        Name::new("Background Scene"),
+        Name::new("MainMenu Circle"),
+    ));
+    // cube
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
+        MeshMaterial3d(materials.add(Color::srgb_u8(124, 144, 255))),
+        Transform::from_xyz(0.0, 0.5, 0.0),
+        MainMenuWorld,
+        Name::new("MainMenu Cube"),
     ));
 
     // Spawn directional light (key light)
@@ -64,37 +76,6 @@ fn spawn_world(mut commands: Commands) {
         MainMenuWorld,
         Name::new("Key Light"),
     ));
-
-    // Spawn ambient light
-    commands.spawn((
-        AmbientLight {
-            color: Color::srgb(0.7, 0.8, 1.0),
-            brightness: 150.0,
-            affects_lightmapped_meshes: false,
-        },
-        MainMenuWorld,
-        Name::new("Ambient Light"),
-    ));
-
-    // Spawn some ambient rotating objects (particles, stars, etc.)
-    // TODO: Replace with actual decorative meshes
-    for i in 0..3 {
-        let angle = (i as f32) * std::f32::consts::TAU / 3.0;
-        let radius = 8.0;
-        let x = angle.cos() * radius;
-        let z = angle.sin() * radius;
-
-        commands.spawn((
-            Mesh3d(Handle::default()),
-            Transform::from_xyz(x, 0.0, z).with_scale(Vec3::splat(0.3)),
-            MainMenuWorld,
-            AmbientRotator {
-                axis: Vec3::new((i as f32 * 0.5).sin(), 1.0, (i as f32 * 0.5).cos()).normalize(),
-                speed: 0.5 + i as f32 * 0.2,
-            },
-            Name::new(format!("Ambient Object {}", i)),
-        ));
-    }
 }
 
 /// Animates the background scene (rotation and floating)
@@ -116,5 +97,16 @@ fn rotate_ambient_objects(time: Res<Time>, mut query: Query<(&mut Transform, &Am
         if let Ok(dir) = Dir3::new(rotator.axis) {
             transform.rotate_axis(dir, rotator.speed * time.delta_secs());
         }
+    }
+}
+
+fn verify_cleanup_after(query: Query<(Entity, &Name), With<MainMenuWorld>>) {
+    if query.iter().count() > 0 {
+        error!("⚠️  MainMenu entities still exist after cleanup!");
+        for (entity, name) in &query {
+            error!("  - {:?}: {}", entity, name.as_str());
+        }
+    } else {
+        info!("✅ MainMenu cleanup verified - all entities removed");
     }
 }

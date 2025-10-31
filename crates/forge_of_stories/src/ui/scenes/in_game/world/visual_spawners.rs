@@ -1,3 +1,4 @@
+use super::InGameWorld;
 use super::RenderAssets;
 use crate::GameState;
 use app::LOG_CLIENT;
@@ -56,6 +57,7 @@ fn spawn_ground_plane_visuals(
             Visibility::default(),
             InheritedVisibility::default(),
             HasVisuals,
+            InGameWorld,
         ));
     }
 }
@@ -86,6 +88,7 @@ fn spawn_player_visuals(
             Visibility::default(),
             InheritedVisibility::default(),
             HasVisuals,
+            InGameWorld,
         ));
     }
 }
@@ -95,27 +98,6 @@ fn update_transforms_from_positions(
 ) {
     for (position, mut transform) in &mut query {
         transform.translation = position.translation;
-    }
-}
-
-#[cfg(debug_assertions)]
-pub fn debug_replicated_entities(
-    new_planes: Query<(Entity, &Position), bevy::ecs::query::Added<GroundPlane>>,
-    new_players: Query<(Entity, &Player, &Position), bevy::ecs::query::Added<Player>>,
-) {
-    for (entity, position) in &new_planes {
-        info!(
-            target: LOG_CLIENT,
-            "New GroundPlane {:?} at {:?}",
-            entity, position.translation
-        );
-    }
-    for (entity, player, position) in &new_players {
-        info!(
-            target: LOG_CLIENT,
-            "New Player {:?} color {:?} at {:?}",
-            entity, player.color, position.translation
-        );
     }
 }
 

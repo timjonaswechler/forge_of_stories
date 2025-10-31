@@ -1,5 +1,5 @@
+use super::InGameWorld;
 use crate::GameState;
-use crate::utils::cleanup;
 use bevy::prelude::*;
 
 /// Plugin for managing scene lighting
@@ -7,14 +7,13 @@ pub struct LightingPlugin;
 
 impl Plugin for LightingPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(GameState::InGame), setup_lighting)
-            .add_systems(OnExit(GameState::InGame), cleanup::<LightingEntity>);
+        app.add_systems(OnEnter(GameState::InGame), setup_lighting);
     }
 }
 
 /// Marker component for lighting entities
 #[derive(Component)]
-struct LightingEntity;
+struct Sun;
 
 fn setup_lighting(mut commands: Commands, ambient_light: Option<ResMut<AmbientLight>>) {
     // Configure ambient light
@@ -31,7 +30,8 @@ fn setup_lighting(mut commands: Commands, ambient_light: Option<ResMut<AmbientLi
             ..default()
         },
         Transform::from_xyz(-12.0, 18.0, 12.0).looking_at(Vec3::ZERO, Vec3::Y),
-        LightingEntity,
+        Sun,
+        InGameWorld,
         Name::new("Main Directional Light"),
     ));
 }

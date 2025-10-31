@@ -2,9 +2,15 @@
 //!
 //! Handles server connection logic and state transitions for the main menu.
 
-use crate::GameState;
+use crate::client::LocalClientId;
+use crate::{GameState, utils::cleanup};
 use app::LOG_CLIENT_HOST;
 use bevy::prelude::*;
+use bevy_replicon_renet::{netcode::NetcodeClientTransport, renet::RenetClient};
+
+/// Input context marker for main menu
+#[derive(Component, Default)]
+pub struct MainMenuContext;
 
 /// Plugin for main menu input and connection handling
 pub(super) struct MainMenuInputPlugin;
@@ -15,7 +21,9 @@ impl Plugin for MainMenuInputPlugin {
             .add_systems(
                 Update,
                 wait_for_server_ready.run_if(in_state(GameState::ConnectingToServer)),
-            );
+            )
+            .add_systems(OnExit(GameState::InGame), cleanup_game_resources)
+            .add_systems(OnExit(GameState::MainMenu), cleanup::<MainMenuContext>);
     }
 }
 
@@ -46,4 +54,20 @@ fn wait_for_server_ready(
             "No ServerHandle resource found while waiting for server!"
         );
     }
+}
+
+fn cleanup_game_resources(
+    mut commands: Commands,
+    server_handle: Option<Res<game_server::ServerHandle>>,
+) {
+    // Server stoppen
+    if let Some(server) = server_handle {
+        // Shutdown-Logik hier
+        commands.remove_resource::<game_server::ServerHandle>();
+    }
+
+    // Netzwerk-Ressourcen entfernen
+    commands.remove_resource::<RenetClient>();
+    commands.remove_resource::<NetcodeClientTransport>();
+    commands.remove_resource::<LocalClientId>();
 }

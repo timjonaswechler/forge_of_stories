@@ -32,15 +32,6 @@ impl Plugin for SplashscreenScenePlugin {
                 world::SplashscreenWorldPlugin,
                 camera::SplashscreenCameraPlugin,
                 input::SplashscreenInputPlugin,
-            ))
-            // Cleanup all scene entities on exit
-            .add_systems(
-                OnExit(GameState::Splashscreen),
-                (
-                    cleanup::<ui::SplashscreenUI>,
-                    cleanup::<world::SplashscreenWorld>,
-                    cleanup::<input::SplashscreenContext>,
-                ),
-            );
+            ));
     }
 }

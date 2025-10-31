@@ -5,6 +5,7 @@ mod first_person;
 
 use crate::GameState;
 use crate::ui::cameras::cursor::CursorState;
+use crate::utils::cleanup;
 use bevy::prelude::*;
 
 pub struct InGameCamerasPlugin;
@@ -32,7 +33,10 @@ impl Plugin for InGameCamerasPlugin {
                     .run_if(in_state(GameState::InGame))
                     .run_if(|mode: Res<InGameCameraMode>| *mode == InGameCameraMode::FirstPerson),
             )
-            .add_systems(OnExit(GameState::InGame), (cleanup, release_cursor));
+            .add_systems(
+                OnExit(GameState::InGame),
+                (cleanup::<InGameCamera>, release_cursor),
+            );
     }
 }
 
@@ -50,12 +54,6 @@ fn spawn_camera(mut commands: Commands, mut cursor: ResMut<CursorState>) {
 
     // Lock cursor for FPS
     *cursor = CursorState::LOCKED;
-}
-
-fn cleanup(mut commands: Commands, cameras: Query<Entity, With<InGameCamera>>) {
-    for entity in &cameras {
-        commands.entity(entity).despawn();
-    }
 }
 
 fn release_cursor(mut cursor: ResMut<CursorState>) {

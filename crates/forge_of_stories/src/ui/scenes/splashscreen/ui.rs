@@ -2,7 +2,7 @@
 //!
 //! Contains all 2D UI elements for the splashscreen (text, overlays).
 
-use crate::GameState;
+use crate::{GameState, utils::cleanup};
 use bevy::prelude::*;
 
 /// Plugin for splashscreen UI elements
@@ -10,7 +10,8 @@ pub(super) struct SplashscreenUIPlugin;
 
 impl Plugin for SplashscreenUIPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(GameState::Splashscreen), spawn_ui);
+        app.add_systems(OnEnter(GameState::Splashscreen), spawn_ui)
+            .add_systems(OnExit(GameState::Splashscreen), cleanup::<SplashscreenUI>);
     }
 }
 
