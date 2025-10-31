@@ -27,7 +27,7 @@ impl Default for FirstPersonView {
 }
 
 pub fn handle_mouse_look(
-    mut mouse_motion: EventReader<MouseMotion>,
+    mut mouse_motion: MessageReader<MouseMotion>,
     mut camera: Query<&mut FirstPersonView, With<InGameCamera>>,
 ) {
     let Ok(mut view) = camera.single_mut() else {

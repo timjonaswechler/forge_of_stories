@@ -12,9 +12,7 @@ use app::LOG_SERVER;
 use bevy::{prelude::*, state::app::StatesPlugin};
 use bevy_replicon::shared::backend::ServerState as RepliconServerState;
 use bevy_replicon::{
-    prelude::*,
-    server::ServerSystems,
-    shared::backend::connected_client::NetworkId,
+    prelude::*, server::ServerSystems, shared::backend::connected_client::NetworkId,
 };
 use bevy_replicon_renet::{
     RenetChannelsExt, RepliconRenetPlugins,
@@ -33,6 +31,8 @@ use std::{
 };
 
 pub mod components;
+pub mod messages;
+pub mod movement;
 pub mod settings;
 pub mod world;
 pub mod world_setup;
@@ -57,7 +57,7 @@ struct WorldSpawned(bool);
 pub enum GameplayState {
     #[default]
     Unpaused,
-    Paused, // Menü geöffnet, Singleplayer pausiert
+    Paused,
 }
 
 #[derive(Resource)]
@@ -99,17 +99,19 @@ impl ServerHandle {
                 .replicate::<Velocity>()
                 .replicate::<GroundPlane>()
                 .replicate::<GroundPlaneSize>()
+                .add_client_event::<messages::PlayerInput>(Channel::Unreliable)
                 // Server-Networking beim Start einrichten
                 .add_systems(Startup, setup_networking)
                 .add_systems(
                     PreUpdate,
-                    handle_client_connections
+                    (handle_client_connections, movement::process_player_input)
+                        .chain()
                         .in_set(ServerSystems::Receive) // Läuft nachdem Replicon Nachrichten empfangen hat
                         .run_if(in_state(RepliconServerState::Running)),
                 )
                 .add_systems(
                     FixedUpdate,
-                    simulate_physics
+                    (simulate_physics, movement::apply_velocity)
                         .run_if(in_state(RepliconServerState::Running))
                         .run_if(in_state(GameplayState::Unpaused)),
                 )

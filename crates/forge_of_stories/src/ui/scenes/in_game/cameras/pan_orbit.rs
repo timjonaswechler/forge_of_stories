@@ -1,4 +1,4 @@
-use super::{CameraMode, InGameCameraMode, defaults::CameraDefaults};
+use super::InGameCameraMode;
 use crate::client::LocalPlayer;
 use bevy::prelude::*;
 use game_server::components::Position;
@@ -10,11 +10,11 @@ pub(super) fn follow_local_player_focus(
         (With<LocalPlayer>, Without<PanOrbitCamera>),
     >,
     mut cameras: Query<&mut PanOrbitCamera>,
-    defaults: Res<CameraDefaults>,
-    camera_mode: Res<CameraMode>,
+
+    camera_mode: Res<InGameCameraMode>,
 ) {
     // Nur aktiv wenn wir NICHT im PanOrbit-Mode sind (dann aktualisiert PanOrbit selbst)
-    let is_pan_orbit = matches!(*camera_mode, CameraMode::InGame(InGameCameraMode::PanOrbit));
+    let is_pan_orbit = matches!(*camera_mode, InGameCameraMode::PanOrbit);
 
     if is_pan_orbit {
         return;
@@ -28,8 +28,8 @@ pub(super) fn follow_local_player_focus(
         .map(|t| t.translation)
         .or_else(|| position.map(|p| p.translation))
         .unwrap_or(Vec3::ZERO);
-
-    let focus = base_translation + Vec3::new(0.0, defaults.pan_orbit.focus_height, 0.0);
+    let defaults = PanOrbitCamera::default();
+    let focus = base_translation + defaults.focus;
 
     for mut cam in &mut cameras {
         cam.focus = focus;
@@ -39,20 +39,64 @@ pub(super) fn follow_local_player_focus(
 
 use std::f32::consts::PI;
 
-use bevy::camera::RenderTarget;
+use bevy::camera::{CameraUpdateSystems, RenderTarget};
 use bevy::input::gestures::PinchGesture;
 use bevy::input::mouse::MouseWheel;
+use bevy::prelude::*;
+use bevy::transform::TransformSystems;
 use bevy::window::{PrimaryWindow, WindowRef};
+
+use input::{MouseKeyTracker, mouse_key_tracker};
+pub use touch::TouchControls;
+use touch::{TouchGestures, TouchTracker, touch_tracker};
+use traits::OptionalClamp;
 
 mod input;
 mod touch;
 mod traits;
 mod util;
 
-pub use self::input::{MouseKeyTracker, mouse_key_tracker};
-use self::touch::TouchGestures;
-pub use self::touch::{TouchControls, TouchTracker, touch_tracker};
-use self::traits::OptionalClamp;
+/// Bevy plugin that contains the systems for controlling `PanOrbitCamera` components.
+/// # Example
+/// ```no_run
+/// # use bevy::prelude::*;
+/// # use bevy_panorbit_camera::{PanOrbitCameraPlugin, PanOrbitCamera};
+/// fn main() {
+///     App::new()
+///         .add_plugins(DefaultPlugins)
+///         .add_plugins(PanOrbitCameraPlugin)
+///         .run();
+/// }
+/// ```
+pub struct PanOrbitCameraPlugin;
+
+impl Plugin for PanOrbitCameraPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<ActiveCameraData>()
+            .init_resource::<MouseKeyTracker>()
+            .init_resource::<TouchTracker>()
+            .add_systems(
+                PostUpdate,
+                (
+                    (
+                        active_viewport_data
+                            .run_if(|active_cam: Res<ActiveCameraData>| !active_cam.manual),
+                        mouse_key_tracker,
+                        touch_tracker,
+                    ),
+                    pan_orbit_camera,
+                )
+                    .chain()
+                    .in_set(PanOrbitCameraSystemSet)
+                    .before(TransformSystems::Propagate)
+                    .before(CameraUpdateSystems),
+            );
+    }
+}
+
+/// Base system set to allow ordering of `PanOrbitCamera`
+#[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
+pub struct PanOrbitCameraSystemSet;
 
 /// Tags an entity as capable of panning and orbiting, and provides a way to configure the
 /// camera's behaviour and controls.
@@ -372,7 +416,8 @@ impl TrackpadBehavior {
 
 /// Gather data about the active viewport, i.e. the viewport the user is interacting with.
 /// Enables multiple viewports/windows.
-pub fn active_viewport_data(
+#[allow(clippy::too_many_arguments)]
+fn active_viewport_data(
     mut active_cam: ResMut<ActiveCameraData>,
     mouse_input: Res<ButtonInput<MouseButton>>,
     key_input: Res<ButtonInput<KeyCode>>,
@@ -381,7 +426,8 @@ pub fn active_viewport_data(
     touches: Res<Touches>,
     primary_windows: Query<&Window, With<PrimaryWindow>>,
     other_windows: Query<&Window, Without<PrimaryWindow>>,
-    orbit_cameras: Query<(Entity, &Camera3d, &PanOrbitCamera)>,
+    orbit_cameras: Query<(Entity, &Camera, &PanOrbitCamera)>,
+    #[cfg(feature = "bevy_egui")] egui_wants_focus: Res<EguiWantsFocus>,
 ) {
     let mut new_resource = ActiveCameraData::default();
     let mut max_cam_order = 0;
@@ -399,6 +445,10 @@ pub fn active_viewport_data(
             has_input = true;
             #[allow(unused_mut, unused_assignments)]
             let mut should_get_input = true;
+            #[cfg(feature = "bevy_egui")]
+            {
+                should_get_input = !egui_wants_focus.prev && !egui_wants_focus.curr;
+            }
             if should_get_input {
                 // First check if cursor is in the same window as this camera
                 if let RenderTarget::Window(win_ref) = camera.target {
@@ -453,7 +503,7 @@ pub fn active_viewport_data(
 }
 
 /// Main system for processing input and converting to transformations
-pub fn pan_orbit_camera(
+fn pan_orbit_camera(
     active_cam: Res<ActiveCameraData>,
     mouse_key_tracker: Res<MouseKeyTracker>,
     touch_tracker: Res<TouchTracker>,

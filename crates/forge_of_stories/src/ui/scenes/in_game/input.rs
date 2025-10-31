@@ -1,8 +1,12 @@
 //! InGame Input Layer
 //!
-//! Handles input processing and auto-transition logic for the InGame.
+//! Handles input processing for the InGame scene.
 
-use crate::{GameState, utils::cleanup};
+use crate::{
+    GameState,
+    ui::{cameras::cursor::CursorState, components::InGameMenuState},
+    utils::cleanup,
+};
 use app::LOG_MAIN;
 use bevy::prelude::*;
 use bevy_enhanced_input::prelude::*;
@@ -16,7 +20,7 @@ impl Plugin for InGameInputPlugin {
             .add_systems(OnEnter(GameState::InGame), setup_input)
             .add_systems(
                 Update,
-                (handle_skip_input,).run_if(in_state(GameState::InGame)),
+                (handle_menu_toggle, manage_cursor_state).run_if(in_state(GameState::InGame)),
             )
             .add_systems(OnExit(GameState::InGame), cleanup::<InGameContext>);
     }
@@ -26,42 +30,47 @@ impl Plugin for InGameInputPlugin {
 #[derive(Component, Default)]
 pub(super) struct InGameContext;
 
-/// Action to skip the InGame
+/// Action to toggle the in-game menu
 #[derive(InputAction)]
 #[action_output(bool)]
-struct SkipInGame;
+struct ToggleMenu;
 
-/// Sets up input context and timer
+/// Sets up input context
 fn setup_input(mut commands: Commands) {
-    // Spawn input context entity
     commands.spawn((
         Name::new("InGame Input Context"),
         InGameContext,
-        actions!(
-            InGameContext[(
-                Action::<SkipInGame>::default(),
-                bindings![KeyCode::Space, KeyCode::Enter, KeyCode::Escape],
-            )]
-        ),
+        actions!(InGameContext[(Action::<ToggleMenu>::default(), bindings![KeyCode::Escape],)]),
     ));
 
     info!(target: LOG_MAIN, "InGame input initialized");
 }
 
-/// Handles user input to skip the InGame
-fn handle_skip_input(
-    // mut commands: Commands,
+/// Handles ESC key to toggle the in-game menu
+fn handle_menu_toggle(
     actions: Query<(&ActionValue, &ActionOf<InGameContext>)>,
-    mut next_state: ResMut<NextState<GameState>>,
+    mut menu: ResMut<InGameMenuState>,
 ) {
     for (value, _) in &actions {
         if value.as_bool() {
+            menu.toggle();
             info!(
                 target: LOG_MAIN,
-                "InGame skipped by user input, transitioning to MainMenu"
+                "In-game menu toggled: {}",
+                if menu.is_open() { "open" } else { "closed" }
             );
-            next_state.set(GameState::MainMenu);
             break;
         }
+    }
+}
+
+/// Manages cursor state based on menu state
+fn manage_cursor_state(menu: Res<InGameMenuState>, mut cursor: ResMut<CursorState>) {
+    if menu.is_changed() {
+        *cursor = if menu.is_open() {
+            CursorState::FREE
+        } else {
+            CursorState::LOCKED
+        };
     }
 }

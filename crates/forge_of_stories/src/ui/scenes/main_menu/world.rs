@@ -16,10 +16,7 @@ impl Plugin for MainMenuWorldPlugin {
                 Update,
                 (animate_background, rotate_ambient_objects).run_if(in_state(GameState::MainMenu)),
             )
-            .add_systems(
-                OnExit(GameState::MainMenu),
-                (cleanup::<MainMenuWorld>, verify_cleanup_after).chain(),
-            );
+            .add_systems(OnExit(GameState::MainMenu), cleanup::<MainMenuWorld>);
     }
 }
 
@@ -97,16 +94,5 @@ fn rotate_ambient_objects(time: Res<Time>, mut query: Query<(&mut Transform, &Am
         if let Ok(dir) = Dir3::new(rotator.axis) {
             transform.rotate_axis(dir, rotator.speed * time.delta_secs());
         }
-    }
-}
-
-fn verify_cleanup_after(query: Query<(Entity, &Name), With<MainMenuWorld>>) {
-    if query.iter().count() > 0 {
-        error!("⚠️  MainMenu entities still exist after cleanup!");
-        for (entity, name) in &query {
-            error!("  - {:?}: {}", entity, name.as_str());
-        }
-    } else {
-        info!("✅ MainMenu cleanup verified - all entities removed");
     }
 }

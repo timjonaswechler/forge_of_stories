@@ -38,6 +38,7 @@ impl Plugin for ClientPlugin {
             .replicate::<Velocity>()
             .replicate::<GroundPlane>()
             .replicate::<GroundPlaneSize>()
+            .add_client_event::<game_server::messages::PlayerInput>(Channel::Unreliable)
             // Connect to embedded server when entering InGame
             .add_systems(OnEnter(GameState::InGame), setup_client_networking)
             .add_systems(

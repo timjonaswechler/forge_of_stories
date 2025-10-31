@@ -5,6 +5,7 @@
 mod cameras;
 mod hud;
 mod input;
+mod player_movement;
 pub mod world;
 
 use bevy::prelude::*;
@@ -19,8 +20,9 @@ impl Plugin for InGameScenePlugin {
             .add_plugins((
                 hud::InGameHUDPlugin,
                 world::InGameWorldPlugin,
-                cameras::InGameCamerasPlugin, // <-- Hier werden die Cameras registriert!
+                cameras::InGameCamerasPlugin,
                 input::InGameInputPlugin,
+                player_movement::PlayerMovementPlugin,
             ));
     }
 }

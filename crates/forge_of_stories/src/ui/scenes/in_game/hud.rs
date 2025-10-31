@@ -2,6 +2,7 @@
 
 use crate::{GameState, utils::cleanup};
 use bevy::prelude::*;
+use game_server::ServerHandle;
 
 pub(super) struct InGameHUDPlugin;
 
@@ -16,8 +17,11 @@ impl Plugin for InGameHUDPlugin {
 #[derive(Component)]
 pub(super) struct InGameHUD;
 
-fn spawn_hud(mut commands: Commands) {
-    let ui_text = "Singleplayer\nPress ESC for menu\nPress C to toggle camera";
+fn spawn_hud(mut commands: Commands, server: Res<ServerHandle>) {
+    let ui_text = format!(
+        "Singleplayer\nPress ESC for menu\nPress C to toggle camera\nServer Port: {}",
+        server.port()
+    );
 
     commands.spawn((
         Text::new(ui_text),

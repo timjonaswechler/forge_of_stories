@@ -1,7 +1,7 @@
 //! Player movement and physics systems.
 
 use bevy::prelude::*;
-use networking::prelude::*;
+use bevy_replicon::prelude::*;
 
 use crate::components::{PlayerOwner, Position, Velocity};
 use crate::messages::PlayerInput;

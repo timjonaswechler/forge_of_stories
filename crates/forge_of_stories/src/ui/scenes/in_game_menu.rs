@@ -162,6 +162,7 @@ fn handle_in_game_menu_buttons(
         Changed<Interaction>,
     >,
     mut menu: ResMut<InGameMenuState>,
+    mut server: ResMut<game_server::ServerHandle>,
     mut next_state: ResMut<NextState<GameState>>,
 ) {
     for (interaction, action, mut color, mut border_color) in &mut interaction_query {
@@ -173,7 +174,8 @@ fn handle_in_game_menu_buttons(
                 match action {
                     InGameMenuAction::Resume => menu.set_closed(),
                     InGameMenuAction::LeaveGame => {
-                        info!(target: LOG_CLIENT, "Leaving game...");
+                        info!(target: LOG_CLIENT, "Leaving game, stopping server...");
+                        server.shutdown();
                         menu.set_closed();
                         next_state.set(GameState::MainMenu);
                     }

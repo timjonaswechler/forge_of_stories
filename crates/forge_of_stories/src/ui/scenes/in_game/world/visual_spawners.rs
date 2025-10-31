@@ -36,11 +36,11 @@ fn spawn_ground_plane_visuals(
     planes: Query<(Entity, &Position, &GroundPlaneSize), (With<GroundPlane>, Without<HasVisuals>)>,
 ) {
     for (entity, position, size) in &planes {
-        info!(
-            target: LOG_CLIENT,
-            "Spawning visuals for ground plane at {:?} with size {}x{}x{}",
-            position.translation, size.width, size.height, size.depth
-        );
+        // info!(
+        //     target: LOG_CLIENT,
+        //     "Spawning visuals for ground plane at {:?} with size {}x{}x{}",
+        //     position.translation, size.width, size.height, size.depth
+        // );
 
         let mesh = meshes.add(Mesh::from(Cuboid::new(size.width, size.height, size.depth)));
         let material = materials.add(StandardMaterial {
@@ -69,11 +69,11 @@ fn spawn_player_visuals(
     players: Query<(Entity, &Player, &Position), Without<HasVisuals>>,
 ) {
     for (entity, player, position) in &players {
-        info!(
-            target: LOG_CLIENT,
-            "Spawning visuals for player with color {:?} at {:?}",
-            player.color, position.translation
-        );
+        // info!(
+        //     target: LOG_CLIENT,
+        //     "Spawning visuals for player with color {:?} at {:?}",
+        //     player.color, position.translation
+        // );
 
         let material = materials.add(StandardMaterial {
             base_color: player.color,
