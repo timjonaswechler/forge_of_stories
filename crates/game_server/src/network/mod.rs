@@ -192,3 +192,42 @@ pub fn handle_client_connections(
         );
     }
 }
+
+/// System that handles client disconnections.
+///
+/// When a client disconnects (ConnectedClient component is removed),
+/// this system finds and despawns all entities owned by that client.
+pub fn handle_client_disconnections(
+    mut commands: Commands,
+    mut disconnected_clients: RemovedComponents<ConnectedClient>,
+    players: Query<(Entity, &PlayerOwner)>,
+) {
+    for disconnected_client in disconnected_clients.read() {
+        info!(
+            target: LOG_SERVER,
+            "Client {:?} disconnected, cleaning up...",
+            disconnected_client
+        );
+
+        // Find and despawn all entities owned by this client
+        let mut despawned_count = 0;
+        for (player_entity, owner) in &players {
+            if owner.client_entity == disconnected_client {
+                commands.entity(player_entity).despawn();
+                despawned_count += 1;
+                info!(
+                    target: LOG_SERVER,
+                    "Despawned player entity {:?} for disconnected client",
+                    player_entity
+                );
+            }
+        }
+
+        info!(
+            target: LOG_SERVER,
+            "Client {:?} cleanup complete ({} entities despawned)",
+            disconnected_client,
+            despawned_count
+        );
+    }
+}

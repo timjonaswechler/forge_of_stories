@@ -1,4 +1,4 @@
-mod in_game;
+pub mod in_game;
 mod in_game_menu;
 mod main_menu;
 mod splashscreen;

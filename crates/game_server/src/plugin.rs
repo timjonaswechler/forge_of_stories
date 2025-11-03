@@ -10,7 +10,9 @@ use bevy_replicon::prelude::*;
 use bevy_replicon_renet::RepliconRenetPlugins;
 
 use crate::gameplay::{apply_velocity, process_player_input, simulate_physics};
-use crate::network::{Port, WorldSpawned, handle_client_connections, setup_networking};
+use crate::network::{
+    Port, WorldSpawned, handle_client_connections, handle_client_disconnections, setup_networking,
+};
 use crate::shared::*;
 use crate::world::*;
 
@@ -45,7 +47,7 @@ impl Plugin for ServerPlugin {
             .add_systems(Startup, setup_networking)
             .add_systems(
                 PreUpdate,
-                handle_client_connections
+                (handle_client_connections, handle_client_disconnections)
                     .in_set(ServerSystems::Receive)
                     .run_if(in_state(ServerState::Running)),
             )

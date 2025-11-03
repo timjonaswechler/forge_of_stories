@@ -1,12 +1,18 @@
-//! Player movement input handling (local to client, sends to server)
-use super::super::cameras::cursor::CursorState;
+//! Player movement input handling.
+//!
+//! Sends player input (WASD, Space) to the server via bevy_replicon events.
+
 use crate::GameState;
 use crate::networking::LocalPlayer;
+use crate::ui::scenes::in_game::cameras::CursorState;
 use bevy::prelude::*;
 use bevy_replicon::prelude::*;
 use game_server::PlayerInput;
 
-/// Plugin für Spieler-Movement-Input
+/// Plugin for player movement input.
+///
+/// Registers the PlayerInput client event and sends input to the server
+/// when the player is in-game, connected, and the cursor is locked.
 pub struct PlayerInputPlugin;
 
 impl Plugin for PlayerInputPlugin {
@@ -17,16 +23,16 @@ impl Plugin for PlayerInputPlugin {
                 send_player_input
                     .run_if(in_state(GameState::InGame))
                     .run_if(in_state(ClientState::Connected))
-                    .run_if(resource_equals(CursorState::LOCKED)), // Nur wenn Cursor locked
+                    .run_if(resource_equals(CursorState::LOCKED)),
             );
     }
 }
 
-/// System das WASD Input sammelt und an Server sendet
+/// System that collects WASD + Space input and sends it to the server.
 fn send_player_input(
     mut commands: Commands,
     keyboard: Res<ButtonInput<KeyCode>>,
-    local_player: Query<&Transform, With<LocalPlayer>>,
+    _local_player: Query<&Transform, With<LocalPlayer>>,
 ) {
     let mut direction = Vec2::ZERO;
 
@@ -49,11 +55,6 @@ fn send_player_input(
     }
 
     // Send input to server
-    // let input = PlayerInput {
-    //     direction,
-    //     jump: keyboard.pressed(KeyCode::Space), // oder anderer Jump-Button
-    // };
-
     commands.client_trigger(PlayerInput {
         direction,
         jump: keyboard.pressed(KeyCode::Space),

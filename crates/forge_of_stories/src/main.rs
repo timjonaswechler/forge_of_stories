@@ -1,9 +1,11 @@
 mod fos_app;
+mod input;
 mod networking;
 mod ui;
 mod utils;
 
 use crate::fos_app::FOSApp;
+use crate::input::InputPlugin;
 use crate::networking::NetworkingPlugin;
 use crate::ui::UIPlugin;
 use app::AppBuilder;
@@ -57,6 +59,7 @@ fn main() {
                 KeymapPlugin::with_config_path(ctx.path_context().keybinding_file()),
                 EnhancedInputPlugin, // TODO: in port in keymap plugin
                 NetworkingPlugin,
+                InputPlugin,
                 UIPlugin,
             ));
 

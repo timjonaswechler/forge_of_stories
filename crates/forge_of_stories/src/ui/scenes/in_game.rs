@@ -2,7 +2,7 @@
 //!
 //! Main gameplay scene with HUD, world, cameras, and input handling.
 
-mod cameras;
+pub mod cameras;
 mod hud;
 mod input;
 pub mod world;

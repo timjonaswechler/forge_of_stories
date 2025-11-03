@@ -9,7 +9,10 @@ use crate::ui::components::InGameMenuState;
 use crate::utils::cleanup;
 use bevy::prelude::*;
 use bevy::transform::TransformSystems;
-use cursor::{CursorState, apply_cursor_state};
+use cursor::apply_cursor_state;
+
+// Re-export CursorState for use in input module
+pub use cursor::CursorState;
 
 pub struct InGameCamerasPlugin;
 
