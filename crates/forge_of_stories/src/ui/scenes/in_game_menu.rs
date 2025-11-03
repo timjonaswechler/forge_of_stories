@@ -195,8 +195,11 @@ fn handle_in_game_menu_buttons(
 }
 
 /// System that runs when leaving the InGame state.
-/// Disconnects the client and removes the server handle.
-fn cleanup_on_leave_game(mut commands: Commands) {
+/// Disconnects the client and stops the embedded server.
+fn cleanup_on_leave_game(
+    mut commands: Commands,
+    mut server: Option<ResMut<game_server::ServerHandle>>,
+) {
     info!(target: LOG_CLIENT, "Cleaning up game session...");
 
     // 1. Remove client networking resources (this triggers disconnect)
@@ -205,9 +208,10 @@ fn cleanup_on_leave_game(mut commands: Commands) {
 
     info!(target: LOG_CLIENT, "Client disconnected");
 
-    // 2. Remove server handle - Drop will shutdown the server thread
-    // Note: This may block briefly on Drop, but it's unavoidable
-    commands.remove_resource::<game_server::ServerHandle>();
-
-    info!(target: LOG_CLIENT, "Server cleanup initiated");
+    // 2. Stop the embedded server if running
+    if let Some(ref mut server) = server {
+        server.shutdown();
+        commands.remove_resource::<game_server::ServerHandle>();
+        info!(target: LOG_CLIENT, "Server stopped");
+    }
 }

@@ -134,12 +134,13 @@ fn handle_button_interactions(
                     MenuAction::Singleplayer => {
                         info!(target: LOG_CLIENT_HOST, "Singleplayer button pressed");
 
-                        // Start embedded server
+                        // Start embedded server on port 5000
+                        info!(target: LOG_CLIENT_HOST, "Starting embedded server on port 5000...");
                         let server =
                             game_server::ServerHandle::start_embedded(game_server::Port(5000));
                         commands.insert_resource(server);
 
-                        info!(target: LOG_CLIENT_HOST, "Server starting... transitioning to ConnectingToServer state");
+                        info!(target: LOG_CLIENT_HOST, "Transitioning to ConnectingToServer state...");
                         next_state.set(GameState::ConnectingToServer);
                     }
                 }

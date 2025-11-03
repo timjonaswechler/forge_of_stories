@@ -38,8 +38,9 @@ use bevy_replicon::prelude::*;
 
 use std::{
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
+        mpsc::{self, Receiver, Sender},
     },
     thread::{self, JoinHandle},
 };
@@ -71,6 +72,7 @@ pub struct ServerHandle {
     thread_handle: Option<JoinHandle<()>>,
     ready_flag: Arc<AtomicBool>,
     port: Arc<std::sync::Mutex<u16>>,
+    shutdown_tx: Option<Sender<()>>,
 }
 
 impl ServerHandle {
@@ -94,42 +96,64 @@ impl ServerHandle {
         let actual_port = Arc::new(std::sync::Mutex::new(port.0));
         let thread_port = actual_port.clone();
 
+        // Create channel for shutdown communication
+        let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>();
+        let shutdown_rx = Arc::new(Mutex::new(shutdown_rx));
+        let thread_shutdown_rx = shutdown_rx.clone();
+
         let thread_handle = thread::spawn(move || {
             use network::{PortStorage, ServerReadyFlag};
 
             let thread_ready = ServerReadyFlag(server_ready);
             let port_storage = PortStorage(thread_port);
 
-            App::new()
-                .add_plugins((MinimalPlugins, StatesPlugin, RepliconPlugins))
+            let mut app = App::new();
+            app.add_plugins((MinimalPlugins, StatesPlugin, RepliconPlugins))
                 .insert_resource(thread_ready)
                 .insert_resource(port_storage)
                 .add_plugins(ServerPlugin { port: port.0 })
-                .run();
+                // Add system to check for shutdown signal
+                .add_systems(Update, move |mut app_exit: EventWriter<AppExit>| {
+                    if let Ok(rx) = thread_shutdown_rx.lock() {
+                        if rx.try_recv().is_ok() {
+                            info!(target: LOG_SERVER, "Shutdown signal received, stopping server...");
+                            app_exit.write(AppExit::Success);
+                        }
+                    }
+                });
+
+            app.run();
+            info!(target: LOG_SERVER, "Server thread exiting cleanly");
         });
 
         Self {
             thread_handle: Some(thread_handle),
             ready_flag,
             port: actual_port,
+            shutdown_tx: Some(shutdown_tx),
         }
     }
 
-    /// Shuts down the embedded server.
+    /// Shuts down the embedded server gracefully.
     ///
-    /// Note: The server thread cannot be gracefully stopped because Bevy's App::run()
-    /// runs in an infinite loop. The thread will be detached and will terminate
-    /// when the process exits.
+    /// Sends a shutdown signal to the server thread, which will trigger AppExit.
+    /// Waits for the thread to finish cleanly.
     pub fn shutdown(&mut self) {
-        if let Some(_handle) = self.thread_handle.take() {
-            info!(target: LOG_SERVER, "Detaching embedded server thread...");
-            // Note: We intentionally do NOT join the thread here because:
-            // 1. App::run() is an infinite loop
-            // 2. Joining would block forever
-            // 3. The thread will be cleaned up when the process exits
-            //
-            // The server will automatically stop when all clients disconnect
-            // or when the process terminates.
+        if let Some(shutdown_tx) = self.shutdown_tx.take() {
+            info!(target: LOG_SERVER, "Sending shutdown signal to server...");
+
+            // Send shutdown signal (ignore if receiver is already dropped)
+            let _ = shutdown_tx.send(());
+
+            // Wait for thread to finish
+            if let Some(handle) = self.thread_handle.take() {
+                info!(target: LOG_SERVER, "Waiting for server thread to stop...");
+                if let Err(e) = handle.join() {
+                    error!(target: LOG_SERVER, "Server thread panicked: {:?}", e);
+                } else {
+                    info!(target: LOG_SERVER, "Server stopped cleanly");
+                }
+            }
         }
     }
 

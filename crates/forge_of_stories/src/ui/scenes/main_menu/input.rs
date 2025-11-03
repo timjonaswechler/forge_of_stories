@@ -48,26 +48,25 @@ fn wait_for_server_ready(
             );
             next_state.set(GameState::InGame);
         }
-    } else {
-        error!(
-            target: LOG_CLIENT_HOST,
-            "No ServerHandle resource found while waiting for server!"
-        );
     }
 }
 
 fn cleanup_game_resources(
     mut commands: Commands,
-    server_handle: Option<Res<game_server::ServerHandle>>,
+    mut server: Option<ResMut<game_server::ServerHandle>>,
 ) {
-    // Server stoppen
-    if let Some(server) = server_handle {
-        // Shutdown-Logik hier
+    info!(target: LOG_CLIENT_HOST, "Cleaning up game resources...");
+
+    // Stop the embedded server if running
+    if let Some(ref mut server) = server {
+        server.shutdown();
         commands.remove_resource::<game_server::ServerHandle>();
     }
 
-    // Netzwerk-Ressourcen entfernen
+    // Remove client networking resources
     commands.remove_resource::<RenetClient>();
     commands.remove_resource::<NetcodeClientTransport>();
     commands.remove_resource::<LocalClientId>();
+
+    info!(target: LOG_CLIENT_HOST, "Server stopped, resources cleaned up");
 }
