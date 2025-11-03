@@ -4,6 +4,7 @@ use crate::ui::components::{HOVERED_BUTTON, InGameMenuState, NORMAL_BUTTON, PRES
 use app::LOG_CLIENT;
 use bevy::color::palettes::basic::RED;
 use bevy::prelude::*;
+use bevy_replicon_renet::{netcode::NetcodeClientTransport, renet::RenetClient};
 
 /// Plugin for managing the in-game ESC menu
 pub struct InGameMenuScenePlugin;
@@ -18,7 +19,8 @@ impl Plugin for InGameMenuScenePlugin {
                 handle_in_game_menu_buttons,
             )
                 .run_if(in_state(GameState::InGame)),
-        );
+        )
+        .add_systems(OnExit(GameState::InGame), cleanup_on_leave_game);
     }
 }
 
@@ -162,7 +164,6 @@ fn handle_in_game_menu_buttons(
         Changed<Interaction>,
     >,
     mut menu: ResMut<InGameMenuState>,
-    mut server: ResMut<game_server::ServerHandle>,
     mut next_state: ResMut<NextState<GameState>>,
 ) {
     for (interaction, action, mut color, mut border_color) in &mut interaction_query {
@@ -174,9 +175,9 @@ fn handle_in_game_menu_buttons(
                 match action {
                     InGameMenuAction::Resume => menu.set_closed(),
                     InGameMenuAction::LeaveGame => {
-                        info!(target: LOG_CLIENT, "Leaving game, stopping server...");
-                        server.shutdown();
+                        info!(target: LOG_CLIENT, "Leaving game...");
                         menu.set_closed();
+                        // Change state - cleanup will happen in OnExit(InGame)
                         next_state.set(GameState::MainMenu);
                     }
                 }
@@ -191,4 +192,22 @@ fn handle_in_game_menu_buttons(
             }
         }
     }
+}
+
+/// System that runs when leaving the InGame state.
+/// Disconnects the client and removes the server handle.
+fn cleanup_on_leave_game(mut commands: Commands) {
+    info!(target: LOG_CLIENT, "Cleaning up game session...");
+
+    // 1. Remove client networking resources (this triggers disconnect)
+    commands.remove_resource::<RenetClient>();
+    commands.remove_resource::<NetcodeClientTransport>();
+
+    info!(target: LOG_CLIENT, "Client disconnected");
+
+    // 2. Remove server handle - Drop will shutdown the server thread
+    // Note: This may block briefly on Drop, but it's unavoidable
+    commands.remove_resource::<game_server::ServerHandle>();
+
+    info!(target: LOG_CLIENT, "Server cleanup initiated");
 }

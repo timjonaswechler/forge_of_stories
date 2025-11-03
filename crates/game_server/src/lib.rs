@@ -115,11 +115,21 @@ impl ServerHandle {
         }
     }
 
-    /// Shuts down the embedded server and waits for the thread to finish.
+    /// Shuts down the embedded server.
+    ///
+    /// Note: The server thread cannot be gracefully stopped because Bevy's App::run()
+    /// runs in an infinite loop. The thread will be detached and will terminate
+    /// when the process exits.
     pub fn shutdown(&mut self) {
-        if let Some(handle) = self.thread_handle.take() {
-            info!(target: LOG_SERVER, "Shutting down embedded server...");
-            handle.join().expect("Failed to join server thread");
+        if let Some(_handle) = self.thread_handle.take() {
+            info!(target: LOG_SERVER, "Detaching embedded server thread...");
+            // Note: We intentionally do NOT join the thread here because:
+            // 1. App::run() is an infinite loop
+            // 2. Joining would block forever
+            // 3. The thread will be cleaned up when the process exits
+            //
+            // The server will automatically stop when all clients disconnect
+            // or when the process terminates.
         }
     }
 
