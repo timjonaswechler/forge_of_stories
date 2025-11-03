@@ -1,10 +1,10 @@
-mod client;
 mod fos_app;
+mod networking;
 mod ui;
 mod utils;
 
-use crate::client::ClientPlugin;
 use crate::fos_app::FOSApp;
+use crate::networking::NetworkingPlugin;
 use crate::ui::UIPlugin;
 use app::AppBuilder;
 use bevy::{log::LogPlugin, prelude::*};
@@ -56,7 +56,7 @@ fn main() {
             app.add_plugins((
                 KeymapPlugin::with_config_path(ctx.path_context().keybinding_file()),
                 EnhancedInputPlugin, // TODO: in port in keymap plugin
-                ClientPlugin,
+                NetworkingPlugin,
                 UIPlugin,
             ));
 

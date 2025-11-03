@@ -5,8 +5,7 @@ use app::LOG_CLIENT;
 use bevy::math::primitives::Cuboid;
 use bevy::pbr::MeshMaterial3d;
 use bevy::prelude::*;
-use game_server::components::{Player, Position};
-use game_server::world::{GroundPlane, GroundPlaneSize};
+use game_server::{GroundPlane, GroundPlaneSize, Player, Position};
 
 /// Plugin for spawning visuals for replicated entities
 pub struct VisualSpawnersPlugin;

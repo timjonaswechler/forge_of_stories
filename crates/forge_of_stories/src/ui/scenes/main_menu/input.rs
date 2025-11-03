@@ -2,7 +2,7 @@
 //!
 //! Handles server connection logic and state transitions for the main menu.
 
-use crate::client::LocalClientId;
+use crate::networking::LocalClientId;
 use crate::{GameState, utils::cleanup};
 use app::LOG_CLIENT_HOST;
 use bevy::prelude::*;

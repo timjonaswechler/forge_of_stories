@@ -1,17 +1,17 @@
 //! Player movement input handling (local to client, sends to server)
 use super::super::cameras::cursor::CursorState;
 use crate::GameState;
-use crate::client::LocalPlayer;
+use crate::networking::LocalPlayer;
 use bevy::prelude::*;
 use bevy_replicon::prelude::*;
-use game_server::messages::PlayerInput;
+use game_server::PlayerInput;
 
 /// Plugin für Spieler-Movement-Input
 pub struct PlayerInputPlugin;
 
 impl Plugin for PlayerInputPlugin {
     fn build(&self, app: &mut App) {
-        app.add_client_event::<game_server::messages::PlayerInput>(Channel::Unreliable)
+        app.add_client_event::<PlayerInput>(Channel::Unreliable)
             .add_systems(
                 Update,
                 send_player_input

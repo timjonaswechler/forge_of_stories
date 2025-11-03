@@ -1,6 +1,7 @@
-//! Replicated game components for bevy_replicon.
+//! Shared replicated components for bevy_replicon.
 //!
 //! These components are automatically synchronized from server to clients.
+//! Both server and client must register these for replication to work.
 
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -47,7 +48,8 @@ pub struct Velocity {
 
 /// Component that links a player entity to its owning client entity.
 ///
-/// This is NOT replicated - it's only used on the server to track which client owns which player.
+/// **Server-only** - This is NOT replicated!
+/// Only used on the server to track which ConnectedClient owns which player.
 #[derive(Component, Debug, Clone, Copy)]
 pub struct PlayerOwner {
     /// The ConnectedClient entity that owns this player.

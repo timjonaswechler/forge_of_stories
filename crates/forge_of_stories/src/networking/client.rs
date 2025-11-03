@@ -1,3 +1,5 @@
+//! Client connection and local player tracking.
+
 use crate::GameState;
 use app::LOG_CLIENT;
 use bevy::prelude::*;
@@ -7,11 +9,7 @@ use bevy_replicon_renet::{
     netcode::{ClientAuthentication, NetcodeClientTransport},
     renet::{ConnectionConfig, RenetClient},
 };
-use game_server::{
-    components::{Player, PlayerIdentity, Position, Velocity},
-    messages::PlayerInput,
-    world::{GroundPlane, GroundPlaneSize},
-};
+use game_server::{Player, PlayerIdentity};
 use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
 use std::time::SystemTime;
 
@@ -26,20 +24,12 @@ pub struct LocalClientId(pub u64);
 #[derive(Component)]
 pub struct LocalPlayer;
 
-/// Client plugin responsible for networking and replication
+/// Client plugin responsible for connection management and local player tracking.
 pub struct ClientPlugin;
 
 impl Plugin for ClientPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((RepliconPlugins, RepliconRenetPlugins))
-            // Register replicated components (must match server!)
-            .replicate::<Player>()
-            .replicate::<PlayerIdentity>()
-            .replicate::<Position>()
-            .replicate::<Velocity>()
-            .replicate::<GroundPlane>()
-            .replicate::<GroundPlaneSize>()
-            // Connect to embedded server when entering InGame
             .add_systems(OnEnter(GameState::InGame), setup_client_networking)
             .add_systems(
                 Update,
@@ -48,6 +38,9 @@ impl Plugin for ClientPlugin {
     }
 }
 
+/// Sets up client networking when entering the InGame state.
+///
+/// This connects to the embedded server using the port it's bound to.
 fn setup_client_networking(
     mut commands: Commands,
     channels: Res<RepliconChannels>,
@@ -55,7 +48,6 @@ fn setup_client_networking(
 ) {
     const PROTOCOL_ID: u64 = 0;
     let server_port = server_handle.port();
-
     let server_addr: SocketAddr = SocketAddr::new(Ipv4Addr::LOCALHOST.into(), server_port);
 
     let server_channels_config = channels.server_configs();
@@ -90,18 +82,23 @@ fn setup_client_networking(
 
     info!(
         target: LOG_CLIENT,
-       "Networking setup complete, connecting to {}",
+        "Networking setup complete, connecting to {}",
         server_addr
     );
 }
 
+/// Marks the replicated player entity that belongs to this client.
+///
+/// This runs every frame to ensure the LocalPlayer marker is always on the correct entity.
 fn mark_local_player(
     mut commands: Commands,
     local_id: Option<Res<LocalClientId>>,
     players: Query<(Entity, &PlayerIdentity), With<Player>>,
     current_local: Query<Entity, With<LocalPlayer>>,
 ) {
-    let Some(local_id) = local_id else { return };
+    let Some(local_id) = local_id else {
+        return;
+    };
 
     // Find the replicated entity that belongs to this client (if any)
     let target = players

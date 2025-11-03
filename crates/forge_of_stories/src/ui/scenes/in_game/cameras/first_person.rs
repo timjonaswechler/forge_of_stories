@@ -1,10 +1,10 @@
 // scenes/in_game/cameras/first_person.rs
 
 use super::InGameCamera;
-use crate::client::LocalPlayer;
+use crate::networking::LocalPlayer;
 use bevy::input::mouse::MouseMotion;
 use bevy::prelude::*;
-use game_server::components::Position;
+use game_server::Position;
 use std::f32::consts::{FRAC_PI_2, TAU};
 
 const PITCH_LIMIT: f32 = FRAC_PI_2 - 0.01;

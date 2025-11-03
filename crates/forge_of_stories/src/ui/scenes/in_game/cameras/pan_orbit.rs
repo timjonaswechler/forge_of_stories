@@ -1,7 +1,7 @@
 use super::{ActiveCameraMode, CameraMode, InGameCamera};
-use crate::client::LocalPlayer;
+use crate::networking::LocalPlayer;
 use bevy::prelude::*;
-use game_server::components::Position;
+use game_server::Position;
 
 /// Fokus dynamisch an LocalPlayer ausrichten (nur wenn PanOrbit aktiv ist)
 pub(super) fn follow_local_player_focus(

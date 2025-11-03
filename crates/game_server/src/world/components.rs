@@ -1,14 +1,8 @@
-//! World and entity resources for the game.
-//!
-//! This module defines resources used by the server for world management.
-//! Components have been moved to the `components` module.
+//! World-specific components.
 
 use bevy::color::palettes::css::*;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
-
-// Re-export components from the components module
-pub use crate::components::{Player, PlayerIdentity, Position, Velocity};
 
 /// Marker component for the ground plane entity.
 #[derive(Component, Debug, Clone, Copy, Serialize, Deserialize, Reflect)]
@@ -38,14 +32,14 @@ impl PlayerColorAssigner {
     pub fn new() -> Self {
         Self {
             available_colors: vec![
-                RED.into(),     // Red
-                BLUE.into(),    // Blue
-                GREEN.into(),   // Green
-                YELLOW.into(),  // Yellow
-                ORANGE.into(),  // Orange
-                PURPLE.into(),  // Purple
-                MAGENTA.into(), // Magenta
-                PINK.into(),    // Pink
+                RED.into(),
+                BLUE.into(),
+                GREEN.into(),
+                YELLOW.into(),
+                ORANGE.into(),
+                PURPLE.into(),
+                MAGENTA.into(),
+                PINK.into(),
             ],
             next_index: 0,
         }
