@@ -56,8 +56,8 @@ fn main() {
             app.add_plugins((
                 KeymapPlugin::with_config_path(ctx.path_context().keybinding_file()),
                 EnhancedInputPlugin, // TODO: in port in keymap plugin
-                UIPlugin,
                 ClientPlugin,
+                UIPlugin,
             ));
 
             app

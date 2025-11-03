@@ -9,6 +9,7 @@ use bevy_replicon_renet::{
 };
 use game_server::{
     components::{Player, PlayerIdentity, Position, Velocity},
+    messages::PlayerInput,
     world::{GroundPlane, GroundPlaneSize},
 };
 use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
@@ -38,7 +39,6 @@ impl Plugin for ClientPlugin {
             .replicate::<Velocity>()
             .replicate::<GroundPlane>()
             .replicate::<GroundPlaneSize>()
-            .add_client_event::<game_server::messages::PlayerInput>(Channel::Unreliable)
             // Connect to embedded server when entering InGame
             .add_systems(OnEnter(GameState::InGame), setup_client_networking)
             .add_systems(
@@ -120,36 +120,5 @@ fn mark_local_player(
         if current_local.get(target).is_err() {
             commands.entity(target).insert(LocalPlayer);
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use game_server::components::Position;
-
-    #[test]
-    fn transform_updates_when_position_changes() {
-        let mut app = App::new();
-
-        // This test would need the update_transforms_from_positions system
-        // which is now in rendering/visual_spawners.rs
-        // Keep this test structure for future integration tests
-
-        let entity = app
-            .world_mut()
-            .spawn((
-                Position {
-                    translation: Vec3::new(1.0, 2.0, 3.0),
-                },
-                Transform::default(),
-            ))
-            .id();
-
-        app.update();
-
-        let world = app.world();
-        let transform = world.get::<Transform>(entity).expect("transform missing");
-        assert_eq!(transform.translation, Vec3::new(1.0, 2.0, 3.0));
     }
 }

@@ -1,10 +1,12 @@
 //! InGame Input Layer
 //!
 //! Handles input processing for the InGame scene.
+mod player_movement;
 
+use super::cameras::cursor::CursorState;
 use crate::{
     GameState,
-    ui::{cameras::cursor::CursorState, components::InGameMenuState},
+    ui::{components::InGameMenuState, scenes::in_game::input::player_movement::PlayerInputPlugin},
     utils::cleanup,
 };
 use app::LOG_MAIN;
@@ -17,10 +19,11 @@ pub(super) struct InGameInputPlugin;
 impl Plugin for InGameInputPlugin {
     fn build(&self, app: &mut App) {
         app.add_input_context::<InGameContext>()
+            .add_plugins(PlayerInputPlugin)
             .add_systems(OnEnter(GameState::InGame), setup_input)
             .add_systems(
                 Update,
-                (handle_menu_toggle, manage_cursor_state).run_if(in_state(GameState::InGame)),
+                handle_menu_toggle.run_if(in_state(GameState::InGame)),
             )
             .add_systems(OnExit(GameState::InGame), cleanup::<InGameContext>);
     }
@@ -30,43 +33,21 @@ impl Plugin for InGameInputPlugin {
 #[derive(Component, Default)]
 pub(super) struct InGameContext;
 
-/// Action to toggle the in-game menu
-#[derive(InputAction)]
-#[action_output(bool)]
-struct ToggleMenu;
-
 /// Sets up input context
 fn setup_input(mut commands: Commands) {
-    commands.spawn((
-        Name::new("InGame Input Context"),
-        InGameContext,
-        actions!(InGameContext[(Action::<ToggleMenu>::default(), bindings![KeyCode::Escape],)]),
-    ));
+    commands.spawn((Name::new("InGame Input Context"), InGameContext));
 
     info!(target: LOG_MAIN, "InGame input initialized");
 }
 
 /// Handles ESC key to toggle the in-game menu
 fn handle_menu_toggle(
-    actions: Query<(&ActionValue, &ActionOf<InGameContext>)>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    mut cursor: ResMut<CursorState>,
     mut menu: ResMut<InGameMenuState>,
 ) {
-    for (value, _) in &actions {
-        if value.as_bool() {
-            menu.toggle();
-            info!(
-                target: LOG_MAIN,
-                "In-game menu toggled: {}",
-                if menu.is_open() { "open" } else { "closed" }
-            );
-            break;
-        }
-    }
-}
-
-/// Manages cursor state based on menu state
-fn manage_cursor_state(menu: Res<InGameMenuState>, mut cursor: ResMut<CursorState>) {
-    if menu.is_changed() {
+    if keyboard_input.just_pressed(KeyCode::Escape) {
+        menu.toggle();
         *cursor = if menu.is_open() {
             CursorState::FREE
         } else {

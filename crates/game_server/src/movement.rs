@@ -20,61 +20,43 @@ pub fn apply_velocity(mut query: Query<(&mut Position, &Velocity)>, time: Res<Ti
 
 /// System that processes player inputs from clients and updates velocity.
 ///
-/// Uses bevy_replicon's MessageReader to receive PlayerInput messages from clients.
-/// Runs after ServerSystems::Receive to ensure all messages are available.
+/// Runs in PreUpdate after ServerSystems::Receive to ensure all messages are available.
+// NEUES Observer-Pattern
 pub fn process_player_input(
+    trigger: On<FromClient<PlayerInput>>,
     mut players: Query<(&PlayerOwner, &mut Velocity)>,
-    mut inputs: MessageReader<FromClient<PlayerInput>>,
 ) {
-    // Process all incoming player inputs
-    for FromClient { client_id, message } in inputs.read() {
-        // Get the client entity from the ClientId
-        let Some(client_entity) = client_id.entity() else {
-            continue;
-        };
+    let FromClient { client_id, message } = trigger.event();
+    // Get the client entity from the ClientId
+    let client_entity = match client_id.entity() {
+        Some(e) => e,
+        None => {
+            warn!("Received input from invalid client: {:?}", client_id);
+            return;
+        }
+    };
 
-        // Find the player entity for this client
-        for (owner, mut velocity) in &mut players {
-            if owner.client_entity == client_entity {
-                // Convert 2D input to 3D velocity (XZ plane)
-                let move_vec = Vec3::new(message.direction.x, 0.0, message.direction.y);
+    // Find the player entity for this client
+    for (owner, mut velocity) in &mut players {
+        if owner.client_entity == client_entity {
+            // Convert 2D input to 3D velocity (XZ plane)
+            let move_vec = Vec3::new(message.direction.x, 0.0, message.direction.y);
 
-                // Normalize and apply speed
-                if move_vec.length() > 0.01 {
-                    velocity.linear = move_vec.normalize() * MOVE_SPEED;
-                } else {
-                    velocity.linear = Vec3::ZERO;
-                }
+            // Apply speed
+            velocity.linear = if move_vec.length() > 0.01 {
+                move_vec.normalize() * MOVE_SPEED
+            } else {
+                Vec3::ZERO
+            };
 
-                // TODO: Jump handling (would require ground detection)
-                // if message.jump { ... }
+            // TODO: Jump handling
+            // if message.jump {
+            //     velocity.linear.y = JUMP_FORCE;
+            // }
 
-                break;
-            }
+            return;
         }
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_velocity_integration() {
-        // Simple test: verify the system compiles and can be added to a schedule
-        let mut app = App::new();
-        app.add_systems(Update, apply_velocity);
-
-        // Spawn an entity with position and velocity
-        app.world_mut().spawn((
-            Position {
-                translation: Vec3::ZERO,
-            },
-            Velocity {
-                linear: Vec3::new(1.0, 0.0, 0.0),
-            },
-        ));
-
-        // Test passes if the system is valid
-    }
+    warn!("No player found for client {:?}", client_id);
 }

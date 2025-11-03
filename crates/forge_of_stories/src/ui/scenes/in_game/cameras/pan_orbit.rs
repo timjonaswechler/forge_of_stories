@@ -1,26 +1,28 @@
-use super::InGameCameraMode;
+use super::{ActiveCameraMode, CameraMode, InGameCamera};
 use crate::client::LocalPlayer;
 use bevy::prelude::*;
 use game_server::components::Position;
 
-/// Fokus dynamisch an LocalPlayer ausrichten
+/// Fokus dynamisch an LocalPlayer ausrichten (nur wenn PanOrbit aktiv ist)
 pub(super) fn follow_local_player_focus(
     local_player: Query<
         (Option<&Transform>, Option<&Position>),
-        (With<LocalPlayer>, Without<PanOrbitCamera>),
+        (With<LocalPlayer>, Without<InGameCamera>),
     >,
-    mut cameras: Query<&mut PanOrbitCamera>,
-
-    camera_mode: Res<InGameCameraMode>,
+    mut cameras: Query<(&ActiveCameraMode, &mut PanOrbitCamera), With<InGameCamera>>,
 ) {
-    // Nur aktiv wenn wir NICHT im PanOrbit-Mode sind (dann aktualisiert PanOrbit selbst)
-    let is_pan_orbit = matches!(*camera_mode, InGameCameraMode::PanOrbit);
+    // Safely get the camera - might not exist yet or might be multiple
+    let Some((active_mode, mut pan_orbit)) = cameras.iter_mut().next() else {
+        return;
+    };
 
-    if is_pan_orbit {
+    // Nur wenn PanOrbit aktiv ist
+    if active_mode.mode != CameraMode::PanOrbit {
         return;
     }
 
-    let Ok((transform, position)) = local_player.single() else {
+    // Safely get the player - might not exist yet
+    let Some((transform, position)) = local_player.iter().next() else {
         return;
     };
 
@@ -28,13 +30,12 @@ pub(super) fn follow_local_player_focus(
         .map(|t| t.translation)
         .or_else(|| position.map(|p| p.translation))
         .unwrap_or(Vec3::ZERO);
-    let defaults = PanOrbitCamera::default();
-    let focus = base_translation + defaults.focus;
 
-    for mut cam in &mut cameras {
-        cam.focus = focus;
-        cam.target_focus = focus;
-    }
+    // Focus auf Player-Position + Y-Offset (1.0)
+    let focus = base_translation + Vec3::new(0.0, 1.0, 0.0);
+
+    pan_orbit.focus = focus;
+    pan_orbit.target_focus = focus;
 }
 
 use std::f32::consts::PI;
@@ -42,13 +43,12 @@ use std::f32::consts::PI;
 use bevy::camera::{CameraUpdateSystems, RenderTarget};
 use bevy::input::gestures::PinchGesture;
 use bevy::input::mouse::MouseWheel;
-use bevy::prelude::*;
 use bevy::transform::TransformSystems;
 use bevy::window::{PrimaryWindow, WindowRef};
 
-use input::{MouseKeyTracker, mouse_key_tracker};
-pub use touch::TouchControls;
-use touch::{TouchGestures, TouchTracker, touch_tracker};
+// Re-export types and functions needed by cameras.rs
+pub use input::{MouseKeyTracker, mouse_key_tracker};
+pub use touch::{TouchControls, TouchGestures, TouchTracker, touch_tracker};
 use traits::OptionalClamp;
 
 mod input;
@@ -417,7 +417,7 @@ impl TrackpadBehavior {
 /// Gather data about the active viewport, i.e. the viewport the user is interacting with.
 /// Enables multiple viewports/windows.
 #[allow(clippy::too_many_arguments)]
-fn active_viewport_data(
+pub(super) fn active_viewport_data(
     mut active_cam: ResMut<ActiveCameraData>,
     mouse_input: Res<ButtonInput<MouseButton>>,
     key_input: Res<ButtonInput<KeyCode>>,
@@ -503,7 +503,7 @@ fn active_viewport_data(
 }
 
 /// Main system for processing input and converting to transformations
-fn pan_orbit_camera(
+pub(super) fn pan_orbit_camera(
     active_cam: Res<ActiveCameraData>,
     mouse_key_tracker: Res<MouseKeyTracker>,
     touch_tracker: Res<TouchTracker>,

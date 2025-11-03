@@ -37,6 +37,7 @@ pub mod settings;
 pub mod world;
 pub mod world_setup;
 use components::PlayerOwner;
+use messages::PlayerInput;
 use world::GroundPlaneSize;
 use world::*;
 use world_setup::spawn_world;
@@ -88,24 +89,25 @@ impl ServerHandle {
                 ))
                 .insert_resource(Time::<Fixed>::from_hz(20.0))
                 .insert_resource(port)
+                .init_resource::<WorldSpawned>()
+                .init_resource::<PlayerColorAssigner>()
                 .init_state::<GameplayState>()
                 .insert_resource(thread_ready)
                 .insert_resource(port_storage)
-                .init_resource::<WorldSpawned>()
-                .init_resource::<PlayerColorAssigner>()
                 .replicate::<Player>()
                 .replicate::<PlayerIdentity>()
                 .replicate::<Position>()
                 .replicate::<Velocity>()
                 .replicate::<GroundPlane>()
                 .replicate::<GroundPlaneSize>()
-                .add_client_event::<messages::PlayerInput>(Channel::Unreliable)
+                // Register client events (must match client!)
+                .add_client_event::<PlayerInput>(Channel::Unreliable)
+                .add_observer(movement::process_player_input)
                 // Server-Networking beim Start einrichten
                 .add_systems(Startup, setup_networking)
                 .add_systems(
                     PreUpdate,
-                    (handle_client_connections, movement::process_player_input)
-                        .chain()
+                    (handle_client_connections)
                         .in_set(ServerSystems::Receive) // Läuft nachdem Replicon Nachrichten empfangen hat
                         .run_if(in_state(RepliconServerState::Running)),
                 )
@@ -178,7 +180,7 @@ fn setup_networking(
 
     let server_config = ServerConfig {
         current_time,
-        max_clients: 1,
+        max_clients: 10, // Allow multiple clients (was 1, too restrictive)
         protocol_id: PROTOCOL_ID,
         authentication: ServerAuthentication::Unsecure,
         public_addresses: Default::default(),

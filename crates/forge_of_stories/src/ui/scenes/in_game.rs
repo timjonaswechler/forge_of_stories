@@ -5,7 +5,6 @@
 mod cameras;
 mod hud;
 mod input;
-mod player_movement;
 pub mod world;
 
 use bevy::prelude::*;
@@ -22,7 +21,6 @@ impl Plugin for InGameScenePlugin {
                 world::InGameWorldPlugin,
                 cameras::InGameCamerasPlugin,
                 input::InGameInputPlugin,
-                player_movement::PlayerMovementPlugin,
             ));
     }
 }
