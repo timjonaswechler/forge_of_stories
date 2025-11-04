@@ -1,10 +1,8 @@
 //! World setup and initialization.
 
+use crate::world::{GroundPlane, GroundPlaneSize};
 use bevy::prelude::*;
 use bevy_replicon::prelude::Replicated;
-
-use crate::shared::Position;
-use crate::world::{GroundPlane, GroundPlaneSize};
 
 /// Spawns the initial world (ground plane).
 ///
@@ -13,8 +11,9 @@ pub fn spawn_world(commands: &mut Commands) {
     // Spawn ground plane at origin
     commands.spawn((
         GroundPlane,
-        Position {
+        Transform {
             translation: Vec3::new(0.0, -0.125, 0.0),
+            ..Default::default()
         },
         GroundPlaneSize {
             width: 40.0,

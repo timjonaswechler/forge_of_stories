@@ -4,7 +4,6 @@ use super::InGameCamera;
 use crate::networking::LocalPlayer;
 use bevy::input::mouse::MouseMotion;
 use bevy::prelude::*;
-use game_server::Position;
 use std::f32::consts::{FRAC_PI_2, TAU};
 
 const PITCH_LIMIT: f32 = FRAC_PI_2 - 0.01;
@@ -43,13 +42,10 @@ pub fn handle_mouse_look(
 }
 
 pub fn follow_player(
-    local_player: Query<
-        (Option<&Transform>, Option<&Position>),
-        (With<LocalPlayer>, Without<InGameCamera>),
-    >,
+    local_player: Query<&Transform, (With<LocalPlayer>, Without<InGameCamera>)>,
     mut camera: Query<&mut Transform, With<InGameCamera>>,
 ) {
-    let Ok((player_transform, player_position)) = local_player.single() else {
+    let Ok(player_transform) = local_player.single() else {
         return;
     };
 
@@ -57,12 +53,9 @@ pub fn follow_player(
         return;
     };
 
-    let player_pos = player_transform
-        .map(|t| t.translation)
-        .or_else(|| player_position.map(|p| p.translation))
-        .unwrap_or(Vec3::ZERO);
+    let player_pos = *player_transform;
 
-    camera_transform.translation = player_pos + Vec3::new(0.0, 1.7, 0.0);
+    camera_transform.translation = player_pos.translation + Vec3::new(0.0, 1.7, 0.0);
 }
 
 pub fn apply_orientation(

@@ -1,14 +1,10 @@
 use super::{ActiveCameraMode, CameraMode, InGameCamera};
 use crate::networking::LocalPlayer;
 use bevy::prelude::*;
-use game_server::Position;
 
 /// Fokus dynamisch an LocalPlayer ausrichten (nur wenn PanOrbit aktiv ist)
 pub(super) fn follow_local_player_focus(
-    local_player: Query<
-        (Option<&Transform>, Option<&Position>),
-        (With<LocalPlayer>, Without<InGameCamera>),
-    >,
+    local_player: Query<&Transform, (With<LocalPlayer>, Without<InGameCamera>)>,
     mut cameras: Query<(&ActiveCameraMode, &mut PanOrbitCamera), With<InGameCamera>>,
 ) {
     // Safely get the camera - might not exist yet or might be multiple
@@ -22,17 +18,14 @@ pub(super) fn follow_local_player_focus(
     }
 
     // Safely get the player - might not exist yet
-    let Some((transform, position)) = local_player.iter().next() else {
+    let Some(transform) = local_player.iter().next() else {
         return;
     };
 
-    let base_translation = transform
-        .map(|t| t.translation)
-        .or_else(|| position.map(|p| p.translation))
-        .unwrap_or(Vec3::ZERO);
+    let base_translation = *transform;
 
     // Focus auf Player-Position + Y-Offset (1.0)
-    let focus = base_translation + Vec3::new(0.0, 1.0, 0.0);
+    let focus = base_translation.translation + Vec3::new(0.0, 1.0, 0.0);
 
     pan_orbit.focus = focus;
     pan_orbit.target_focus = focus;

@@ -28,15 +28,6 @@ pub struct PlayerIdentity {
     pub client_id: u64,
 }
 
-/// Position component (server authoritative).
-///
-/// The server maintains this, clients receive updates via replication.
-#[derive(Component, Debug, Clone, Copy, Default, Serialize, Deserialize, Reflect)]
-#[reflect(Component)]
-pub struct Position {
-    pub translation: Vec3,
-}
-
 /// Movement velocity component.
 ///
 /// Replicated from server to clients for smooth interpolation.
@@ -46,12 +37,16 @@ pub struct Velocity {
     pub linear: Vec3,
 }
 
-/// Component that links a player entity to its owning client entity.
+/// Links a player entity to its ConnectedClient entity on the server.
 ///
-/// **Server-only** - This is NOT replicated!
-/// Only used on the server to track which ConnectedClient owns which player.
+/// **Server-only** - This is NOT replicated to clients!
+/// Used only on the server to track which ConnectedClient entity owns which player entity.
+/// This is needed for cleanup when clients disconnect.
 #[derive(Component, Debug, Clone, Copy)]
-pub struct PlayerOwner {
+pub struct ServerPlayerConnection {
     /// The ConnectedClient entity that owns this player.
-    pub client_entity: Entity,
+    pub connected_client_entity: Entity,
 }
+
+// Compatibility alias for gradual migration
+pub type PlayerOwner = ServerPlayerConnection;

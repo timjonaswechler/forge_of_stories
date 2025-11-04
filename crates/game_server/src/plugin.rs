@@ -35,12 +35,12 @@ impl Plugin for ServerPlugin {
             // Register replicated components (must match client!)
             .replicate::<Player>()
             .replicate::<PlayerIdentity>()
-            .replicate::<Position>()
+            .replicate::<Transform>()
             .replicate::<Velocity>()
             .replicate::<GroundPlane>()
             .replicate::<GroundPlaneSize>()
             // Register client events (must match client!)
-            .add_client_event::<PlayerInput>(Channel::Unreliable)
+            .add_client_event::<PlayerMovement>(Channel::Unreliable)
             // Register observers for client events
             .add_observer(process_player_input)
             // Systems

@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 use bevy_replicon::prelude::*;
-use game_server::{GroundPlane, GroundPlaneSize, Player, PlayerIdentity, Position, Velocity};
+use game_server::{GroundPlane, GroundPlaneSize, Player, PlayerIdentity, Velocity};
 
 /// Plugin that registers all replicated components.
 ///
@@ -16,7 +16,7 @@ impl Plugin for ReplicationPlugin {
             // Player components
             .replicate::<Player>()
             .replicate::<PlayerIdentity>()
-            .replicate::<Position>()
+            .replicate::<Transform>()
             .replicate::<Velocity>()
             // World components
             .replicate::<GroundPlane>()

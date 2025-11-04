@@ -5,7 +5,7 @@ use app::LOG_CLIENT;
 use bevy::math::primitives::Cuboid;
 use bevy::pbr::MeshMaterial3d;
 use bevy::prelude::*;
-use game_server::{GroundPlane, GroundPlaneSize, Player, Position};
+use game_server::{GroundPlane, GroundPlaneSize, Player};
 
 /// Plugin for spawning visuals for replicated entities
 pub struct VisualSpawnersPlugin;
@@ -14,12 +14,7 @@ impl Plugin for VisualSpawnersPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            (
-                spawn_ground_plane_visuals,
-                spawn_player_visuals,
-                update_transforms_from_positions,
-            )
-                .run_if(in_state(GameState::InGame)),
+            (spawn_ground_plane_visuals, spawn_player_visuals).run_if(in_state(GameState::InGame)),
         );
     }
 }
@@ -32,9 +27,9 @@ fn spawn_ground_plane_visuals(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    planes: Query<(Entity, &Position, &GroundPlaneSize), (With<GroundPlane>, Without<HasVisuals>)>,
+    planes: Query<(Entity, &Transform, &GroundPlaneSize), (With<GroundPlane>, Without<HasVisuals>)>,
 ) {
-    for (entity, position, size) in &planes {
+    for (entity, transform, size) in &planes {
         // info!(
         //     target: LOG_CLIENT,
         //     "Spawning visuals for ground plane at {:?} with size {}x{}x{}",
@@ -51,7 +46,7 @@ fn spawn_ground_plane_visuals(
         commands.entity(entity).insert((
             Mesh3d(mesh),
             MeshMaterial3d(material),
-            Transform::from_translation(position.translation),
+            Transform::from_translation(transform.translation),
             GlobalTransform::default(),
             Visibility::default(),
             InheritedVisibility::default(),
@@ -65,9 +60,9 @@ fn spawn_player_visuals(
     mut commands: Commands,
     assets: Res<RenderAssets>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    players: Query<(Entity, &Player, &Position), Without<HasVisuals>>,
+    players: Query<(Entity, &Player, &Transform), Without<HasVisuals>>,
 ) {
-    for (entity, player, position) in &players {
+    for (entity, player, transform) in &players {
         // info!(
         //     target: LOG_CLIENT,
         //     "Spawning visuals for player with color {:?} at {:?}",
@@ -79,24 +74,24 @@ fn spawn_player_visuals(
             ..default()
         });
 
+        let mut transform = Transform::from_translation(transform.translation);
+        transform.rotation = Quat::from_euler(
+            bevy::math::EulerRot::XYZ,
+            transform.rotation.x,
+            transform.rotation.y,
+            transform.rotation.z,
+        );
+
         commands.entity(entity).insert((
             Mesh3d(assets.player_mesh.clone()),
             MeshMaterial3d(material),
-            Transform::from_translation(position.translation),
+            transform,
             GlobalTransform::default(),
             Visibility::default(),
             InheritedVisibility::default(),
             HasVisuals,
             InGameWorld,
         ));
-    }
-}
-
-fn update_transforms_from_positions(
-    mut query: Query<(&Position, &mut Transform), Changed<Position>>,
-) {
-    for (position, mut transform) in &mut query {
-        transform.translation = position.translation;
     }
 }
 

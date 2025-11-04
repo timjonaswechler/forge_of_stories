@@ -58,7 +58,7 @@ pub use network::Port;
 pub use plugin::{GameplayState, ServerPlugin};
 
 // Re-export shared types (components and events)
-pub use shared::{Player, PlayerIdentity, PlayerInput, PlayerOwner, Position, Velocity};
+pub use shared::{Player, PlayerIdentity, PlayerMovement, PlayerOwner, Velocity};
 
 // Re-export world types
 pub use world::{GroundPlane, GroundPlaneSize, PlayerColorAssigner};

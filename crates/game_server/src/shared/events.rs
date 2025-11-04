@@ -9,9 +9,10 @@ use serde::{Deserialize, Serialize};
 ///
 /// Sent with `Channel::Unreliable` since newer inputs supersede older ones.
 #[derive(MapEntities, Debug, Clone, Event, Serialize, Deserialize)]
-pub struct PlayerInput {
-    /// Movement direction in 2D (XZ plane), normalized by the client.
-    pub direction: Vec2,
+pub struct PlayerMovement {
+    /// Movement direction in 2D (XZ plane), relative to camera/view.
+    pub transform: Transform,
+
     /// Whether the player is trying to jump.
     pub jump: bool,
 }

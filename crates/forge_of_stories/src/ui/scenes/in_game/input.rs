@@ -7,6 +7,7 @@ use crate::{GameState, utils::cleanup};
 use app::LOG_MAIN;
 use bevy::prelude::*;
 use bevy_enhanced_input::prelude::*;
+use game_server::Player;
 
 /// Plugin for InGame input context setup
 pub(super) struct InGameInputPlugin;

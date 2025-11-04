@@ -6,7 +6,7 @@
 //! - Client connection/disconnection handling
 
 use app::LOG_SERVER;
-use bevy::prelude::*;
+use bevy::{math::VectorSpace, prelude::*};
 use bevy_replicon::prelude::*;
 use bevy_replicon_renet::{
     RenetChannelsExt,
@@ -169,26 +169,27 @@ pub fn handle_client_connections(
         let client_id_value = network_id.get();
 
         // Spawn player entity with replicated components
-        let _player_entity = commands
+        let player_entity = commands
             .spawn((
                 Player { color },
                 PlayerIdentity {
                     client_id: client_id_value,
                 },
-                PlayerOwner { client_entity }, // Server-only, not replicated
-                Position {
-                    translation: Vec3::new(0.0, 1.0, 0.0),
-                },
+                ServerPlayerConnection {
+                    connected_client_entity: client_entity,
+                }, // Server-only, not replicated
+                Transform::default(),
                 Velocity::default(),
-                Replicated, // Mark for replication
+                Replicated,
             ))
             .id();
 
         info!(
             target: LOG_SERVER,
-            "Spawned player for client {} (entity {:?})",
-            client_id_value,
-            client_entity
+            "Spawned player entity {:?} for client {:?} (client_id: {})",
+            player_entity,
+            client_entity,
+            client_id_value
         );
     }
 }
@@ -200,7 +201,7 @@ pub fn handle_client_connections(
 pub fn handle_client_disconnections(
     mut commands: Commands,
     mut disconnected_clients: RemovedComponents<ConnectedClient>,
-    players: Query<(Entity, &PlayerOwner)>,
+    players: Query<(Entity, &ServerPlayerConnection)>,
 ) {
     for disconnected_client in disconnected_clients.read() {
         info!(
@@ -212,7 +213,7 @@ pub fn handle_client_disconnections(
         // Find and despawn all entities owned by this client
         let mut despawned_count = 0;
         for (player_entity, owner) in &players {
-            if owner.client_entity == disconnected_client {
+            if owner.connected_client_entity == disconnected_client {
                 commands.entity(player_entity).despawn();
                 despawned_count += 1;
                 info!(
