@@ -47,14 +47,18 @@ fn send_player_input(
     //
 
     let camera_transform = camera.0;
+
+    // Kamera forward/right Vektoren direkt verwenden
+    // Projektion auf XZ-Ebene (Y auf 0 setzen) für horizontale Bewegung
+    let camera_forward = Vec3::from(*camera_transform.forward());
+    let camera_right = Vec3::from(*camera_transform.right());
+
+    let forward = Vec3::new(camera_forward.x, 0.0, camera_forward.z).normalize_or_zero();
+    let right = Vec3::new(camera_right.x, 0.0, camera_right.z).normalize_or_zero();
+
+    // Rotation für den Spieler (nur Y-Achse)
     let (_, yaw, _) = camera_transform.rotation.to_euler(EulerRot::YXZ);
-
-    // Spieler nur um Y-Rotation drehen (relativ zur Kamera)
-    let player_rotation = Quat::from_euler(EulerRot::YXZ, yaw, 0.0, 0.0);
-
-    // Bewegungsrichtungen basierend auf Kamera-Rotation berechnen
-    let forward = player_rotation * Vec3::NEG_Z;
-    let right = player_rotation * Vec3::X;
+    let player_rotation = Quat::from_rotation_y(yaw);
 
     let mut movement = Vec3::ZERO;
     if keyboard.pressed(KeyCode::KeyW) {
@@ -73,6 +77,7 @@ fn send_player_input(
     // Normalisieren wenn Bewegung stattfindet
     if movement.length() > 0.0 {
         movement = movement.normalize();
+        info!("Camera yaw: {:.2}, Movement vector: {:?}", yaw.to_degrees(), movement);
     }
 
     // Transform mit Rotation erstellen (Position kommt vom Server)
