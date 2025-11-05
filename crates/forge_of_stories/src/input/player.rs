@@ -32,7 +32,7 @@ impl Plugin for PlayerInputPlugin {
 fn send_player_input(
     mut commands: Commands,
     keyboard: Res<ButtonInput<KeyCode>>,
-    player: Single<(Entity, &mut Transform), With<LocalPlayer>>,
+    mut player: Single<(Entity, &mut Transform), With<LocalPlayer>>,
     camera: Single<(&Transform, &ActiveCameraMode), (With<InGameCamera>, Without<LocalPlayer>)>,
 ) {
     // TODO: Je anch kamera werden unterschiedlichen INput logiken aktiv und gesendet
@@ -48,32 +48,40 @@ fn send_player_input(
 
     let camera_transform = camera.0;
     let (_, yaw, _) = camera_transform.rotation.to_euler(EulerRot::YXZ);
-    // Spieler nur um Y-Rotation drehen
-    let mut player_transform = *player.1;
-    player_transform.rotation = Quat::from_euler(EulerRot::YXZ, yaw, 0.0, 0.0);
 
-    let forward = player_transform.forward(); // Typ: Dir3
-    let right = player_transform.right(); // Typ: Dir3
+    // Spieler nur um Y-Rotation drehen (relativ zur Kamera)
+    let player_rotation = Quat::from_euler(EulerRot::YXZ, yaw, 0.0, 0.0);
+
+    // Bewegungsrichtungen basierend auf Kamera-Rotation berechnen
+    let forward = player_rotation * Vec3::NEG_Z;
+    let right = player_rotation * Vec3::X;
+
     let mut movement = Vec3::ZERO;
     if keyboard.pressed(KeyCode::KeyW) {
-        movement += Vec3::from(forward);
+        movement += forward;
     }
     if keyboard.pressed(KeyCode::KeyS) {
-        movement -= Vec3::from(forward);
+        movement -= forward;
     }
     if keyboard.pressed(KeyCode::KeyA) {
-        movement -= Vec3::from(right);
+        movement -= right;
     }
     if keyboard.pressed(KeyCode::KeyD) {
-        movement += Vec3::from(right);
+        movement += right;
     }
+
+    // Wenn Bewegung stattfindet, normalisieren und skalieren
     if movement.length() > 0.0 {
         movement = movement.normalize() * 5.0;
-        player_transform.translation += movement;
+
+        // WICHTIG: Lokale Transform direkt aktualisieren
+        player.1.translation += movement;
+        player.1.rotation = player_rotation;
     }
+
     // Send input to server
     commands.client_trigger(PlayerMovement {
-        transform: player_transform,
+        transform: *player.1,
         jump: keyboard.pressed(KeyCode::Space),
     });
 }
