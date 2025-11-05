@@ -6,22 +6,11 @@ use std::collections::HashMap;
 
 use crate::shared::{Player, PlayerIdentity, PlayerMovement, Velocity};
 
-/// Resource to track message counts per client
+/// Resource to track message counts per client between server updates
 #[derive(Resource, Default)]
 pub struct ClientMessageStats {
-    /// Count of messages received from each client since last report
+    /// Count of messages received from each client since last server update (20Hz)
     pub message_counts: HashMap<u64, usize>,
-    /// Timer to periodically log statistics
-    pub report_timer: Timer,
-}
-
-impl ClientMessageStats {
-    pub fn new() -> Self {
-        Self {
-            message_counts: HashMap::new(),
-            report_timer: Timer::from_seconds(1.0, TimerMode::Repeating),
-        }
-    }
 }
 
 /// Movement speed in units per second.
@@ -74,23 +63,17 @@ pub fn process_player_input(
     warn!("No player found for client {:?}", client_id);
 }
 
-/// System that periodically logs message statistics per client
+/// System that logs message statistics per client between each server update (20Hz)
 pub fn log_client_message_stats(
-    time: Res<Time>,
     mut stats: ResMut<ClientMessageStats>,
 ) {
-    stats.report_timer.tick(time.delta());
-
-    if stats.report_timer.just_finished() {
-        if !stats.message_counts.is_empty() {
-            info!("===== Client Message Statistics (last second) =====");
-            for (client_id, count) in stats.message_counts.iter() {
-                info!("  Client {}: {} messages", client_id, count);
-            }
-            info!("================================================");
-
-            // Reset counts for next period
-            stats.message_counts.clear();
+    if !stats.message_counts.is_empty() {
+        info!("=== Messages since last server update (20Hz) ===");
+        for (client_id, count) in stats.message_counts.iter() {
+            info!("  Client {}: {} messages", client_id, count);
         }
+
+        // Reset counts for next server update
+        stats.message_counts.clear();
     }
 }

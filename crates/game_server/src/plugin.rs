@@ -53,13 +53,8 @@ impl Plugin for ServerPlugin {
                     .run_if(in_state(ServerState::Running)),
             )
             .add_systems(
-                Update,
-                log_client_message_stats
-                    .run_if(in_state(ServerState::Running)),
-            )
-            .add_systems(
                 FixedUpdate,
-                (simulate_physics, apply_velocity)
+                (simulate_physics, apply_velocity, log_client_message_stats)
                     .run_if(in_state(ServerState::Running))
                     .run_if(in_state(GameplayState::Unpaused)),
             )
