@@ -9,7 +9,7 @@ use bevy::prelude::*;
 use bevy_replicon::prelude::*;
 use bevy_replicon_renet::RepliconRenetPlugins;
 
-use crate::gameplay::{apply_velocity, log_client_message_stats, process_player_input, simulate_physics, ClientMessageStats};
+use crate::gameplay::{apply_velocity, buffer_player_input, process_buffered_inputs, simulate_physics, ClientMessageBuffer};
 use crate::network::{
     Port, WorldSpawned, handle_client_connections, handle_client_disconnections, setup_networking,
 };
@@ -31,7 +31,7 @@ impl Plugin for ServerPlugin {
             .insert_resource(Time::<Fixed>::from_hz(20.0))
             .init_resource::<WorldSpawned>()
             .init_resource::<PlayerColorAssigner>()
-            .init_resource::<ClientMessageStats>()
+            .init_resource::<ClientMessageBuffer>()
             .init_state::<GameplayState>()
             // Register replicated components (must match client!)
             .replicate::<Player>()
@@ -43,7 +43,7 @@ impl Plugin for ServerPlugin {
             // Register client events (must match client!)
             .add_client_event::<PlayerMovement>(Channel::Unreliable)
             // Register observers for client events
-            .add_observer(process_player_input)
+            .add_observer(buffer_player_input)
             // Systems
             .add_systems(Startup, setup_networking)
             .add_systems(
@@ -54,7 +54,12 @@ impl Plugin for ServerPlugin {
             )
             .add_systems(
                 FixedUpdate,
-                (simulate_physics, apply_velocity, log_client_message_stats)
+                (
+                    process_buffered_inputs,
+                    simulate_physics,
+                    apply_velocity,
+                )
+                    .chain()
                     .run_if(in_state(ServerState::Running))
                     .run_if(in_state(GameplayState::Unpaused)),
             )
