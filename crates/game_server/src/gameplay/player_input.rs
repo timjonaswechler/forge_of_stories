@@ -16,6 +16,7 @@ pub fn process_player_input(
     trigger: On<FromClient<PlayerMovement>>,
     mut players: Query<(&PlayerIdentity, &mut Velocity, &mut Transform), With<Player>>,
     network_ids: Query<&bevy_replicon::shared::backend::connected_client::NetworkId>,
+    time: Res<Time>,
 ) {
     let FromClient { client_id, message } = trigger.event();
 
@@ -32,7 +33,8 @@ pub fn process_player_input(
 
             // Bewegung auf die aktuelle Server-Position anwenden
             if message.movement.length() > 0.01 {
-                let movement = message.movement.normalize() * MOVE_SPEED;
+                let movement = message.movement.normalize() * MOVE_SPEED * time.delta_secs();
+                info!("Server applying movement: {:?}, delta: {:.4}", message.movement, time.delta_secs());
                 transform.translation += movement;
             }
 
