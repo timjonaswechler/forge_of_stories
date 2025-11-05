@@ -16,7 +16,6 @@ pub fn process_player_input(
     trigger: On<FromClient<PlayerMovement>>,
     mut players: Query<(&PlayerIdentity, &mut Velocity, &mut Transform), With<Player>>,
     network_ids: Query<&bevy_replicon::shared::backend::connected_client::NetworkId>,
-    time: Res<Time>,
 ) {
     let FromClient { client_id, message } = trigger.event();
 
@@ -31,15 +30,15 @@ pub fn process_player_input(
             // Rotation vom Client übernehmen (Kamera-basiert)
             transform.rotation = message.transform.rotation;
 
-            // Bewegung auf die aktuelle Server-Position anwenden
+            // Setze Velocity basierend auf Bewegungsrichtung
+            // Das System apply_velocity wird dann im Server-Update (20Hz) die Position aktualisieren
             if message.movement.length() > 0.01 {
-                let movement = message.movement.normalize() * MOVE_SPEED * time.delta_secs();
-                info!("Server applying movement: {:?}, delta: {:.4}", message.movement, time.delta_secs());
-                transform.translation += movement;
+                velocity.linear = message.movement.normalize() * MOVE_SPEED;
+                info!("Server setting velocity: {:?}", velocity.linear);
+            } else {
+                velocity.linear = Vec3::ZERO;
             }
 
-            // TODO: Velocity-basierte Bewegung statt direkter Transform-Änderung
-            // TODO: Acceleration handling
             // TODO: Jump handling
             // if message.jump {
             //     velocity.linear.y = JUMP_FORCE;

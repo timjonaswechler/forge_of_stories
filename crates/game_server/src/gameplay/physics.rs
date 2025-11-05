@@ -6,10 +6,14 @@ use crate::shared::Velocity;
 
 /// System that applies velocity to position (simple integration).
 ///
-/// Runs in FixedUpdate to ensure consistent physics simulation.
+/// Runs in FixedUpdate to ensure consistent physics simulation at 20Hz.
 pub fn apply_velocity(mut query: Query<(&mut Transform, &Velocity)>, time: Res<Time>) {
-    for (mut pos, vel) in &mut query {
-        pos.translation += vel.linear * time.delta_secs();
+    for (mut transform, vel) in &mut query {
+        if vel.linear.length() > 0.01 {
+            let movement = vel.linear * time.delta_secs();
+            transform.translation += movement;
+            info!("Applying velocity: vel={:?}, delta={:.4}, movement={:?}", vel.linear, time.delta_secs(), movement);
+        }
     }
 }
 
