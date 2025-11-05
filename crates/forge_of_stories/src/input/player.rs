@@ -72,7 +72,7 @@ fn send_player_input(
 
     // Wenn Bewegung stattfindet, normalisieren und skalieren
     if movement.length() > 0.0 {
-        movement = movement.normalize() * 5.0;
+        movement = movement.normalize() * 1.0;
 
         // WICHTIG: Lokale Transform direkt aktualisieren
         player.1.translation += movement;
