@@ -9,7 +9,7 @@ use bevy::prelude::*;
 use bevy_replicon::prelude::*;
 use bevy_replicon_renet::RepliconRenetPlugins;
 
-use crate::gameplay::{apply_velocity, process_player_input, simulate_physics};
+use crate::gameplay::{apply_velocity, log_client_message_stats, process_player_input, simulate_physics, ClientMessageStats};
 use crate::network::{
     Port, WorldSpawned, handle_client_connections, handle_client_disconnections, setup_networking,
 };
@@ -31,6 +31,7 @@ impl Plugin for ServerPlugin {
             .insert_resource(Time::<Fixed>::from_hz(20.0))
             .init_resource::<WorldSpawned>()
             .init_resource::<PlayerColorAssigner>()
+            .init_resource::<ClientMessageStats>()
             .init_state::<GameplayState>()
             // Register replicated components (must match client!)
             .replicate::<Player>()
@@ -49,6 +50,11 @@ impl Plugin for ServerPlugin {
                 PreUpdate,
                 (handle_client_connections, handle_client_disconnections)
                     .in_set(ServerSystems::Receive)
+                    .run_if(in_state(ServerState::Running)),
+            )
+            .add_systems(
+                Update,
+                log_client_message_stats
                     .run_if(in_state(ServerState::Running)),
             )
             .add_systems(
