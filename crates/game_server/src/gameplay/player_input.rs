@@ -27,15 +27,16 @@ pub fn process_player_input(
 
     for (player_identity, mut velocity, mut transform) in players.iter_mut() {
         if player_identity.client_id == incoming_client_id {
-            *transform = message.transform;
-            // Convert camera-relative input to world-relative movement
+            // Rotation vom Client übernehmen (Kamera-basiert)
+            transform.rotation = message.transform.rotation;
 
-            // // Apply speed
-            // velocity.linear = if move_vec.length() > 0.01 {
-            //     move_vec.normalize() * MOVE_SPEED
-            // } else {
-            //     Vec3::ZERO
-            // };
+            // Bewegung auf die aktuelle Server-Position anwenden
+            if message.movement.length() > 0.01 {
+                let movement = message.movement.normalize() * MOVE_SPEED;
+                transform.translation += movement;
+            }
+
+            // TODO: Velocity-basierte Bewegung statt direkter Transform-Änderung
             // TODO: Acceleration handling
             // TODO: Jump handling
             // if message.jump {

@@ -32,7 +32,7 @@ impl Plugin for PlayerInputPlugin {
 fn send_player_input(
     mut commands: Commands,
     keyboard: Res<ButtonInput<KeyCode>>,
-    mut player: Single<(Entity, &mut Transform), With<LocalPlayer>>,
+    player: Single<(Entity, &Transform), With<LocalPlayer>>,
     camera: Single<(&Transform, &ActiveCameraMode), (With<InGameCamera>, Without<LocalPlayer>)>,
 ) {
     // TODO: Je anch kamera werden unterschiedlichen INput logiken aktiv und gesendet
@@ -70,18 +70,19 @@ fn send_player_input(
         movement += right;
     }
 
-    // Wenn Bewegung stattfindet, normalisieren und skalieren
+    // Normalisieren wenn Bewegung stattfindet
     if movement.length() > 0.0 {
-        movement = movement.normalize() * 5.0;
-
-        // WICHTIG: Lokale Transform direkt aktualisieren
-        player.1.translation += movement;
-        player.1.rotation = player_rotation;
+        movement = movement.normalize();
     }
+
+    // Transform mit Rotation erstellen (Position kommt vom Server)
+    let mut input_transform = *player.1;
+    input_transform.rotation = player_rotation;
 
     // Send input to server
     commands.client_trigger(PlayerMovement {
-        transform: *player.1,
+        transform: input_transform,
+        movement,
         jump: keyboard.pressed(KeyCode::Space),
     });
 }
