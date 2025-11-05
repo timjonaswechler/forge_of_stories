@@ -10,6 +10,9 @@ documentation = "https://docs.rs/steamworks-sys"
 edition = "2021"
 rust-version = "1.80.0"
 
+[lib]
+path = "src/lib.rs"
+
 [features]
 default = []
 rebuild-bindings = ["bindgen"]
