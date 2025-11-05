@@ -5,9 +5,8 @@ use bevy_replicon::prelude::*;
 
 use crate::shared::{Player, PlayerIdentity, PlayerMovement, Velocity};
 
-/// Movement speed per input event.
-/// Since input events are sent every frame at ~60Hz, this should be small.
-const MOVE_SPEED_PER_EVENT: f32 = 0.1;
+/// Movement speed in units per second.
+const MOVE_SPEED: f32 = 5.0;
 
 /// Observer that processes player inputs from clients and updates velocity.
 ///
@@ -31,15 +30,15 @@ pub fn process_player_input(
             // Rotation vom Client übernehmen (Kamera-basiert)
             transform.rotation = message.transform.rotation;
 
-            // Bewegung auf die aktuelle Server-Position anwenden (ohne Delta-Time, da Events nicht frame-gebunden sind)
+            // Setze Velocity basierend auf Bewegungsrichtung
+            // Das System apply_velocity wird dann im Server-Update (20Hz) die Position aktualisieren
             if message.movement.length() > 0.01 {
-                let movement = message.movement.normalize() * MOVE_SPEED_PER_EVENT;
-                info!("Server applying movement: {:?}", message.movement);
-                transform.translation += movement;
+                velocity.linear = message.movement.normalize() * MOVE_SPEED;
+                info!("Server setting velocity: {:?}", velocity.linear);
+            } else {
+                velocity.linear = Vec3::ZERO;
             }
 
-            // TODO: Velocity-basierte Bewegung statt direkter Transform-Änderung
-            // TODO: Acceleration handling
             // TODO: Jump handling
             // if message.jump {
             //     velocity.linear.y = JUMP_FORCE;
