@@ -7,7 +7,7 @@ members = [
     "crates/app",
     "crates/auth",
     "crates/game_server",
-    "crates/keymap",
+    "crates/bevy_settings/bevy_settings",
     "third_party/steamworks-sys",
 ]
 default-members = ["crates/forge_of_stories"]
@@ -15,7 +15,9 @@ default-members = ["crates/forge_of_stories"]
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-
+authors = ["Tim Jonas Wechler"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/timjonaswechler/forge_of_stories"
 
 [workspace.dependencies]
 app.path = "crates/app"
@@ -25,12 +27,11 @@ paths.path = "crates/paths"
 settings.path = "crates/settings"
 game_server.path = "crates/game_server"
 steamworks-sys.path = "third_party/steamworks-sys"
-keymap.path = "crates/keymap"
+bevy_settings.path = "crates/bevy_settings/bevy_settings"
 
 #
 
 anyhow = { version = "1.0.80" }
-axum = { version = "0.8.4", features = ["json", "ws"] }
 base64 = "0.22.1"
 bevy = { version = "0.17.2", default-features = false }
 bevy_replicon = { version = "0.36.1", default-features = false }
@@ -45,18 +46,9 @@ futures = "0.3.28"
 futures-util = "0.3.28"
 globset = "0.4"
 log = "0.4.27"
-rcgen = { version = "0.14", features = [
-    "pem",
-    "aws_lc_rs",
-], default-features = false }
 regex = "1.5"
 reqwest = { version = "0.12", default-features = false}
-ring = "0.17.7"
 rust-embed = { version = "8.4", features = ["include-exclude"] }
-rustls = { version = "0.23", features = ["aws-lc-rs", "log"] }
-rustls-native-certs = "0.7"
-rustls-pemfile = "2.1"
-rustls-platform-verifier = "0.5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 semver = "1"

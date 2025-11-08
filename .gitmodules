@@ -1,0 +1,3 @@
+[submodule "crates/bevy_settings"]
+	path = crates/bevy_settings
+	url = https://github.com/timjonaswechler/bevy_settings.git

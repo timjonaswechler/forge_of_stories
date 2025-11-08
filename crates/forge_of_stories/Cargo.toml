@@ -11,7 +11,6 @@ bevy_replicon_renet = { workspace = true ,features = ["client"]}
 settings= {workspace = true, features =  ["bevy"]}
 paths.workspace = true
 game_server.workspace = true
-keymap.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
