@@ -1,7 +1,7 @@
 //! Client connection and local player tracking.
 
 use crate::GameState;
-use app::LOG_CLIENT;
+use crate::app::LOG_CLIENT;
 use bevy::prelude::*;
 use bevy_replicon::prelude::*;
 use bevy_replicon_renet::{

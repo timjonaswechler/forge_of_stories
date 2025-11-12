@@ -3,9 +3,9 @@
 //! Contains all 2D UI elements for the main menu (title, buttons, panels).
 
 use crate::GameState;
+use crate::app::LOG_CLIENT_HOST;
 use crate::ui::components::{HOVERED_BUTTON, NORMAL_BUTTON, PRESSED_BUTTON};
 use crate::utils::cleanup;
-use app::LOG_CLIENT_HOST;
 use bevy::color::palettes::basic::RED;
 use bevy::input_focus::InputFocus;
 use bevy::prelude::*;

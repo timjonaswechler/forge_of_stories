@@ -4,12 +4,15 @@
 //! - Embedded server mode (running in a separate thread within the client)
 //! - Dedicated server mode (standalone server binary)
 
-use app::LOG_SERVER;
+use crate::app::LOG_SERVER;
 use bevy::prelude::*;
 use bevy_replicon::prelude::*;
 use bevy_replicon_renet::RepliconRenetPlugins;
 
-use crate::gameplay::{apply_velocity, buffer_player_input, process_buffered_inputs, simulate_physics, ClientMessageBuffer};
+use crate::gameplay::{
+    ClientMessageBuffer, apply_velocity, buffer_player_input, process_buffered_inputs,
+    simulate_physics,
+};
 use crate::network::{
     Port, WorldSpawned, handle_client_connections, handle_client_disconnections, setup_networking,
 };
@@ -54,11 +57,7 @@ impl Plugin for ServerPlugin {
             )
             .add_systems(
                 FixedUpdate,
-                (
-                    process_buffered_inputs,
-                    simulate_physics,
-                    apply_velocity,
-                )
+                (process_buffered_inputs, simulate_physics, apply_velocity)
                     .chain()
                     .run_if(in_state(ServerState::Running))
                     .run_if(in_state(GameplayState::Unpaused)),

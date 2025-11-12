@@ -14,8 +14,6 @@ mod input;
 mod ui;
 mod world;
 
-use crate::GameState;
-use crate::utils::cleanup;
 use bevy::prelude::*;
 
 /// Main plugin for the splashscreen scene

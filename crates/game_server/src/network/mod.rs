@@ -5,8 +5,8 @@
 //! - Port binding with automatic fallback
 //! - Client connection/disconnection handling
 
-use app::LOG_SERVER;
-use bevy::{math::VectorSpace, prelude::*};
+use crate::app::LOG_SERVER;
+use bevy::prelude::*;
 use bevy_replicon::prelude::*;
 use bevy_replicon_renet::{
     RenetChannelsExt,

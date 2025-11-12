@@ -40,12 +40,13 @@ use std::{
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
-        mpsc::{self, Receiver, Sender},
+        mpsc::{self, Sender},
     },
     thread::{self, JoinHandle},
 };
 
 // Public module exports
+mod app;
 pub mod gameplay;
 pub mod network;
 pub mod plugin;
@@ -113,7 +114,7 @@ impl ServerHandle {
                 .insert_resource(port_storage)
                 .add_plugins(ServerPlugin { port: port.0 })
                 // Add system to check for shutdown signal
-                .add_systems(Update, move |mut app_exit: EventWriter<AppExit>| {
+                .add_systems(Update, move |mut app_exit: MessageWriter<AppExit>| {
                     if let Ok(rx) = thread_shutdown_rx.lock() {
                         if rx.try_recv().is_ok() {
                             info!(target: LOG_SERVER, "Shutdown signal received, stopping server...");

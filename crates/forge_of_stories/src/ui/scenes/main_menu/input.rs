@@ -2,9 +2,9 @@
 //!
 //! Handles server connection logic and state transitions for the main menu.
 
+use crate::app::{LOG_CLIENT_HOST, LOG_MAIN};
 use crate::networking::LocalClientId;
 use crate::{GameState, utils::cleanup};
-use app::LOG_CLIENT_HOST;
 use bevy::prelude::*;
 use bevy_replicon_renet::{netcode::NetcodeClientTransport, renet::RenetClient};
 
@@ -29,7 +29,7 @@ impl Plugin for MainMenuInputPlugin {
 
 /// Logs when entering the main menu state
 fn log_state_entry(state: Res<State<GameState>>) {
-    info!(target: app::LOG_MAIN, "Entered state: {:?}", state.get());
+    info!(target: LOG_MAIN, "Entered state: {:?}", state.get());
 }
 
 /// Waits for the embedded server to be ready, then transitions to InGame

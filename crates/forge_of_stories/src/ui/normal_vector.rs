@@ -1,5 +1,5 @@
 use bevy::{
-    color::palettes::basic::{BLUE, GREEN, RED, YELLOW},
+    color::palettes::basic::{BLUE, GREEN, RED},
     prelude::*,
 };
 

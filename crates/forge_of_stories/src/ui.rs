@@ -8,14 +8,12 @@ use components::InGameMenuState;
 use normal_vector::draw_local_coordinate_systems;
 use scenes::ScenePlugin;
 
-use crate::utils::cleanup;
-
 /// Main UI plugin that coordinates cameras, scenes, and UI systems
 pub struct UIPlugin;
 
 impl Plugin for UIPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((ScenePlugin))
+        app.add_plugins(ScenePlugin)
             .init_resource::<InGameMenuState>()
             .init_resource::<InputFocus>()
             // Debug helper for normal vectors

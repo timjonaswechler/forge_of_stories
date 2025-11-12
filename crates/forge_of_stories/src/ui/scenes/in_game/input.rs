@@ -3,11 +3,10 @@
 //! Sets up the input context for the InGame scene.
 //! Actual input handling is now centralized in the `input/` module.
 
+use crate::app::LOG_MAIN;
 use crate::{GameState, utils::cleanup};
-use app::LOG_MAIN;
 use bevy::prelude::*;
 use bevy_enhanced_input::prelude::*;
-use game_server::Player;
 
 /// Plugin for InGame input context setup
 pub(super) struct InGameInputPlugin;

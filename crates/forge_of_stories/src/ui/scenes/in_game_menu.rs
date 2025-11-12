@@ -1,7 +1,7 @@
 use crate::GameState;
 use crate::ui::components::{HOVERED_BUTTON, InGameMenuState, NORMAL_BUTTON, PRESSED_BUTTON};
 
-use app::LOG_CLIENT;
+use crate::app::LOG_CLIENT;
 use bevy::color::palettes::basic::RED;
 use bevy::prelude::*;
 use bevy_replicon_renet::{netcode::NetcodeClientTransport, renet::RenetClient};

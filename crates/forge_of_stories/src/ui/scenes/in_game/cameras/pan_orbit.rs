@@ -420,7 +420,6 @@ pub(super) fn active_viewport_data(
     primary_windows: Query<&Window, With<PrimaryWindow>>,
     other_windows: Query<&Window, Without<PrimaryWindow>>,
     orbit_cameras: Query<(Entity, &Camera, &PanOrbitCamera)>,
-    #[cfg(feature = "bevy_egui")] egui_wants_focus: Res<EguiWantsFocus>,
 ) {
     let mut new_resource = ActiveCameraData::default();
     let mut max_cam_order = 0;
@@ -438,10 +437,6 @@ pub(super) fn active_viewport_data(
             has_input = true;
             #[allow(unused_mut, unused_assignments)]
             let mut should_get_input = true;
-            #[cfg(feature = "bevy_egui")]
-            {
-                should_get_input = !egui_wants_focus.prev && !egui_wants_focus.curr;
-            }
             if should_get_input {
                 // First check if cursor is in the same window as this camera
                 if let RenderTarget::Window(win_ref) = camera.target {

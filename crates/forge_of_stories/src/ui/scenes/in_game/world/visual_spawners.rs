@@ -1,7 +1,6 @@
 use super::InGameWorld;
 use super::RenderAssets;
 use crate::GameState;
-use app::LOG_CLIENT;
 use bevy::math::primitives::Cuboid;
 use bevy::pbr::MeshMaterial3d;
 use bevy::prelude::*;
