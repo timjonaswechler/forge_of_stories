@@ -10,7 +10,7 @@
 //! - Avoids hard "snaps" on direction changes or stop/start
 
 use bevy::prelude::*;
-use bevy_replicon::prelude::ClientSet;
+use bevy_replicon::prelude::ClientSystems;
 use game_server::{Player, Velocity};
 
 /// Plugin that adds client-side interpolation for replicated entities.
@@ -18,16 +18,12 @@ pub struct InterpolationPlugin;
 
 impl Plugin for InterpolationPlugin {
     fn build(&self, app: &mut App) {
-        app
-            .add_systems(
-                Update,
-                (
-                    capture_server_updates,
-                    interpolate_to_server_position,
-                )
-                    .chain()
-                    .after(ClientSet::Receive),
-            );
+        app.add_systems(
+            Update,
+            (capture_server_updates, interpolate_to_server_position)
+                .chain()
+                .after(ClientSystems::Receive),
+        );
     }
 }
 
@@ -61,7 +57,7 @@ fn capture_server_updates(
     mut commands: Commands,
     mut updated_players: Query<
         (Entity, &Transform, Option<&mut InterpolationState>),
-        (With<Player>, Changed<Transform>)
+        (With<Player>, Changed<Transform>),
     >,
 ) {
     for (entity, transform, maybe_interp) in &mut updated_players {
@@ -81,7 +77,10 @@ fn capture_server_updates(
                 previous_position: transform.translation,
                 ..default()
             });
-            info!("Initialized interpolation for new player at {:?}", transform.translation);
+            info!(
+                "Initialized interpolation for new player at {:?}",
+                transform.translation
+            );
         }
     }
 }
@@ -96,10 +95,7 @@ fn capture_server_updates(
 /// - Jittering from low server tickrate (via velocity prediction)
 /// - Snapping from server corrections (via exponential smoothing)
 fn interpolate_to_server_position(
-    mut players: Query<
-        (&mut Transform, &Velocity, &mut InterpolationState),
-        With<Player>
-    >,
+    mut players: Query<(&mut Transform, &Velocity, &mut InterpolationState), With<Player>>,
     time: Res<Time>,
 ) {
     let delta = time.delta_secs();
@@ -147,4 +143,3 @@ fn interpolate_to_server_position(
         interp_state.previous_position = new_position;
     }
 }
-
