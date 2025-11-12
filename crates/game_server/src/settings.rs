@@ -1,7 +1,8 @@
+use bevy::ecs::resource::Resource;
+use bevy_settings::Settings;
 use serde::{Deserialize, Serialize};
-use settings::Settings;
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Resource)]
 pub struct Network {
     port: u16,
     label: String,

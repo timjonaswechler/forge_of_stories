@@ -5,7 +5,8 @@ edition.workspace = true
 description = "Shared server-side game logic for Forge of Stories"
 
 [dependencies]
-app = { workspace = true }
+bevy_settings = { workspace = true }
+
 bevy = { version = "0.17.2", default-features = false, features = [
     "std",
     "multi_threaded",
@@ -15,7 +16,6 @@ bevy = { version = "0.17.2", default-features = false, features = [
 ] }
 bevy_replicon = { workspace = true, features = ["server"] }
 bevy_replicon_renet = { workspace = true, features = ["server","renet_netcode","renet_steam"] }
-
 tracing.workspace = true
 serde = { version = "1.0", features = ["derive"] }
 ron = "0.8"
@@ -24,7 +24,6 @@ bincode.workspace = true
 tokio = { version = "1", features = ["sync"] }
 bytes = "1.5"
 uuid = { workspace = true, features = ["serde"] }
-settings = { workspace = true }
 crossbeam = "0.8.4"
 
 [dev-dependencies]

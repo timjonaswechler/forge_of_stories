@@ -1,19 +1,15 @@
-mod fos_app;
+mod app;
 mod input;
 mod networking;
 mod ui;
 mod utils;
 
-use crate::fos_app::FOSApp;
 use crate::input::InputPlugin;
 use crate::networking::NetworkingPlugin;
 use crate::ui::UIPlugin;
-use app::AppBuilder;
-use bevy::{log::LogPlugin, prelude::*};
-use bevy_enhanced_input::prelude::*;
-use game_server::settings::Network;
 
-use settings::{AppSettingsExt, SettingsStore};
+use bevy::prelude::*;
+use bevy_enhanced_input::prelude::*;
 
 /// Game state tracking where we are in the application flow.
 #[derive(States, Debug, Clone, PartialEq, Eq, Hash, Default)]
@@ -26,44 +22,18 @@ pub enum GameState {
 }
 
 fn main() {
-    let mut app = AppBuilder::<FOSApp>::new(env!("CARGO_PKG_VERSION"))
-        .expect("Failed to initialize application")
-        .build_with_bevy(|mut app, ctx| {
-            let settings_store = SettingsStore::builder("0.1.0")
-                .with_settings_file(ctx.path_context().settings_file(Some(ctx.app_id())))
-                .build()
-                .expect("failed to build settings store");
+    let mut app = app::init();
 
-            app = app
-                .insert_settings_store(settings_store)
-                .register_settings_section::<Network>();
+    // Initialize GameState
+    app.init_state::<GameState>();
 
-            app.add_plugins(
-                DefaultPlugins
-                    .build()
-                    .disable::<LogPlugin>()
-                    .set(WindowPlugin {
-                        primary_window: Some(Window {
-                            title: "Forge of Stories".to_string(),
-                            ..default()
-                        }),
-                        ..default()
-                    }),
-            );
-
-            // Initialize GameState
-            app.init_state::<GameState>();
-
-            // Add EnhancedInputPlugin BEFORE KeymapInputPlugin
-            app.add_plugins((
-                EnhancedInputPlugin, // TODO: in port in keymap plugin
-                NetworkingPlugin,
-                InputPlugin,
-                UIPlugin,
-            ));
-
-            app
-        });
+    // Add EnhancedInputPlugin BEFORE KeymapInputPlugin
+    app.add_plugins((
+        EnhancedInputPlugin, // TODO: in port in keymap plugin
+        NetworkingPlugin,
+        InputPlugin,
+        UIPlugin,
+    ));
 
     app.run();
 }

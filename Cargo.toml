@@ -2,11 +2,9 @@
 resolver = "2"
 members = [
     "crates/forge_of_stories",
-    "crates/paths",
-    "crates/settings",
-    "crates/app",
     "crates/auth",
     "crates/game_server",
+    "crates/bevy_paths/bevy_paths",
     "crates/bevy_settings/bevy_settings",
     "third_party/steamworks-sys",
 ]
@@ -20,14 +18,12 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/timjonaswechler/forge_of_stories"
 
 [workspace.dependencies]
-app.path = "crates/app"
 auth.path = "crates/auth"
 fos.path = "crates/forge_of_stories"
-paths.path = "crates/paths"
-settings.path = "crates/settings"
 game_server.path = "crates/game_server"
 steamworks-sys.path = "third_party/steamworks-sys"
 bevy_settings.path = "crates/bevy_settings/bevy_settings"
+bevy_paths.path = "crates/bevy_paths/bevy_paths"
 
 #
 
