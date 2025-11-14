@@ -1,7 +1,6 @@
 use bevy::{log::LogPlugin, prelude::*};
 use bevy_paths::{PathMarker, PathRegistry, PathRegistryPlugin};
 use bevy_settings::{SerializationFormat, SettingsPlugin};
-use game_server::settings::Network;
 use std::path::PathBuf;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{filter::filter_fn, fmt, prelude::*};
@@ -53,11 +52,6 @@ pub fn init() -> App {
     let registry = app.world().resource::<PathRegistry>();
     let settings_file = registry.get::<SettingsDir>().unwrap().join("settings.json");
 
-    app.add_plugins(
-        SettingsPlugin::new()
-            .with_path(settings_file, SerializationFormat::Json)
-            .register::<Network>(),
-    );
     app.add_systems(Startup, setup_logging);
     println!("log");
     app

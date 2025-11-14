@@ -1,11 +1,9 @@
 mod app;
 mod input;
-mod networking;
 mod ui;
 mod utils;
 
 use crate::input::InputPlugin;
-use crate::networking::NetworkingPlugin;
 use crate::ui::UIPlugin;
 
 use bevy::prelude::*;
@@ -30,7 +28,6 @@ fn main() {
     // Add EnhancedInputPlugin BEFORE KeymapInputPlugin
     app.add_plugins((
         EnhancedInputPlugin, // TODO: in port in keymap plugin
-        NetworkingPlugin,
         InputPlugin,
         UIPlugin,
     ));

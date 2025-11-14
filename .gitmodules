@@ -4,3 +4,6 @@
 [submodule "crates/bevy_paths"]
 	path = crates/bevy_paths
 	url = https://github.com/timjonaswechler/bevy_paths.git
+[submodule "crates/fos_server"]
+	path = crates/fos_server
+	url = https://github.com/timjonaswechler/fos_server.git
